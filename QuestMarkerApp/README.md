@@ -80,6 +80,55 @@
 # Build Settings → Build and Run
 ```
 
+## 📱 Mobile Preview (Android κινητό)
+
+Για γρήγορη προεπισκόπηση **πώς φαίνεται η εφαρμογή σε κανονικό Android κινητό**
+(χωρίς Meta Quest / VR headset), υπάρχει ξεχωριστό mode με **απλή 3D κάμερα**.
+
+> Η Quest υλοποίηση παραμένει ανέπαφη. Το mobile mode ενεργοποιείται μέσω του
+> scripting define `MOBILE_PREVIEW` και **δεν χρειάζεται το Meta XR SDK** για compile.
+
+### Τι περιλαμβάνει
+
+- 🎥 **MobileCameraController** — orbit / pan / zoom κάμερα
+  - 1 δάχτυλο drag: περιστροφή
+  - 2 δάχτυλα: pan / pinch zoom
+  - (Editor: αριστερό κλικ = περιστροφή, δεξί = pan, scroll = zoom)
+- 🟦 **GroundGrid** — grid εδάφους για αίσθηση κλίμακας (1 κελί = 1 μέτρο, άξονας X = κόκκινος, Z = μπλε)
+- 🎯 **MobilePreviewController** — αγκυρώνει τα markers στο world origin, δημιουργεί demo markers και εμφανίζει on-screen κουμπιά (Demo / Clear / Info)
+- Ο `LocalAPIServer` εξακολουθεί να τρέχει, οπότε μπορείς να στέλνεις και **πραγματικά coordinates** από άλλη συσκευή στο ίδιο δίκτυο (ίδιο API με το Quest).
+
+### Ρύθμιση (μέσω Unity Editor menu)
+
+1. **Quest Marker App → Mobile Preview → 1. Enable MOBILE_PREVIEW Define**
+   (κάνει recompile· απενεργοποιεί τα OVR calls)
+2. **Quest Marker App → Mobile Preview → 2. Setup Mobile Preview Scene**
+   (δημιουργεί κάμερα + ground grid + manager + demo markers)
+3. Πάτα **Play** για άμεσο preview στον Editor.
+
+### Build για κινητό
+
+1. **File → Build Settings → Android** → *Switch Platform*
+2. **Edit → Project Settings → XR Plug-in Management**: στο tab **Android**
+   **απενεργοποίησε** το Oculus / OpenXR (δεν χρειάζεται XR για απλό κινητό)
+3. Σύνδεσε το κινητό (USB debugging ενεργό) → **Build and Run**
+
+### Επιστροφή στο Quest
+
+**Quest Marker App → Mobile Preview → Disable MOBILE_PREVIEW Define (back to Quest)**
+και ξαναενεργοποίησε το Oculus στο XR Plug-in Management.
+
+### Keyboard shortcuts (Editor / mobile build)
+
+| Πλήκτρο | Λειτουργία |
+|---------|------------|
+| **C** | Καθαρισμός markers |
+| **R** | Επαναβαθμονόμηση σημείου αναφοράς |
+| **X** | Έναρξη calibration mode |
+
+> ⚠️ Το mobile preview δείχνει τους markers σε **εικονικό 3D χώρο** (όχι AR/passthrough).
+> Είναι για αξιολόγηση εμφάνισης & ροής — για AR στο κινητό θα χρειαζόταν AR Foundation.
+
 ## Χρήση API
 
 ### Endpoint: POST /api/coordinates
@@ -345,6 +394,12 @@ QuestMarkerApp/
 │   │   ├── Markers/
 │   │   │   ├── Marker.cs
 │   │   │   └── MarkerManager.cs
+│   │   ├── Mobile/                          # 📱 Mobile preview (απλή 3D κάμερα)
+│   │   │   ├── MobileCameraController.cs    # orbit / pan / zoom
+│   │   │   ├── MobilePreviewController.cs   # demo markers + on-screen κουμπιά
+│   │   │   └── GroundGrid.cs                # grid κλίμακας (1 κελί = 1μ)
+│   │   ├── Editor/
+│   │   │   └── QuestMarkerAppSetup.cs       # menu: setup Quest & Mobile scenes
 │   │   └── UI/
 │   │       └── UIManager.cs
 │   ├── Prefabs/
