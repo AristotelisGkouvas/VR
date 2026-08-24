@@ -18,6 +18,8 @@ namespace QuestMarkerApp.API
         [SerializeField] private string apiEndpoint = "/api/coordinates";
         [SerializeField] private float pollingInterval = 1.0f;
         [SerializeField] private bool autoStartPolling = true;
+        [SerializeField] private float maxPollingInterval = 30f;
+        [SerializeField] private bool useBackoffOnError = true;
 
         [Header("Authentication")]
         [SerializeField] private string apiKey = "";
@@ -33,6 +35,9 @@ namespace QuestMarkerApp.API
 
         private bool isPolling = false;
         private Coroutine pollingCoroutine;
+        private float currentPollingInterval;
+        private int consecutiveErrors = 0;
+
 
         public string ServerUrl
         {
@@ -42,6 +47,7 @@ namespace QuestMarkerApp.API
 
         private void Start()
         {
+            currentPollingInterval = pollingInterval;
             if (autoStartPolling)
             {
                 StartPolling();
@@ -104,7 +110,7 @@ namespace QuestMarkerApp.API
             while (isPolling)
             {
                 yield return StartCoroutine(FetchCoordinatesRequest(null));
-                yield return new WaitForSeconds(pollingInterval);
+                yield return new WaitForSeconds(currentPollingInterval);
             }
         }
 
@@ -144,6 +150,10 @@ namespace QuestMarkerApp.API
 
                 if (request.result == UnityWebRequest.Result.Success)
                 {
+                    consecutiveErrors = 0;
+                    if (useBackoffOnError)
+                        currentPollingInterval = pollingInterval;
+
                     try
                     {
                         string json = request.downloadHandler.text;
@@ -162,11 +172,19 @@ namespace QuestMarkerApp.API
                 }
                 else
                 {
+                    consecutiveErrors++;
+                    if (useBackoffOnError)
+                    {
+                        currentPollingInterval = Mathf.Min(
+                            maxPollingInterval,
+                            pollingInterval * Mathf.Pow(2f, Mathf.Min(consecutiveErrors, 5)));
+                    }
+
                     string error = $"Request failed: {request.error}";
                     OnConnectionError?.Invoke(error);
 
                     if (logRequests)
-                        Debug.LogWarning($"[CoordinateAPI] {error}");
+                        Debug.LogWarning($"[CoordinateAPI] {error} (backoff={currentPollingInterval:F1}s)");
                 }
             }
         }

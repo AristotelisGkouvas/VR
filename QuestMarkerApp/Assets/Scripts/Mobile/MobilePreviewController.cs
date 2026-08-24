@@ -26,6 +26,8 @@ namespace QuestMarkerApp.Mobile
 
         private Transform originAnchor;
         private bool showInfo = true;
+        private LocalAPIServer localServer;
+        private string cachedServerUrl;
 
         private void Start()
         {
@@ -33,6 +35,13 @@ namespace QuestMarkerApp.Mobile
             if (appController == null) appController = FindObjectOfType<MarkerAppController>();
             if (anchorManager == null) anchorManager = FindObjectOfType<SpatialAnchorManager>();
             if (cameraController == null) cameraController = FindObjectOfType<MobileCameraController>();
+            localServer = FindObjectOfType<LocalAPIServer>();
+            if (localServer != null)
+            {
+                var urls = localServer.GetServerUrls();
+                if (urls != null && urls.Length > 0)
+                    cachedServerUrl = urls[0];
+            }
 
             // Κράτα τα markers αγκυρωμένα στο world origin αντί να δημιουργείται
             // reference anchor στη θέση της κάμερας (που δεν έχει νόημα χωρίς headset tracking).
@@ -122,14 +131,20 @@ namespace QuestMarkerApp.Mobile
             if (showInfo)
             {
                 int count = markerManager != null ? markerManager.ActiveMarkerCount : 0;
+                int max = markerManager != null ? markerManager.MaxMarkers : 0;
+                string serverHint = "";
+                if (localServer != null && localServer.IsRunning && !string.IsNullOrEmpty(cachedServerUrl))
+                    serverHint = "\nAPI: " + cachedServerUrl;
+
                 string info =
                     "MOBILE PREVIEW (απλή 3D κάμερα)\n" +
                     "• 1 δάχτυλο: περιστροφή\n" +
                     "• 2 δάχτυλα: pan / pinch zoom\n" +
                     "• Grid: 1 κελί = 1 μέτρο\n" +
-                    "Markers: " + count;
+                    "Markers: " + count + (max > 0 ? "/" + max : "") +
+                    serverHint;
 
-                GUI.Label(new Rect(pad, pad, w - pad * 2f, btnH * 2.4f), info);
+                GUI.Label(new Rect(pad, pad, w - pad * 2f, btnH * 3.2f), info);
             }
 
             GUI.skin.button.fontSize = prevBtnFont;

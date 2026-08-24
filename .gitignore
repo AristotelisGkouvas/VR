@@ -46,6 +46,7 @@ __pycache__/
 .venv/
 venv/
 env/
+QuestMarkerApp/Server/.venv/
 
 # ---- OS ----
 .DS_Store

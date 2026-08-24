@@ -1,0 +1,110 @@
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using UnityEngine;
+
+namespace QuestMarkerApp.API
+{
+    /// <summary>
+    /// Lightweight UDP beacon so PCs can discover the Quest API on the LAN
+    /// without typing the IP. Broadcasts every interval on port 48080.
+    /// Protocol: JSON line {"service":"quest-marker","port":8080,"name":"..."}
+    /// </summary>
+    public class NetworkDiscovery : MonoBehaviour
+    {
+        public const int DefaultDiscoveryPort = 48080;
+
+        [SerializeField] private bool enableBeacon = true;
+        [SerializeField] private int discoveryPort = DefaultDiscoveryPort;
+        [SerializeField] private float broadcastInterval = 2f;
+        [SerializeField] private int apiPort = 8080;
+        [SerializeField] private string serviceName = "quest-marker";
+        [SerializeField] private string deviceName = "Quest3";
+
+        private UdpClient udp;
+        private Thread thread;
+        private volatile bool running;
+        private byte[] payload;
+
+        public void Configure(int httpPort, string name = null)
+        {
+            apiPort = httpPort;
+            if (!string.IsNullOrEmpty(name)) deviceName = name;
+            RebuildPayload();
+        }
+
+        private void Start()
+        {
+            if (!enableBeacon) return;
+            RebuildPayload();
+            StartBeacon();
+        }
+
+        private void OnDestroy()
+        {
+            StopBeacon();
+        }
+
+        private void RebuildPayload()
+        {
+            string json =
+                "{\"service\":\"" + serviceName + "\"," +
+                "\"port\":" + apiPort + "," +
+                "\"name\":\"" + Escape(deviceName) + "\"," +
+                "\"version\":\"1.2.0\"}";
+            payload = Encoding.UTF8.GetBytes(json);
+        }
+
+        public void StartBeacon()
+        {
+            if (running) return;
+            running = true;
+            try
+            {
+                udp = new UdpClient();
+                udp.EnableBroadcast = true;
+                thread = new Thread(BeaconLoop) { IsBackground = true, Name = "QuestMarkerDiscovery" };
+                thread.Start();
+                Debug.Log($"[Discovery] UDP beacon on port {discoveryPort} advertising API {apiPort}");
+            }
+            catch (Exception e)
+            {
+                running = false;
+                Debug.LogWarning($"[Discovery] Failed to start: {e.Message}");
+            }
+        }
+
+        public void StopBeacon()
+        {
+            running = false;
+            try { udp?.Close(); } catch { /* ignore */ }
+            udp = null;
+            try { thread?.Join(500); } catch { /* ignore */ }
+            thread = null;
+        }
+
+        private void BeaconLoop()
+        {
+            var endpoint = new IPEndPoint(IPAddress.Broadcast, discoveryPort);
+            while (running)
+            {
+                try
+                {
+                    if (payload != null && udp != null)
+                        udp.Send(payload, payload.Length, endpoint);
+                }
+                catch
+                {
+                    // ignore transient network errors
+                }
+
+                int sleepMs = Mathf.Max(500, (int)(broadcastInterval * 1000));
+                Thread.Sleep(sleepMs);
+            }
+        }
+
+        private static string Escape(string s) => JsonText.Escape(s);
+    }
+}

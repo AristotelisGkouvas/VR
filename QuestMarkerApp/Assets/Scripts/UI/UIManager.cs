@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using QuestMarkerApp.Markers;
 using QuestMarkerApp.API;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -21,6 +22,7 @@ namespace QuestMarkerApp.UI
         [SerializeField] private TextMeshProUGUI serverUrlText;
         [SerializeField] private TextMeshProUGUI markerCountText;
         [SerializeField] private TextMeshProUGUI connectionStatusText;
+        [SerializeField] private TextMeshProUGUI calibrationStatusText;
 
         [Header("Info Display")]
         [SerializeField] private TextMeshProUGUI instructionsText;
@@ -28,14 +30,17 @@ namespace QuestMarkerApp.UI
         [Header("References")]
         [SerializeField] private LocalAPIServer localServer;
         [SerializeField] private MarkerManager markerManager;
+        [SerializeField] private CoordinateCalibration calibrationSystem;
 
         [Header("Settings")]
         [SerializeField] private float uiDistance = 2f;
         [SerializeField] private bool followHead = true;
         [SerializeField] private float followSpeed = 2f;
+        [SerializeField] private float statusRefreshInterval = 1f;
 
         private Transform headTransform;
         private bool showUI = true;
+        private float nextRefresh;
 
         private void Start()
         {
@@ -58,12 +63,17 @@ namespace QuestMarkerApp.UI
             }
 
 #if !MOBILE_PREVIEW
-            // Toggle UI visibility with thumbstick press
             if (OVRInput.GetDown(OVRInput.Button.PrimaryThumbstick))
             {
                 ToggleUI();
             }
 #endif
+
+            if (Time.unscaledTime >= nextRefresh)
+            {
+                nextRefresh = Time.unscaledTime + statusRefreshInterval;
+                UpdateUI();
+            }
         }
 
         private void OnDestroy()
@@ -81,6 +91,11 @@ namespace QuestMarkerApp.UI
             if (markerManager == null)
             {
                 markerManager = FindObjectOfType<MarkerManager>();
+            }
+
+            if (calibrationSystem == null)
+            {
+                calibrationSystem = FindObjectOfType<CoordinateCalibration>();
             }
 
             if (mainCanvas == null)
@@ -102,15 +117,19 @@ namespace QuestMarkerApp.UI
             canvasObj.AddComponent<CanvasScaler>();
             canvasObj.AddComponent<GraphicRaycaster>();
 
-            // Create status panel
-            statusPanel = CreatePanel("StatusPanel", new Vector2(0, 200), new Vector2(700, 150));
-            serverStatusText = CreateText(statusPanel.transform, "ServerStatus", new Vector2(0, 40), "Server: Starting...");
-            serverUrlText = CreateText(statusPanel.transform, "ServerUrl", new Vector2(0, 0), "URL: ...");
-            markerCountText = CreateText(statusPanel.transform, "MarkerCount", new Vector2(0, -40), "Markers: 0");
+            statusPanel = CreatePanel("StatusPanel", new Vector2(0, 200), new Vector2(700, 200));
+            serverStatusText = CreateText(statusPanel.transform, "ServerStatus", new Vector2(0, 60), "Server: Starting...");
+            serverUrlText = CreateText(statusPanel.transform, "ServerUrl", new Vector2(0, 20), "URL: ...");
+            markerCountText = CreateText(statusPanel.transform, "MarkerCount", new Vector2(0, -20), "Markers: 0");
+            calibrationStatusText = CreateText(statusPanel.transform, "CalibrationStatus", new Vector2(0, -60), "Calibration: -");
 
-            // Create instructions panel
-            infoPanel = CreatePanel("InfoPanel", new Vector2(0, -100), new Vector2(700, 250));
+            infoPanel = CreatePanel("InfoPanel", new Vector2(0, -120), new Vector2(700, 280));
             instructionsText = CreateText(infoPanel.transform, "Instructions", Vector2.zero, "");
+            if (instructionsText != null)
+            {
+                var instrRt = instructionsText.GetComponent<RectTransform>();
+                if (instrRt != null) instrRt.sizeDelta = new Vector2(650, 260);
+            }
         }
 
         private GameObject CreatePanel(string name, Vector2 position, Vector2 size)
@@ -139,7 +158,7 @@ namespace QuestMarkerApp.UI
 
             TextMeshProUGUI text = textObj.AddComponent<TextMeshProUGUI>();
             text.text = content;
-            text.fontSize = 24;
+            text.fontSize = 22;
             text.color = Color.white;
             text.alignment = TextAlignmentOptions.Center;
 
@@ -161,6 +180,12 @@ namespace QuestMarkerApp.UI
                 markerManager.OnMarkerRemoved += OnMarkerChanged;
                 markerManager.OnMarkersCleared += OnMarkersCleared;
             }
+
+            if (calibrationSystem != null)
+            {
+                calibrationSystem.OnCalibrationComplete += OnCalibrationChanged;
+                calibrationSystem.OnCalibrationReset += OnCalibrationReset;
+            }
         }
 
         private void UnsubscribeFromEvents()
@@ -177,6 +202,12 @@ namespace QuestMarkerApp.UI
                 markerManager.OnMarkerCreated -= OnMarkerChanged;
                 markerManager.OnMarkerRemoved -= OnMarkerChanged;
                 markerManager.OnMarkersCleared -= OnMarkersCleared;
+            }
+
+            if (calibrationSystem != null)
+            {
+                calibrationSystem.OnCalibrationComplete -= OnCalibrationChanged;
+                calibrationSystem.OnCalibrationReset -= OnCalibrationReset;
             }
         }
 
@@ -214,7 +245,30 @@ namespace QuestMarkerApp.UI
 
             if (markerCountText != null && markerManager != null)
             {
-                markerCountText.text = $"Active Markers: {markerManager.ActiveMarkerCount}";
+                markerCountText.text = $"Active Markers: {markerManager.ActiveMarkerCount}/{markerManager.MaxMarkers}";
+            }
+
+            if (calibrationStatusText != null)
+            {
+                if (calibrationSystem == null)
+                {
+                    calibrationStatusText.text = "Calibration: n/a";
+                }
+                else if (calibrationSystem.IsCalibrating)
+                {
+                    calibrationStatusText.text =
+                        $"Calibration: <color=yellow>In progress</color> ({calibrationSystem.CapturedPointCount} pts)\n" +
+                        $"<size=80%>{calibrationSystem.CurrentStepMessage}</size>";
+                }
+                else if (calibrationSystem.IsCalibrated)
+                {
+                    calibrationStatusText.text =
+                        $"Calibration: <color=green>OK</color> RMS {calibrationSystem.LastResidualRms:F3}m";
+                }
+                else
+                {
+                    calibrationStatusText.text = "Calibration: <color=grey>Not set</color>";
+                }
             }
         }
 
@@ -224,12 +278,13 @@ namespace QuestMarkerApp.UI
             {
                 instructionsText.text =
                     "<b>Οδηγίες Χρήσης:</b>\n\n" +
-                    "• Στείλτε POST request στο /api/coordinates\n" +
-                    "• Button A: Επαναβαθμονόμηση σημείου αναφοράς\n" +
-                    "• Button B: Καθαρισμός όλων των markers\n" +
-                    "• Thumbstick: Εμφάνιση/Απόκρυψη UI\n\n" +
-                    "<b>Παράδειγμα JSON:</b>\n" +
-                    "{\"coordinates\": [{\"x\": 1.0, \"y\": 0.5, \"z\": 2.0}]}";
+                    "• POST /api/coordinates — markers\n" +
+                    "• GET /api/coordinates — λίστα markers\n" +
+                    "• DELETE /api/coordinates/{id} — διαγραφή\n" +
+                    "• A: Επαναβαθμονόμηση σημείου αναφοράς\n" +
+                    "• B: Καθαρισμός markers\n" +
+                    "• X: Έναρξη calibration\n" +
+                    "• Thumbstick: Εμφάνιση/Απόκρυψη UI";
             }
         }
 
@@ -242,7 +297,6 @@ namespace QuestMarkerApp.UI
             }
         }
 
-        // Event Handlers
         private void OnServerStarted()
         {
             UpdateUI();
@@ -268,6 +322,16 @@ namespace QuestMarkerApp.UI
         }
 
         private void OnMarkersCleared()
+        {
+            UpdateUI();
+        }
+
+        private void OnCalibrationChanged(CalibrationData data)
+        {
+            UpdateUI();
+        }
+
+        private void OnCalibrationReset()
         {
             UpdateUI();
         }

@@ -181,9 +181,22 @@
 
 | Endpoint | Method | Περιγραφή |
 |----------|--------|-----------|
-| `/api/health` | GET | Έλεγχος σύνδεσης |
-| `/api/coordinates` | GET | Status |
+| `/api/health` | GET | Health + uptime + marker count + calibration |
+| `/api/status` | GET | Συνοπτικό status server/markers/calibration |
+| `/api/coordinates` | GET | Λίστα ενεργών markers (JSON) |
+| `/api/coordinates/{id}` | DELETE | Διαγραφή ενός marker |
 | `/api/clear` | POST | Καθαρισμός όλων των markers |
+| `/api/calibrate/start` | POST | Έναρξη calibration mode |
+| `/api/calibrate` | POST | Αποστολή πραγματικών συντεταγμένων |
+| `/api/calibrate/status` | GET | Κατάσταση βαθμονόμησης (live) |
+| `/api/calibrate/reset` | POST | Επαναφορά calibration |
+
+### Επιπλέον flags στο POST `/api/coordinates`
+
+| Flag | Περιγραφή |
+|------|-----------|
+| `clearExisting` | `true` = καθάρισε όλα πριν την εισαγωγή |
+| `removeMissing` | `true` = διέγραψε markers που λείπουν από το payload (sync) |
 
 ## Παραδείγματα
 
@@ -354,10 +367,117 @@ python coordinate_server.py --quest-ip 192.168.1.100 --interactive
 - `list` - Λίστα συντεταγμένων
 - `send` - Αποστολή στο Quest
 - `clear` - Καθαρισμός
+- `del <id>` - Διαγραφή ενός marker
 - `status` - Έλεγχος σύνδεσης
 - `calibrate x y z [rotation]` - Βαθμονόμηση με πραγματικές συντεταγμένες
 - `startcal` - Έναρξη λειτουργίας calibration
+- `calstatus` - Κατάσταση βαθμονόμησης
 - `quit` - Έξοδος
+
+## Βελτιώσεις v1.2 (full roadmap)
+
+### Spatial Anchors
+- OVRSpatialAnchor via reflection (με pose+UUID fallback)
+- `GET /api/anchors` status
+
+### Ασφάλεια & discovery
+- Optional API key (`X-Api-Key` / Bearer) + rate limit
+- UDP discovery beacon port **48080** (`NetworkDiscovery`)
+- Python: `python coordinate_server.py --discover`
+
+### Calibration UX
+- Step messages + residual RMS (μέτρα)
+- `CalibrationHUD` on-screen guide
+- Live `/api/calibrate/status` με `step` + `residualRmsMeters`
+
+### Marker UX
+- Types: `sphere` | `pin` | `arrow` | `zone`
+- Distance labels, LOD, ground line, controller ray highlight
+- Layers: `layer` field + `POST /api/layer`
+
+### Sessions
+- `SessionManager`: export/import JSON & CSV, undo history
+- `GET/POST /api/session`, `POST /api/session/new`, `POST /api/undo`
+
+### CRS / GPS
+- `crs`, `latitude`/`longitude`/`altitude`, `POST /api/gps-origin`
+- `CoordinateTransform` GPS→local meters
+
+### Push
+- Long-poll `GET /api/events` (Python) + `WebSocketPushClient` (Unity)
+
+### Observability
+- `GET /api/logs` ring buffer
+- Health/status enriched
+
+### Editor / packaging
+- **Quest Marker App → Play Mode Tools**
+- **Android Build Settings (Quest)**
+- AR Foundation stub + `AR_FOUNDATION` define
+
+### Tests
+```bash
+cd Server
+pip install -r requirements.txt
+python -m unittest test_coordinate_math.py test_server_api.py -v
+```
+
+## API v1.2 (Quest device)
+
+| Endpoint | Method | Περιγραφή |
+|----------|--------|-----------|
+| `/api/health` | GET | Health (open even with auth) |
+| `/api/status` | GET | Markers + calibration + session |
+| `/api/logs` | GET | Recent request log |
+| `/api/coordinates` | GET/POST | List / add markers |
+| `/api/coordinates/{id}` | DELETE | Delete one |
+| `/api/clear` | POST | Clear all |
+| `/api/undo` | POST | Undo last marker mutation |
+| `/api/calibrate/*` | * | start / post / status / reset |
+| `/api/session` | GET/POST | Export / import session JSON |
+| `/api/session/new` | POST | New named session |
+| `/api/gps-origin` | POST | Set GPS origin `{latitude,longitude,altitude}` |
+| `/api/anchors` | GET | Spatial anchor status |
+| `/api/layer` | POST | Filter visible layer `{"layer":"hazards"}` |
+
+### Auth (optional)
+On `LocalAPIServer` enable `requireApiKey` and set `apiKey`. Clients send:
+```http
+X-Api-Key: your-secret
+```
+or `Authorization: Bearer your-secret`.
+
+### Marker payload extras
+```json
+{
+  "coordinates": [{
+    "id": "p1",
+    "x": 1, "y": 0.5, "z": 2,
+    "label": "Hazard",
+    "color": "#FF0000",
+    "markerType": "pin",
+    "layer": "hazards",
+    "status": "critical",
+    "crs": "local",
+    "radius": 0.5
+  }],
+  "clearExisting": false,
+  "removeMissing": false
+}
+```
+
+### GPS example
+```bash
+# 1) Set origin
+curl -X POST http://QUEST:8080/api/gps-origin \
+  -H 'Content-Type: application/json' \
+  -d '{"latitude":38.0,"longitude":23.7,"altitude":100}'
+
+# 2) Send GPS point (converted to local meters on device)
+curl -X POST http://QUEST:8080/api/coordinates \
+  -H 'Content-Type: application/json' \
+  -d '{"coordinates":[{"id":"g1","crs":"gps","latitude":38.0001,"longitude":23.7001,"altitude":100,"label":"GPS","markerType":"pin"}]}'
+```
 
 ## Troubleshooting
 
@@ -381,35 +501,41 @@ python coordinate_server.py --quest-ip 192.168.1.100 --interactive
 
 ```
 QuestMarkerApp/
-├── Assets/
-│   ├── Scripts/
-│   │   ├── API/
-│   │   │   ├── CoordinateData.cs
-│   │   │   ├── CoordinateAPIService.cs
-│   │   │   └── LocalAPIServer.cs
-│   │   ├── Core/
-│   │   │   ├── MarkerAppController.cs
-│   │   │   ├── SpatialAnchorManager.cs
-│   │   │   └── CoordinateCalibration.cs   # Βαθμονόμηση πραγματικών συντεταγμένων
-│   │   ├── Markers/
-│   │   │   ├── Marker.cs
-│   │   │   └── MarkerManager.cs
-│   │   ├── Mobile/                          # 📱 Mobile preview (απλή 3D κάμερα)
-│   │   │   ├── MobileCameraController.cs    # orbit / pan / zoom
-│   │   │   ├── MobilePreviewController.cs   # demo markers + on-screen κουμπιά
-│   │   │   └── GroundGrid.cs                # grid κλίμακας (1 κελί = 1μ)
-│   │   ├── Editor/
-│   │   │   └── QuestMarkerAppSetup.cs       # menu: setup Quest & Mobile scenes
-│   │   └── UI/
-│   │       └── UIManager.cs
-│   ├── Prefabs/
-│   ├── Scenes/
-│   └── Materials/
+├── Assets/Scripts/
+│   ├── API/
+│   │   ├── CoordinateData.cs          # markers + session + GPS types
+│   │   ├── CoordinateAPIService.cs    # remote polling + backoff
+│   │   ├── LocalAPIServer.cs          # HTTP API + auth + logs
+│   │   ├── ApiSecurity.cs
+│   │   ├── RequestLog.cs
+│   │   ├── NetworkDiscovery.cs        # UDP beacon :48080
+│   │   └── WebSocketPushClient.cs     # long-poll push client
+│   ├── Core/
+│   │   ├── MarkerAppController.cs
+│   │   ├── SpatialAnchorManager.cs    # OVR + UUID fallback
+│   │   ├── CoordinateCalibration.cs   # residual + steps
+│   │   ├── CoordinateTransform.cs     # CRS / GPS
+│   │   └── SessionManager.cs          # JSON/CSV + undo
+│   ├── Markers/
+│   │   ├── Marker.cs                  # types, LOD, distance
+│   │   └── MarkerManager.cs
+│   ├── Mobile/
+│   │   ├── MobileCameraController.cs
+│   │   ├── MobilePreviewController.cs
+│   │   ├── GroundGrid.cs
+│   │   └── ARFoundationPreviewController.cs
+│   ├── Editor/
+│   │   ├── QuestMarkerAppSetup.cs
+│   │   └── QuestMarkerPlayModeTools.cs
+│   └── UI/
+│       ├── UIManager.cs
+│       └── CalibrationHUD.cs
 ├── Server/
 │   ├── coordinate_server.py
+│   ├── test_coordinate_math.py
+│   ├── test_server_api.py
 │   ├── requirements.txt
 │   └── example_api_calls.sh
-├── ProjectSettings/
 └── README.md
 ```
 

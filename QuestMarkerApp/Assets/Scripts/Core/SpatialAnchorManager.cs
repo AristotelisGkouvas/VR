@@ -1,13 +1,15 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 
 namespace QuestMarkerApp.Core
 {
     /// <summary>
-    /// Manages spatial anchors for persistent placement in real-world space
-    /// Uses Meta Quest's spatial anchors for room-scale tracking
+    /// Manages spatial anchors for persistent placement in real-world space.
+    /// Prefers Meta OVRSpatialAnchor (via reflection so MOBILE_PREVIEW still compiles);
+    /// falls back to transform + UUID PlayerPrefs persistence.
     /// </summary>
     public class SpatialAnchorManager : MonoBehaviour
     {
@@ -15,48 +17,82 @@ namespace QuestMarkerApp.Core
         [SerializeField] private bool autoCreateReferenceAnchor = true;
         [SerializeField] private bool persistAnchors = true;
         [SerializeField] private float anchorSaveDelay = 2f;
+        [SerializeField] private bool preferOvrSpatialAnchors = true;
 
         [Header("Debug")]
         [SerializeField] private bool showAnchorGizmos = true;
         [SerializeField] private GameObject anchorVisualizerPrefab;
 
-        // Events
         public event Action<Transform> OnReferenceAnchorCreated;
         public event Action<Transform> OnReferenceAnchorLoaded;
         public event Action<string> OnAnchorError;
+        public event Action<string, string> OnAnchorUuidSaved; // name, uuid
 
         private Transform referenceAnchor;
-        private Dictionary<string, Transform> savedAnchors = new Dictionary<string, Transform>();
-        private bool isInitialized = false;
+        private readonly Dictionary<string, Transform> savedAnchors = new Dictionary<string, Transform>();
+        private readonly Dictionary<string, string> anchorUuids = new Dictionary<string, string>();
+        private bool isInitialized;
+        private bool ovrAvailable;
+        private Type ovrSpatialAnchorType;
+        private Component ovrReferenceComponent;
 
         public Transform ReferenceAnchor => referenceAnchor;
         public bool IsInitialized => isInitialized;
+        public bool OvrSpatialAnchorsAvailable => ovrAvailable;
+        public string ReferenceAnchorUuid =>
+            anchorUuids.TryGetValue("reference", out string u) ? u : null;
 
-        // Additive accessors (used by the mobile preview to pin markers to world origin
-        // instead of auto-anchoring at the camera position). No effect on Quest behavior.
         public bool AutoCreateReferenceAnchor { get => autoCreateReferenceAnchor; set => autoCreateReferenceAnchor = value; }
         public bool PersistAnchors { get => persistAnchors; set => persistAnchors = value; }
 
         private const string ANCHOR_PREFS_KEY = "SpatialAnchors";
+        private const string ANCHOR_UUID_KEY = "SpatialAnchorUuids";
 
         private void Start()
         {
+            DetectOvr();
             StartCoroutine(InitializeSpatialAnchors());
+        }
+
+        private void DetectOvr()
+        {
+#if MOBILE_PREVIEW
+            ovrAvailable = false;
+            return;
+#else
+            if (!preferOvrSpatialAnchors)
+            {
+                ovrAvailable = false;
+                return;
+            }
+
+            ovrSpatialAnchorType = Type.GetType("OVRSpatialAnchor, Oculus.VR")
+                ?? Type.GetType("OVRSpatialAnchor, Meta.XR.SDK")
+                ?? Type.GetType("OVRSpatialAnchor");
+            ovrAvailable = ovrSpatialAnchorType != null;
+            if (ovrAvailable)
+                Debug.Log("[SpatialAnchor] OVRSpatialAnchor type found — using Meta spatial anchors");
+            else
+                Debug.Log("[SpatialAnchor] OVRSpatialAnchor not found — using transform fallback");
+#endif
         }
 
         private IEnumerator InitializeSpatialAnchors()
         {
-            // Wait for OVR system initialization
             yield return new WaitForSeconds(0.5f);
 
-            // Try to load existing anchors
             if (persistAnchors)
             {
-                LoadSavedAnchors();
-            }
+                LoadUuidMap();
+                bool loaded = false;
+                yield return StartCoroutine(LoadSavedAnchorsCoroutine(success => loaded = success));
 
-            // Create reference anchor if none exists
-            if (autoCreateReferenceAnchor && referenceAnchor == null)
+                if (!loaded && autoCreateReferenceAnchor && referenceAnchor == null)
+                {
+                    CreateReferenceAnchorAtCurrentPosition();
+                }
+            }
+            else if (autoCreateReferenceAnchor && referenceAnchor == null)
             {
                 CreateReferenceAnchorAtCurrentPosition();
             }
@@ -64,148 +100,304 @@ namespace QuestMarkerApp.Core
             isInitialized = true;
         }
 
-        /// <summary>
-        /// Create a reference anchor at the user's current position
-        /// This becomes the origin point for all coordinates
-        /// </summary>
         public void CreateReferenceAnchorAtCurrentPosition()
         {
-            Vector3 position = Camera.main.transform.position;
-            position.y = 0; // Ground level
+            Camera cam = Camera.main;
+            if (cam == null)
+            {
+                Debug.LogWarning("[SpatialAnchor] Camera.main is null — creating at world origin");
+                CreateReferenceAnchor(Vector3.zero, Quaternion.identity);
+                return;
+            }
 
-            Quaternion rotation = Quaternion.Euler(0, Camera.main.transform.eulerAngles.y, 0);
-
+            Vector3 position = cam.transform.position;
+            position.y = 0f;
+            Quaternion rotation = Quaternion.Euler(0, cam.transform.eulerAngles.y, 0);
             CreateReferenceAnchor(position, rotation);
         }
 
-        /// <summary>
-        /// Create a reference anchor at a specific position and rotation
-        /// </summary>
         public void CreateReferenceAnchor(Vector3 position, Quaternion rotation)
         {
             if (referenceAnchor != null)
             {
-                Debug.Log("[SpatialAnchor] Destroying existing reference anchor");
                 Destroy(referenceAnchor.gameObject);
+                referenceAnchor = null;
+                ovrReferenceComponent = null;
             }
 
             GameObject anchorObj = new GameObject("ReferenceAnchor");
             anchorObj.transform.position = position;
             anchorObj.transform.rotation = rotation;
-
             referenceAnchor = anchorObj.transform;
 
-            // Add visualizer
             if (showAnchorGizmos)
-            {
                 CreateAnchorVisualizer(referenceAnchor);
-            }
 
-            // Try to add OVR Spatial Anchor component if available
-            TryAddOVRSpatialAnchor(anchorObj);
-
-            if (persistAnchors)
+            if (ovrAvailable)
             {
-                StartCoroutine(SaveAnchorDelayed("reference", position, rotation));
+                ovrReferenceComponent = TryAddOVRSpatialAnchor(anchorObj);
+                if (persistAnchors)
+                    StartCoroutine(SaveOvrAnchorWhenReady("reference", ovrReferenceComponent, position, rotation));
+            }
+            else if (persistAnchors)
+            {
+                string uuid = Guid.NewGuid().ToString();
+                anchorUuids["reference"] = uuid;
+                StartCoroutine(SaveAnchorDelayed("reference", position, rotation, uuid));
             }
 
             OnReferenceAnchorCreated?.Invoke(referenceAnchor);
-            Debug.Log($"[SpatialAnchor] Reference anchor created at {position}");
+            Debug.Log($"[SpatialAnchor] Reference anchor created at {position} (ovr={ovrAvailable})");
         }
 
-        /// <summary>
-        /// Create a named anchor point
-        /// </summary>
         public Transform CreateNamedAnchor(string name, Vector3 position, Quaternion rotation)
         {
-            if (savedAnchors.ContainsKey(name))
+            if (string.IsNullOrEmpty(name)) name = Guid.NewGuid().ToString("N");
+
+            if (savedAnchors.TryGetValue(name, out Transform existing) && existing != null)
             {
-                Debug.LogWarning($"[SpatialAnchor] Anchor '{name}' already exists, updating position");
-                savedAnchors[name].position = position;
-                savedAnchors[name].rotation = rotation;
-                return savedAnchors[name];
+                existing.position = position;
+                existing.rotation = rotation;
+                return existing;
             }
 
             GameObject anchorObj = new GameObject($"Anchor_{name}");
             anchorObj.transform.position = position;
             anchorObj.transform.rotation = rotation;
-
             savedAnchors[name] = anchorObj.transform;
 
             if (showAnchorGizmos)
-            {
                 CreateAnchorVisualizer(anchorObj.transform, name);
-            }
 
-            TryAddOVRSpatialAnchor(anchorObj);
+            Component ovr = null;
+            if (ovrAvailable)
+                ovr = TryAddOVRSpatialAnchor(anchorObj);
 
             if (persistAnchors)
             {
-                StartCoroutine(SaveAnchorDelayed(name, position, rotation));
+                if (ovr != null)
+                    StartCoroutine(SaveOvrAnchorWhenReady(name, ovr, position, rotation));
+                else
+                {
+                    string uuid = Guid.NewGuid().ToString();
+                    anchorUuids[name] = uuid;
+                    StartCoroutine(SaveAnchorDelayed(name, position, rotation, uuid));
+                }
             }
 
             return anchorObj.transform;
         }
 
-        /// <summary>
-        /// Get an anchor by name
-        /// </summary>
         public Transform GetAnchor(string name)
         {
             if (name == "reference") return referenceAnchor;
             return savedAnchors.TryGetValue(name, out Transform anchor) ? anchor : null;
         }
 
-        /// <summary>
-        /// Calibrate the reference anchor using controller position
-        /// Call this when user points controller at a known real-world position
-        /// </summary>
         public void CalibrateWithController(Transform controller, Vector3 realWorldOffset)
         {
             if (controller == null) return;
-
             Vector3 anchorPosition = controller.position + realWorldOffset;
             Quaternion anchorRotation = Quaternion.Euler(0, controller.eulerAngles.y, 0);
-
             CreateReferenceAnchor(anchorPosition, anchorRotation);
-            Debug.Log("[SpatialAnchor] Reference anchor calibrated with controller");
         }
 
-        /// <summary>
-        /// Reset the reference anchor to current head position
-        /// </summary>
         public void ResetReferenceAnchor()
         {
             CreateReferenceAnchorAtCurrentPosition();
         }
 
-        /// <summary>
-        /// Clear all anchors
-        /// </summary>
         public void ClearAllAnchors()
         {
             foreach (var kvp in savedAnchors)
             {
-                if (kvp.Value != null)
-                {
-                    Destroy(kvp.Value.gameObject);
-                }
+                if (kvp.Value != null) Destroy(kvp.Value.gameObject);
             }
             savedAnchors.Clear();
+            anchorUuids.Clear();
 
             if (referenceAnchor != null)
             {
                 Destroy(referenceAnchor.gameObject);
                 referenceAnchor = null;
             }
+            ovrReferenceComponent = null;
 
             if (persistAnchors)
             {
-                PlayerPrefs.DeleteKey(ANCHOR_PREFS_KEY);
+                PlayerPrefs.DeleteKey(ANCHOR_PREFS_KEY + "_reference");
+                PlayerPrefs.DeleteKey(ANCHOR_UUID_KEY);
                 PlayerPrefs.Save();
             }
 
             Debug.Log("[SpatialAnchor] All anchors cleared");
+        }
+
+        /// <summary>JSON status for API / UI.</summary>
+        public string GetStatusJson()
+        {
+            string uuid = ReferenceAnchorUuid ?? "";
+            Vector3 p = referenceAnchor != null ? referenceAnchor.position : Vector3.zero;
+            return "{" +
+                   "\"initialized\":" + (isInitialized ? "true" : "false") + "," +
+                   "\"ovrAvailable\":" + (ovrAvailable ? "true" : "false") + "," +
+                   "\"hasReference\":" + (referenceAnchor != null ? "true" : "false") + "," +
+                   "\"referenceUuid\":\"" + uuid + "\"," +
+                   "\"position\":{" +
+                   "\"x\":" + p.x.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "," +
+                   "\"y\":" + p.y.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "," +
+                   "\"z\":" + p.z.ToString("R", System.Globalization.CultureInfo.InvariantCulture) +
+                   "}}";
+        }
+
+        private Component TryAddOVRSpatialAnchor(GameObject anchorObj)
+        {
+            if (ovrSpatialAnchorType == null) return null;
+            try
+            {
+                var comp = anchorObj.AddComponent(ovrSpatialAnchorType);
+                Debug.Log("[SpatialAnchor] Added OVRSpatialAnchor component");
+                return comp;
+            }
+            catch (Exception e)
+            {
+                OnAnchorError?.Invoke(e.Message);
+                Debug.LogWarning($"[SpatialAnchor] Failed to add OVRSpatialAnchor: {e.Message}");
+                return null;
+            }
+        }
+
+        private IEnumerator SaveOvrAnchorWhenReady(string name, Component ovrComp, Vector3 position, Quaternion rotation)
+        {
+            if (ovrComp == null)
+            {
+                string uuid = Guid.NewGuid().ToString();
+                anchorUuids[name] = uuid;
+                yield return SaveAnchorDelayed(name, position, rotation, uuid);
+                yield break;
+            }
+
+            // Wait for OVR creation (Created property or similar)
+            float timeout = 5f;
+            float elapsed = 0f;
+            PropertyInfo createdProp = ovrSpatialAnchorType.GetProperty("Created");
+            PropertyInfo uuidProp = ovrSpatialAnchorType.GetProperty("Uuid")
+                                    ?? ovrSpatialAnchorType.GetProperty("UUID");
+
+            while (elapsed < timeout)
+            {
+                bool created = true;
+                if (createdProp != null)
+                {
+                    object val = createdProp.GetValue(ovrComp);
+                    created = val is bool b && b;
+                }
+                if (created) break;
+                elapsed += 0.1f;
+                yield return new WaitForSeconds(0.1f);
+            }
+
+            string uuidStr = Guid.NewGuid().ToString();
+            if (uuidProp != null)
+            {
+                object uuidVal = uuidProp.GetValue(ovrComp);
+                if (uuidVal != null)
+                    uuidStr = uuidVal.ToString();
+            }
+
+            // Try Save / SaveAsync via reflection
+            bool savedViaOvr = false;
+            MethodInfo saveMethod = ovrSpatialAnchorType.GetMethod("Save", Type.EmptyTypes)
+                                    ?? ovrSpatialAnchorType.GetMethod("SaveAsync", Type.EmptyTypes);
+            if (saveMethod != null)
+            {
+                try
+                {
+                    object result = saveMethod.Invoke(ovrComp, null);
+                    // If Task-like, wait a bit
+                    if (result != null)
+                        yield return new WaitForSeconds(0.5f);
+                    savedViaOvr = true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[SpatialAnchor] OVR Save failed: {e.Message}");
+                }
+            }
+
+            anchorUuids[name] = uuidStr;
+            SaveUuidMap();
+            // Always also store pose as fallback for non-OVR load path
+            yield return SaveAnchorDelayed(name, position, rotation, uuidStr);
+
+            OnAnchorUuidSaved?.Invoke(name, uuidStr);
+            Debug.Log($"[SpatialAnchor] Saved '{name}' uuid={uuidStr} ovrSave={savedViaOvr}");
+        }
+
+        private IEnumerator SaveAnchorDelayed(string name, Vector3 position, Quaternion rotation, string uuid)
+        {
+            yield return new WaitForSeconds(anchorSaveDelay);
+
+            string key = $"{ANCHOR_PREFS_KEY}_{name}";
+            string data =
+                $"{position.x},{position.y},{position.z}," +
+                $"{rotation.x},{rotation.y},{rotation.z},{rotation.w}," +
+                $"{uuid ?? ""}";
+            PlayerPrefs.SetString(key, data);
+            if (!string.IsNullOrEmpty(uuid))
+                anchorUuids[name] = uuid;
+            SaveUuidMap();
+            PlayerPrefs.Save();
+            Debug.Log($"[SpatialAnchor] Persisted anchor '{name}'");
+        }
+
+        private void SaveUuidMap()
+        {
+            // name=uuid;name=uuid
+            var parts = new List<string>();
+            foreach (var kvp in anchorUuids)
+                parts.Add($"{kvp.Key}={kvp.Value}");
+            PlayerPrefs.SetString(ANCHOR_UUID_KEY, string.Join(";", parts));
+        }
+
+        private void LoadUuidMap()
+        {
+            anchorUuids.Clear();
+            if (!PlayerPrefs.HasKey(ANCHOR_UUID_KEY)) return;
+            string raw = PlayerPrefs.GetString(ANCHOR_UUID_KEY);
+            if (string.IsNullOrEmpty(raw)) return;
+            foreach (string part in raw.Split(';'))
+            {
+                int eq = part.IndexOf('=');
+                if (eq <= 0) continue;
+                anchorUuids[part.Substring(0, eq)] = part.Substring(eq + 1);
+            }
+        }
+
+        private IEnumerator LoadSavedAnchorsCoroutine(Action<bool> done)
+        {
+            string refKey = $"{ANCHOR_PREFS_KEY}_reference";
+            if (!PlayerPrefs.HasKey(refKey))
+            {
+                done?.Invoke(false);
+                yield break;
+            }
+
+            string data = PlayerPrefs.GetString(refKey);
+            if (!TryParseAnchorData(data, out Vector3 pos, out Quaternion rot, out string uuid))
+            {
+                done?.Invoke(false);
+                yield break;
+            }
+
+            // OVR anchor re-binding by UUID is not wired — the LoadUnboundAnchors API
+            // differs per SDK version. The saved pose below is the supported path.
+            CreateReferenceAnchor(pos, rot);
+            if (!string.IsNullOrEmpty(uuid))
+                anchorUuids["reference"] = uuid;
+            OnReferenceAnchorLoaded?.Invoke(referenceAnchor);
+            Debug.Log("[SpatialAnchor] Loaded reference anchor from saved pose");
+            done?.Invoke(true);
         }
 
         private void CreateAnchorVisualizer(Transform anchor, string label = null)
@@ -216,31 +408,22 @@ namespace QuestMarkerApp.Core
                 return;
             }
 
-            // Create default visualizer - coordinate axes
             GameObject visualizer = new GameObject("Visualizer");
             visualizer.transform.SetParent(anchor);
             visualizer.transform.localPosition = Vector3.zero;
             visualizer.transform.localRotation = Quaternion.identity;
 
-            // X axis (red)
             CreateAxisLine(visualizer.transform, Vector3.right * 0.3f, Color.red);
-            // Y axis (green)
             CreateAxisLine(visualizer.transform, Vector3.up * 0.3f, Color.green);
-            // Z axis (blue)
             CreateAxisLine(visualizer.transform, Vector3.forward * 0.3f, Color.blue);
 
-            // Center sphere
             GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.SetParent(visualizer.transform);
             sphere.transform.localPosition = Vector3.zero;
             sphere.transform.localScale = Vector3.one * 0.05f;
-
-            Renderer sphereRenderer = sphere.GetComponent<Renderer>();
-            sphereRenderer.material = new Material(Shader.Find("Sprites/Default"));
-            sphereRenderer.material.color = Color.yellow;
-
-            // Remove collider
-            Collider col = sphere.GetComponent<Collider>();
+            var sphereRenderer = sphere.GetComponent<Renderer>();
+            sphereRenderer.material = new Material(Shader.Find("Sprites/Default")) { color = Color.yellow };
+            var col = sphere.GetComponent<Collider>();
             if (col != null) Destroy(col);
         }
 
@@ -262,71 +445,28 @@ namespace QuestMarkerApp.Core
             line.useWorldSpace = false;
         }
 
-        private void TryAddOVRSpatialAnchor(GameObject anchorObj)
-        {
-            // Attempt to add OVR Spatial Anchor component dynamically
-            // This requires the Oculus Integration package to be installed
-            Type ovrSpatialAnchorType = Type.GetType("OVRSpatialAnchor, Oculus.VR");
-            if (ovrSpatialAnchorType != null)
-            {
-                anchorObj.AddComponent(ovrSpatialAnchorType);
-                Debug.Log("[SpatialAnchor] Added OVRSpatialAnchor component");
-            }
-        }
-
-        private IEnumerator SaveAnchorDelayed(string name, Vector3 position, Quaternion rotation)
-        {
-            yield return new WaitForSeconds(anchorSaveDelay);
-
-            // Save to PlayerPrefs (simple persistence)
-            // In production, use OVR Spatial Anchor persistence
-            string key = $"{ANCHOR_PREFS_KEY}_{name}";
-            string data = $"{position.x},{position.y},{position.z},{rotation.x},{rotation.y},{rotation.z},{rotation.w}";
-            PlayerPrefs.SetString(key, data);
-            PlayerPrefs.Save();
-
-            Debug.Log($"[SpatialAnchor] Saved anchor '{name}'");
-        }
-
-        private void LoadSavedAnchors()
-        {
-            // Load reference anchor
-            string refKey = $"{ANCHOR_PREFS_KEY}_reference";
-            if (PlayerPrefs.HasKey(refKey))
-            {
-                string data = PlayerPrefs.GetString(refKey);
-                if (TryParseAnchorData(data, out Vector3 pos, out Quaternion rot))
-                {
-                    CreateReferenceAnchor(pos, rot);
-                    OnReferenceAnchorLoaded?.Invoke(referenceAnchor);
-                    Debug.Log("[SpatialAnchor] Loaded reference anchor from saved data");
-                }
-            }
-        }
-
-        private bool TryParseAnchorData(string data, out Vector3 position, out Quaternion rotation)
+        private bool TryParseAnchorData(string data, out Vector3 position, out Quaternion rotation, out string uuid)
         {
             position = Vector3.zero;
             rotation = Quaternion.identity;
+            uuid = null;
 
             string[] parts = data.Split(',');
-            if (parts.Length != 7) return false;
+            if (parts.Length < 7) return false;
 
             try
             {
                 position = new Vector3(
-                    float.Parse(parts[0]),
-                    float.Parse(parts[1]),
-                    float.Parse(parts[2])
-                );
-
+                    float.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture));
                 rotation = new Quaternion(
-                    float.Parse(parts[3]),
-                    float.Parse(parts[4]),
-                    float.Parse(parts[5]),
-                    float.Parse(parts[6])
-                );
-
+                    float.Parse(parts[3], System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(parts[4], System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(parts[5], System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(parts[6], System.Globalization.CultureInfo.InvariantCulture));
+                if (parts.Length >= 8)
+                    uuid = parts[7];
                 return true;
             }
             catch

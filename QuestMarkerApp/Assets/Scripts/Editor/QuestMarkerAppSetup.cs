@@ -16,24 +16,46 @@ namespace QuestMarkerApp.Editor
             GameObject manager = new GameObject("MarkerAppManager");
             
             // Add all required components
-            manager.AddComponent<Core.MarkerAppController>();
             manager.AddComponent<API.LocalAPIServer>();
+            manager.AddComponent<API.NetworkDiscovery>();
             manager.AddComponent<Markers.MarkerManager>();
             manager.AddComponent<Core.SpatialAnchorManager>();
+            manager.AddComponent<Core.CoordinateCalibration>();
+            manager.AddComponent<Core.SessionManager>();
+            manager.AddComponent<Core.MarkerAppController>();
             manager.AddComponent<UI.UIManager>();
-            
-            // Select the created object
+            manager.AddComponent<UI.CalibrationHUD>();
+
             Selection.activeGameObject = manager;
-            
+
             Debug.Log("[QuestMarkerApp] Scene setup complete! Don't forget to add OVR Camera Rig.");
             EditorUtility.DisplayDialog(
                 "Quest Marker App Setup",
-                "MarkerAppManager created!\n\nNext steps:\n" +
-                "1. Add OVR Camera Rig (Right-click → XR → OVR Camera Rig)\n" +
-                "2. Configure the components in Inspector\n" +
-                "3. Build for Android/Quest",
+                "MarkerAppManager created (v1.2)!\n\nIncludes:\n" +
+                "• LocalAPIServer + NetworkDiscovery\n" +
+                "• Spatial anchors, calibration, sessions\n" +
+                "• Calibration HUD\n\nNext steps:\n" +
+                "1. Add OVR Camera Rig\n" +
+                "2. Optional: set API key on LocalAPIServer\n" +
+                "3. Build for Android/Quest\n" +
+                "4. Use menu: Play Mode Tools while testing",
                 "OK"
             );
+        }
+
+        [MenuItem("Quest Marker App/Android Build Settings (Quest)")]
+        public static void ConfigureQuestAndroid()
+        {
+            EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.bundleVersion = "1.2.0";
+            Debug.Log("[QuestMarkerApp] Android/Quest build settings applied (min API 29, IL2CPP, ARM64)");
+            EditorUtility.DisplayDialog("Build Settings",
+                "Applied:\n• Platform Android\n• Min API 29\n• IL2CPP + ARM64\n• Version 1.2.0\n\n" +
+                "Still set XR Plug-in Management → Oculus and texture ASTC manually.",
+                "OK");
         }
         
         [MenuItem("Quest Marker App/Create Marker Prefab")]
@@ -171,20 +193,21 @@ namespace QuestMarkerApp.Editor
         // ---------------------------------------------------------------------
 
         private const string MOBILE_DEFINE = "MOBILE_PREVIEW";
+        private const string AR_DEFINE = "AR_FOUNDATION";
 
         [MenuItem("Quest Marker App/Mobile Preview/1. Enable MOBILE_PREVIEW Define")]
-        public static void EnableMobileDefine()
-        {
-            SetMobileDefine(true);
-        }
+        public static void EnableMobileDefine() => SetDefine(MOBILE_DEFINE, true, "MOBILE_PREVIEW");
 
         [MenuItem("Quest Marker App/Mobile Preview/Disable MOBILE_PREVIEW Define (back to Quest)")]
-        public static void DisableMobileDefine()
-        {
-            SetMobileDefine(false);
-        }
+        public static void DisableMobileDefine() => SetDefine(MOBILE_DEFINE, false, "MOBILE_PREVIEW");
 
-        private static void SetMobileDefine(bool enable)
+        [MenuItem("Quest Marker App/Mobile Preview/Enable AR_FOUNDATION Define")]
+        public static void EnableArDefine() => SetDefine(AR_DEFINE, true, "AR_FOUNDATION");
+
+        [MenuItem("Quest Marker App/Mobile Preview/Disable AR_FOUNDATION Define")]
+        public static void DisableArDefine() => SetDefine(AR_DEFINE, false, "AR_FOUNDATION");
+
+        private static void SetDefine(string define, bool enable, string label)
         {
             BuildTargetGroup[] groups = { BuildTargetGroup.Android, BuildTargetGroup.Standalone };
             foreach (var group in groups)
@@ -193,21 +216,19 @@ namespace QuestMarkerApp.Editor
                 var list = new System.Collections.Generic.List<string>(
                     defines.Split(new[] { ';' }, System.StringSplitOptions.RemoveEmptyEntries));
 
-                bool has = list.Contains(MOBILE_DEFINE);
-                if (enable && !has) list.Add(MOBILE_DEFINE);
-                if (!enable && has) list.Remove(MOBILE_DEFINE);
+                bool has = list.Contains(define);
+                if (enable && !has) list.Add(define);
+                if (!enable && has) list.Remove(define);
 
                 PlayerSettings.SetScriptingDefineSymbolsForGroup(group, string.Join(";", list));
             }
 
-            Debug.Log($"[QuestMarkerApp] MOBILE_PREVIEW define {(enable ? "ENABLED" : "DISABLED")}. Unity will recompile...");
-            EditorUtility.DisplayDialog(
-                "MOBILE_PREVIEW",
-                (enable
-                    ? "MOBILE_PREVIEW ΕΝΕΡΓΟ.\n\nΤα OVR calls απενεργοποιούνται και το project κάνει compile ΧΩΡΙΣ το Meta XR SDK.\n\nΜόλις ολοκληρωθεί το recompile, τρέξε:\n'Mobile Preview → 2. Setup Mobile Preview Scene'."
-                    : "MOBILE_PREVIEW ΑΝΕΝΕΡΓΟ.\n\nΕπέστρεψες στην Quest υλοποίηση (χρειάζεται το Meta XR SDK για compile)."),
-                "OK"
-            );
+            Debug.Log($"[QuestMarkerApp] {label} {(enable ? "ENABLED" : "DISABLED")}");
+            EditorUtility.DisplayDialog(label,
+                enable
+                    ? $"{label} ΕΝΕΡΓΟ. Unity will recompile."
+                    : $"{label} ΑΝΕΝΕΡΓΟ.",
+                "OK");
         }
 
         [MenuItem("Quest Marker App/Mobile Preview/2. Setup Mobile Preview Scene")]
@@ -244,10 +265,14 @@ namespace QuestMarkerApp.Editor
             // Manager με τα ίδια core components (χωρίς OVR rig, χωρίς world-space UI)
             GameObject manager = new GameObject("MarkerAppManager");
             manager.AddComponent<API.LocalAPIServer>();
+            manager.AddComponent<API.NetworkDiscovery>();
             manager.AddComponent<Markers.MarkerManager>();
             manager.AddComponent<Core.SpatialAnchorManager>();
+            manager.AddComponent<Core.CoordinateCalibration>();
+            manager.AddComponent<Core.SessionManager>();
             manager.AddComponent<Core.MarkerAppController>();
             manager.AddComponent<Mobile.MobilePreviewController>();
+            manager.AddComponent<UI.CalibrationHUD>();
 
             Selection.activeGameObject = manager;
 

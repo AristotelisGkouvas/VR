@@ -5,7 +5,7 @@ using QuestMarkerApp.Markers;
 namespace QuestMarkerApp.Core
 {
     /// <summary>
-    /// Main controller that orchestrates all components of the marker system
+    /// Main controller — API, anchors, calibration, sessions, GPS, highlight ray.
     /// </summary>
     public class MarkerAppController : MonoBehaviour
     {
@@ -15,21 +15,36 @@ namespace QuestMarkerApp.Core
         [SerializeField] private MarkerManager markerManager;
         [SerializeField] private SpatialAnchorManager spatialAnchorManager;
         [SerializeField] private CoordinateCalibration calibrationSystem;
+        [SerializeField] private SessionManager sessionManager;
 
         [Header("Configuration")]
         [SerializeField] private bool useLocalServer = true;
         [SerializeField] private bool useRemotePolling = false;
+        [SerializeField] private bool useWebSocketPush = false;
         [SerializeField] private string remoteServerUrl = "http://192.168.1.100:5000";
+        [SerializeField] private bool highlightWithControllerRay = true;
 
 #if !MOBILE_PREVIEW
         [Header("Input")]
         [SerializeField] private OVRInput.Button calibrationButton = OVRInput.Button.One;
         [SerializeField] private OVRInput.Button clearMarkersButton = OVRInput.Button.Two;
         [SerializeField] private OVRInput.Button startCalibrationButton = OVRInput.Button.Three;
+        [SerializeField] private OVRInput.Button undoButton = OVRInput.Button.Four;
 #endif
 
-        private bool isInitialized = false;
-        private bool useRealCoordinates = false;
+        private bool isInitialized;
+        private bool useRealCoordinates;
+        private WebSocketPushClient wsClient;
+#if !MOBILE_PREVIEW
+        private OVRCameraRig cachedCameraRig;
+#endif
+
+        public bool UseRealCoordinates => useRealCoordinates;
+        public bool IsInitialized => isInitialized;
+        public SessionManager Session => sessionManager;
+        // SessionManager owns the GPS origin — session import updates it there,
+        // so keeping a duplicate field here would go stale.
+        public GPSReference GpsOrigin => sessionManager != null ? sessionManager.GpsOrigin : null;
 
         private void Awake()
         {
@@ -44,6 +59,7 @@ namespace QuestMarkerApp.Core
         private void Update()
         {
             HandleInput();
+            UpdateHighlightRay();
         }
 
         private void OnDestroy()
@@ -53,63 +69,52 @@ namespace QuestMarkerApp.Core
 
         private void ValidateComponents()
         {
-            // Auto-find or create components if not assigned
             if (apiService == null)
             {
                 apiService = FindObjectOfType<CoordinateAPIService>();
-                if (apiService == null && useRemotePolling)
-                {
+                if (apiService == null && (useRemotePolling || useWebSocketPush))
                     apiService = gameObject.AddComponent<CoordinateAPIService>();
-                }
             }
 
             if (localServer == null)
             {
                 localServer = FindObjectOfType<LocalAPIServer>();
                 if (localServer == null && useLocalServer)
-                {
                     localServer = gameObject.AddComponent<LocalAPIServer>();
-                }
             }
 
             if (markerManager == null)
             {
-                markerManager = FindObjectOfType<MarkerManager>();
-                if (markerManager == null)
-                {
-                    markerManager = gameObject.AddComponent<MarkerManager>();
-                }
+                markerManager = FindObjectOfType<MarkerManager>() ?? gameObject.AddComponent<MarkerManager>();
             }
 
             if (spatialAnchorManager == null)
             {
-                spatialAnchorManager = FindObjectOfType<SpatialAnchorManager>();
-                if (spatialAnchorManager == null)
-                {
-                    spatialAnchorManager = gameObject.AddComponent<SpatialAnchorManager>();
-                }
+                spatialAnchorManager = FindObjectOfType<SpatialAnchorManager>() ?? gameObject.AddComponent<SpatialAnchorManager>();
             }
 
             if (calibrationSystem == null)
             {
-                calibrationSystem = FindObjectOfType<CoordinateCalibration>();
-                if (calibrationSystem == null)
-                {
-                    calibrationSystem = gameObject.AddComponent<CoordinateCalibration>();
-                }
+                calibrationSystem = FindObjectOfType<CoordinateCalibration>() ?? gameObject.AddComponent<CoordinateCalibration>();
             }
+
+            if (sessionManager == null)
+            {
+                sessionManager = FindObjectOfType<SessionManager>() ?? gameObject.AddComponent<SessionManager>();
+            }
+
+            if (localServer != null)
+                localServer.BindComponents(markerManager, calibrationSystem, sessionManager, spatialAnchorManager);
         }
 
         private void Initialize()
         {
-            // Subscribe to spatial anchor events
             if (spatialAnchorManager != null)
             {
                 spatialAnchorManager.OnReferenceAnchorCreated += OnReferenceAnchorReady;
                 spatialAnchorManager.OnReferenceAnchorLoaded += OnReferenceAnchorReady;
             }
 
-            // Subscribe to API events
             if (useLocalServer && localServer != null)
             {
                 localServer.OnCoordinatesReceived += OnCoordinatesReceived;
@@ -117,6 +122,12 @@ namespace QuestMarkerApp.Core
                 localServer.OnServerError += OnServerError;
                 localServer.OnCalibrationReceived += OnCalibrationReceived;
                 localServer.OnStartCalibrationMode += OnStartCalibrationMode;
+                localServer.OnDeleteMarkerRequested += OnDeleteMarkerRequested;
+                localServer.OnResetCalibrationRequested += OnResetCalibrationRequested;
+                localServer.OnUndoRequested += OnUndoRequested;
+                localServer.OnSessionImportJson += OnSessionImportJson;
+                localServer.OnSessionExportRequested += OnSessionExportRequested;
+                localServer.OnGpsOriginSet += OnGpsOriginSet;
             }
 
             if (useRemotePolling && apiService != null)
@@ -126,15 +137,28 @@ namespace QuestMarkerApp.Core
                 apiService.Configure(remoteServerUrl);
             }
 
-            // Subscribe to marker events
+            if (useWebSocketPush)
+            {
+                wsClient = GetComponent<WebSocketPushClient>() ?? gameObject.AddComponent<WebSocketPushClient>();
+                wsClient.OnCoordinatesReceived += OnCoordinatesReceived;
+                wsClient.Connect(remoteServerUrl);
+            }
+
             if (markerManager != null)
             {
                 markerManager.OnMarkerCreated += OnMarkerCreated;
                 markerManager.OnMarkersCleared += OnMarkersCleared;
             }
 
+            if (calibrationSystem != null)
+            {
+                calibrationSystem.OnCalibrationComplete += OnCalibrationComplete;
+                if (calibrationSystem.IsCalibrated)
+                    useRealCoordinates = true;
+            }
+
             isInitialized = true;
-            Debug.Log("[MarkerApp] Initialization complete");
+            Debug.Log("[MarkerApp] Initialization complete (v1.2)");
         }
 
         private void Cleanup()
@@ -152,6 +176,12 @@ namespace QuestMarkerApp.Core
                 localServer.OnServerError -= OnServerError;
                 localServer.OnCalibrationReceived -= OnCalibrationReceived;
                 localServer.OnStartCalibrationMode -= OnStartCalibrationMode;
+                localServer.OnDeleteMarkerRequested -= OnDeleteMarkerRequested;
+                localServer.OnResetCalibrationRequested -= OnResetCalibrationRequested;
+                localServer.OnUndoRequested -= OnUndoRequested;
+                localServer.OnSessionImportJson -= OnSessionImportJson;
+                localServer.OnSessionExportRequested -= OnSessionExportRequested;
+                localServer.OnGpsOriginSet -= OnGpsOriginSet;
             }
 
             if (apiService != null)
@@ -160,59 +190,62 @@ namespace QuestMarkerApp.Core
                 apiService.OnConnectionError -= OnServerError;
             }
 
+            if (wsClient != null)
+                wsClient.OnCoordinatesReceived -= OnCoordinatesReceived;
+
             if (markerManager != null)
             {
                 markerManager.OnMarkerCreated -= OnMarkerCreated;
                 markerManager.OnMarkersCleared -= OnMarkersCleared;
             }
+
+            if (calibrationSystem != null)
+                calibrationSystem.OnCalibrationComplete -= OnCalibrationComplete;
         }
 
         private void HandleInput()
         {
 #if MOBILE_PREVIEW
-            // Mobile preview: Quest controller buttons are replaced by the on-screen
-            // buttons in MobilePreviewController. Keyboard shortcuts help when testing
-            // in the Editor (Play mode) with a mouse/keyboard.
             if (Input.GetKeyDown(KeyCode.C)) ClearAllMarkers();
             if (Input.GetKeyDown(KeyCode.R)) CalibrateReferencePoint();
             if (Input.GetKeyDown(KeyCode.X)) StartCalibrationMode();
+            if (Input.GetKeyDown(KeyCode.Z)) Undo();
+            if (Input.GetKeyDown(KeyCode.S)) SaveSession();
 #else
-            // Calibration button - reset reference anchor
-            if (OVRInput.GetDown(calibrationButton))
-            {
-                CalibrateReferencePoint();
-            }
-
-            // Clear all markers
-            if (OVRInput.GetDown(clearMarkersButton))
-            {
-                ClearAllMarkers();
-            }
-
-            // Start calibration mode (X button)
-            if (OVRInput.GetDown(startCalibrationButton))
-            {
-                StartCalibrationMode();
-            }
+            if (OVRInput.GetDown(calibrationButton)) CalibrateReferencePoint();
+            if (OVRInput.GetDown(clearMarkersButton)) ClearAllMarkers();
+            if (OVRInput.GetDown(startCalibrationButton)) StartCalibrationMode();
+            if (OVRInput.GetDown(undoButton)) Undo();
 #endif
         }
 
-        /// <summary>
-        /// Start calibration mode for real-world coordinate mapping
-        /// </summary>
+        private void UpdateHighlightRay()
+        {
+            if (!highlightWithControllerRay || markerManager == null) return;
+            if (calibrationSystem != null && calibrationSystem.IsCalibrating) return;
+
+            Transform controller = null;
+#if !MOBILE_PREVIEW
+            if (cachedCameraRig == null) cachedCameraRig = FindObjectOfType<OVRCameraRig>();
+            if (cachedCameraRig != null) controller = cachedCameraRig.rightHandAnchor;
+#endif
+            if (controller == null && Camera.main != null)
+                controller = Camera.main.transform;
+            if (controller == null) return;
+
+            markerManager.HighlightAlongRay(new Ray(controller.position, controller.forward));
+        }
+
         public void StartCalibrationMode()
         {
             if (calibrationSystem != null)
             {
                 calibrationSystem.StartCalibration();
                 useRealCoordinates = true;
-                Debug.Log("[MarkerApp] Calibration mode started - point at known location and press trigger");
+                Debug.Log("[MarkerApp] Calibration mode started");
             }
         }
 
-        /// <summary>
-        /// Calibrate the reference point at current controller position
-        /// </summary>
         public void CalibrateReferencePoint()
         {
             if (spatialAnchorManager != null)
@@ -222,129 +255,138 @@ namespace QuestMarkerApp.Core
             }
         }
 
-        /// <summary>
-        /// Clear all markers
-        /// </summary>
         public void ClearAllMarkers()
         {
-            if (markerManager != null)
-            {
-                markerManager.ClearAllMarkers();
-            }
+            sessionManager?.PushHistory();
+            markerManager?.ClearAllMarkers();
         }
 
-        /// <summary>
-        /// Manually add a coordinate
-        /// </summary>
+        public void Undo()
+        {
+            if (sessionManager != null && sessionManager.Undo())
+                Debug.Log("[MarkerApp] Undo applied");
+        }
+
+        public void SaveSession()
+        {
+            if (sessionManager == null) return;
+            sessionManager.SaveToFile();
+            if (localServer != null)
+                localServer.SetLastExportedSession(sessionManager.ExportJson());
+        }
+
         public void AddCoordinate(float x, float y, float z, string label = null, string color = null)
         {
-            CoordinateData data = new CoordinateData
+            var data = new CoordinateData
             {
-                id = System.Guid.NewGuid().ToString(),
-                x = x,
-                y = y,
-                z = z,
-                label = label,
-                color = color,
-                scale = 0.1f,
+                id = System.Guid.NewGuid().ToString("N"),
+                x = x, y = y, z = z,
+                label = label, color = color, scale = 0.1f,
                 timestamp = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
-
-            CoordinateResponse response = new CoordinateResponse
+            OnCoordinatesReceived(new CoordinateResponse
             {
-                coordinates = new CoordinateData[] { data },
+                coordinates = new[] { data },
                 clearExisting = false
-            };
-
-            OnCoordinatesReceived(response);
+            });
         }
 
-        /// <summary>
-        /// Get server URLs for connecting from external apps
-        /// </summary>
         public string[] GetServerUrls()
         {
-            if (localServer != null)
-            {
-                return localServer.GetServerUrls();
-            }
-            return new string[0];
+            return localServer != null ? localServer.GetServerUrls() : System.Array.Empty<string>();
         }
 
-        // Event Handlers
         private void OnReferenceAnchorReady(Transform anchor)
         {
-            if (markerManager != null)
-            {
-                markerManager.SetReferencePoint(anchor);
-            }
+            markerManager?.SetReferencePoint(anchor);
             Debug.Log($"[MarkerApp] Reference anchor ready at {anchor.position}");
         }
 
         private void OnLocalServerStarted()
         {
-            string[] urls = GetServerUrls();
-            Debug.Log($"[MarkerApp] Local server started. Connect to: {string.Join(", ", urls)}");
+            Debug.Log($"[MarkerApp] Local server: {string.Join(", ", GetServerUrls())}");
         }
 
         private void OnCoordinatesReceived(CoordinateResponse response)
         {
-            if (markerManager != null)
+            if (markerManager == null || response == null) return;
+
+            sessionManager?.PushHistory();
+
+            if (response.coordinates != null)
             {
-                // If calibrated, convert real-world coordinates to Quest coordinates
-                if (useRealCoordinates && calibrationSystem != null && calibrationSystem.IsCalibrated)
+                bool applyCal = useRealCoordinates && calibrationSystem != null && calibrationSystem.IsCalibrated;
+                for (int i = 0; i < response.coordinates.Length; i++)
                 {
-                    foreach (var coord in response.coordinates)
-                    {
-                        Vector3 realPos = coord.ToVector3();
-                        Vector3 questPos = calibrationSystem.RealToQuest(realPos);
-                        coord.x = questPos.x;
-                        coord.y = questPos.y;
-                        coord.z = questPos.z;
-                    }
+                    var c = response.coordinates[i];
+                    if (c == null) continue;
+                    response.coordinates[i] = CoordinateTransform.ToLocalMeters(
+                        c, sessionManager?.GpsOrigin, calibrationSystem, applyCal);
                 }
-                
-                markerManager.ProcessCoordinates(response);
             }
+
+            markerManager.ProcessCoordinates(response);
         }
 
         private void OnCalibrationReceived(CalibrationRequest request)
         {
-            if (calibrationSystem == null) return;
-            
+            if (calibrationSystem == null || request == null) return;
+
             if (request.quickCalibrate)
-            {
-                // Quick single-point calibration
                 calibrationSystem.QuickCalibrate(request.ToVector3(), request.rotationY);
-            }
             else
-            {
-                // Add calibration point with real coordinates
                 calibrationSystem.SetRealCoordinatesForLastPoint(request.ToVector3());
-            }
-            
+
             useRealCoordinates = true;
-            Debug.Log($"[MarkerApp] Calibration point received: ({request.realX}, {request.realY}, {request.realZ})");
+            Debug.Log($"[MarkerApp] Calibration point: ({request.realX}, {request.realY}, {request.realZ})");
         }
 
-        private void OnStartCalibrationMode()
+        private void OnStartCalibrationMode() => StartCalibrationMode();
+
+        private void OnDeleteMarkerRequested(string id)
         {
-            StartCalibrationMode();
+            if (markerManager == null || string.IsNullOrEmpty(id)) return;
+            sessionManager?.PushHistory();
+            markerManager.RemoveMarker(id);
         }
 
-        private void OnServerError(string error)
+        private void OnResetCalibrationRequested()
         {
-            Debug.LogWarning($"[MarkerApp] Server error: {error}");
+            calibrationSystem?.ResetCalibration();
+            useRealCoordinates = false;
         }
 
-        private void OnMarkerCreated(Marker marker)
+        private void OnUndoRequested() => Undo();
+
+        private void OnSessionImportJson(string json)
         {
-            Debug.Log($"[MarkerApp] Marker created: {marker.MarkerId}");
+            sessionManager?.LoadFromJson(json);
         }
 
-        private void OnMarkersCleared()
+        private void OnSessionExportRequested()
         {
-            Debug.Log("[MarkerApp] All markers cleared");
+            if (sessionManager != null && localServer != null)
+                localServer.SetLastExportedSession(sessionManager.ExportJson());
         }
+
+        private void OnGpsOriginSet(GPSReference origin)
+        {
+            if (sessionManager != null)
+            {
+                sessionManager.GpsOrigin = origin;
+                sessionManager.Crs = "gps";
+            }
+            Debug.Log($"[MarkerApp] GPS origin set: {origin.latitude}, {origin.longitude}");
+        }
+
+        private void OnCalibrationComplete(CalibrationData data)
+        {
+            useRealCoordinates = true;
+            Debug.Log($"[MarkerApp] Calibration complete residual={data?.residualRmsMeters:F3}m");
+        }
+
+        private void OnServerError(string error) => Debug.LogWarning($"[MarkerApp] Server error: {error}");
+        private void OnMarkerCreated(Marker marker) => Debug.Log($"[MarkerApp] Marker: {marker.MarkerId}");
+        private void OnMarkersCleared() => Debug.Log("[MarkerApp] Markers cleared");
     }
 }
