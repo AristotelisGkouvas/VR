@@ -22,6 +22,11 @@ namespace QuestMarkerApp.Core
         [SerializeField] private string siteName = "";
         [SerializeField] private int historyLimit = 50;
 
+        [Header("Auto-save")]
+        [Tooltip("Persist the session to disk after marker changes and reload it on startup")]
+        [SerializeField] private bool autoSave = true;
+        [SerializeField] private float autoSaveDebounceSeconds = 5f;
+
         public event Action<MarkerSession> OnSessionSaved;
         public event Action<MarkerSession> OnSessionLoaded;
         public event Action OnHistoryChanged;
@@ -32,6 +37,10 @@ namespace QuestMarkerApp.Core
         private string crs = "local";
         private string epsg;
         private readonly Stack<string> undoStack = new Stack<string>(); // JSON snapshots of markers
+        private bool autoSaveDirty;
+        private float lastMarkerChangeTime;
+
+        private string AutoSavePath => Path.Combine(Application.persistentDataPath, "autosave_session.json");
 
         public string SessionId => sessionId;
         public string SessionName { get => sessionName; set => sessionName = value; }
@@ -47,6 +56,89 @@ namespace QuestMarkerApp.Core
 
             sessionId = Guid.NewGuid().ToString("N");
             createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        }
+
+        private void Start()
+        {
+            if (markerManager != null)
+            {
+                markerManager.OnMarkerCreated += OnMarkerMutated;
+                markerManager.OnMarkerUpdated += OnMarkerMutated;
+                markerManager.OnMarkerRemoved += OnMarkerMutated;
+                markerManager.OnMarkersCleared += MarkAutoSaveDirty;
+            }
+
+            if (autoSave)
+                TryLoadAutoSave();
+        }
+
+        private void OnDestroy()
+        {
+            if (markerManager != null)
+            {
+                markerManager.OnMarkerCreated -= OnMarkerMutated;
+                markerManager.OnMarkerUpdated -= OnMarkerMutated;
+                markerManager.OnMarkerRemoved -= OnMarkerMutated;
+                markerManager.OnMarkersCleared -= MarkAutoSaveDirty;
+            }
+        }
+
+        private void Update()
+        {
+            if (!autoSave || !autoSaveDirty) return;
+            if (Time.unscaledTime - lastMarkerChangeTime < autoSaveDebounceSeconds) return;
+            WriteAutoSave();
+        }
+
+        // Quest apps get paused/killed without warning — flush on pause and quit.
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused && autoSave && autoSaveDirty) WriteAutoSave();
+        }
+
+        private void OnApplicationQuit()
+        {
+            if (autoSave && autoSaveDirty) WriteAutoSave();
+        }
+
+        private void OnMarkerMutated(Marker marker) => MarkAutoSaveDirty();
+
+        private void MarkAutoSaveDirty()
+        {
+            autoSaveDirty = true;
+            lastMarkerChangeTime = Time.unscaledTime;
+        }
+
+        private void WriteAutoSave()
+        {
+            try
+            {
+                File.WriteAllText(AutoSavePath, ExportJson(), Encoding.UTF8);
+                autoSaveDirty = false;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Session] Auto-save failed: {e.Message}");
+                autoSaveDirty = false; // don't retry every frame
+            }
+        }
+
+        private void TryLoadAutoSave()
+        {
+            try
+            {
+                // Only restore into an empty scene — never clobber markers that
+                // something else (server push, editor tools) already placed.
+                if (markerManager == null || markerManager.ActiveMarkerCount > 0) return;
+                if (!File.Exists(AutoSavePath)) return;
+
+                if (LoadFromJson(File.ReadAllText(AutoSavePath, Encoding.UTF8)))
+                    Debug.Log($"[Session] Restored auto-saved session '{sessionName}'");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Session] Auto-save restore failed: {e.Message}");
+            }
         }
 
         /// <summary>Push current marker state for undo.</summary>

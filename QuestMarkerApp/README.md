@@ -174,7 +174,7 @@
 | `y` | float | Συντεταγμένη Y - ύψος (μέτρα) |
 | `z` | float | Συντεταγμένη Z (μέτρα) |
 | `label` | string | Ετικέτα κειμένου (προαιρετικό) |
-| `color` | string | Χρώμα σε hex format (π.χ. "#FF0000") |
+| `color` | string | Χρώμα: hex ("#FF0000" ή "FF0000") ή όνομα HTML ("red", "cyan") |
 | `scale` | float | Μέγεθος marker σε μέτρα |
 
 ### Άλλα Endpoints
@@ -398,6 +398,10 @@ python coordinate_server.py --quest-ip 192.168.1.100 --interactive
 ### Sessions
 - `SessionManager`: export/import JSON & CSV, undo history
 - `GET/POST /api/session`, `POST /api/session/new`, `POST /api/undo`
+- Auto-save: η session αποθηκεύεται αυτόματα στο `persistentDataPath`
+  (`autosave_session.json`) λίγα δευτερόλεπτα μετά από κάθε αλλαγή markers
+  και επαναφέρεται στο επόμενο άνοιγμα της εφαρμογής. Απενεργοποίηση:
+  `autoSave = false` στο `SessionManager` (Inspector).
 
 ### CRS / GPS
 - `crs`, `latitude`/`longitude`/`altitude`, `POST /api/gps-origin`
@@ -405,6 +409,8 @@ python coordinate_server.py --quest-ip 192.168.1.100 --interactive
 
 ### Push
 - Long-poll `GET /api/events` (Python) + `WebSocketPushClient` (Unity)
+- Αν ο Python server τρέχει με `QUEST_API_KEY`, όρισε το ίδιο κλειδί στο
+  `apiKey` του `WebSocketPushClient` (στέλνεται ως `Authorization: Bearer`)
 
 ### Observability
 - `GET /api/logs` ring buffer
@@ -446,6 +452,11 @@ On `LocalAPIServer` enable `requireApiKey` and set `apiKey`. Clients send:
 X-Api-Key: your-secret
 ```
 or `Authorization: Bearer your-secret`.
+
+> **Σημείωση ασφαλείας:** Το API είναι σχεδιασμένο για **τοπικό δίκτυο μόνο**
+> (εργοτάξιο / LAN). Η επικοινωνία είναι plain HTTP χωρίς κρυπτογράφηση και το
+> CORS είναι ανοιχτό — μην εκθέσετε τα ports 8080/5000 στο internet. Το API key
+> προστατεύει από τυχαία χρήση στο LAN, όχι από αποφασισμένο επιτιθέμενο.
 
 ### Marker payload extras
 ```json
