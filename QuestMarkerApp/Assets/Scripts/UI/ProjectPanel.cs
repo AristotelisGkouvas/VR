@@ -248,7 +248,7 @@ namespace QuestMarkerApp.UI
                 () => owner.SetMode(false), true, false, () => CanFinish(owner));
             doneButton = done.GetComponent<Image>();
             doneLabel = done.GetComponentInChildren<TextMeshProUGUI>();
-            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", "", () => ShowList(true))
+            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", L.T("Λίστα", "List"), () => ShowList(true))
                 .GetComponentInChildren<TextMeshProUGUI>();
         }
 
@@ -269,7 +269,7 @@ namespace QuestMarkerApp.UI
             for (int i = 0; i < Rows; i++) rows.Add(BuildRow(i));
             VrUi.Panel("ScrollTrack", listPage, Width - 18, listTop, 4, Rows * RowH, Brand.SurfaceSunken, 2);
             scrollThumb = VrUi.Panel("ScrollThumb", listPage, Width - 18, listTop, 4, 40, Brand.FgFaint, 2);
-            guideButtonLabel = VrUi.Button("Guide", listPage, BoxX, Height - BodyTop - 62, 150, 46, "chevron-right", "",
+            guideButtonLabel = VrUi.Button("Guide", listPage, BoxX, Height - BodyTop - 62, 150, 46, "chevron-right", L.T("Οδηγός", "Guide"),
                 () => ShowList(false), false, true).GetComponentInChildren<TextMeshProUGUI>();
         }
 

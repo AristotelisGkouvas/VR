@@ -147,6 +147,7 @@ namespace QuestMarkerApp.UI
         private bool timeMachine;
         private bool voice;
         private bool walk;
+        private bool preview;
         // Badges are rebuilt on every context change: share one material per (texture, tint)
         // instead of leaking a new one per quad.
         private static readonly Dictionary<(Texture2D, Color), Material> quadMaterials =
@@ -220,17 +221,20 @@ namespace QuestMarkerApp.UI
             bool time = DisplacementView.IsActive;
             bool voiceOn = VoiceCommands.Enabled;
             bool walkOn = Models.ModelOverlay.WalkActive;
+            bool previewOn = Models.ModelOverlay.PreviewShown;
             if (ctx != context || handedness != Hands.LeftHanded || timeMachine != time || voice != voiceOn
-                || walk != walkOn || spot != Spotlight)
+                || walk != walkOn || preview != previewOn || spot != Spotlight)
             {
                 context = ctx;
                 timeMachine = time;
                 voice = voiceOn;
                 walk = walkOn;
+                preview = previewOn;
                 spot = Spotlight;
                 // Roles, not sides: the pointing hand gets the pointer map.
                 List<(Button, string, string, bool)> offMap = LeftMap(ctx), domMap = RightMap(ctx);
                 if (walkOn) AddWalk(offMap, domMap);
+                if (previewOn) AddModel(ctx, offMap, domMap);
                 AddSpot(offMap, domMap);
                 Rebuild(left, poses.left, Hands.LeftHanded ? domMap : offMap);
                 Rebuild(right, poses.right, Hands.LeftHanded ? offMap : domMap);
@@ -312,7 +316,9 @@ namespace QuestMarkerApp.UI
                 case Button.Thumbstick: return OVRInput.Get(OVRInput.Touch.PrimaryThumbstick, c);
                 case Button.Trigger: return OVRInput.Get(OVRInput.Touch.PrimaryIndexTrigger, c);
                 // The grip has no touch sensor: explain it while the ray is on a panel.
-                case Button.Grip: return VrPointer.IsHovering || VrPointer.IsDragging;
+                // While the model preview is held by one grip, both grip labels explain the other.
+                case Button.Grip: return VrPointer.IsHovering || VrPointer.IsDragging
+                    || (Models.ModelOverlay.PreviewShown && Hands.OffHandGripHeld());
                 default: return false; // the Menu button has no touch sensor
             }
         }
@@ -405,8 +411,24 @@ namespace QuestMarkerApp.UI
             if (voiceRow >= 0) offMap[voiceRow] = (Button.Thumbstick, "compass", L.T("Κίνηση · κράτα κλικ: φωνή", "Move · hold click: voice"), false);
             else offMap.Add((Button.Thumbstick, "compass", L.T("Κίνηση στο μοντέλο", "Move in model"), false));
             domMap.RemoveAll(e => e.Item1 == Button.Thumbstick);
-            domMap.Add((Button.Thumbstick, "history", L.T("Στροφή 30°", "Turn 30°"), false));
+            // Sideways snap-turns, up/down rises and sinks (ModelOverlay.Walk).
+            domMap.Add((Button.Thumbstick, "history", L.T("Στροφή 30° · ↕ ύψος", "Turn 30° · ↕ height"), false));
         }
+
+        // Tabletop / life-size preview (ModelOverlay.Grab): the off-hand grip carries and turns
+        // the model, adding the dominant grip zooms. Where a panel context already gives the
+        // dominant grip "Hold: move" (Rebuild), the panel keeps it.
+        private static void AddModel(string ctx, List<(Button, string, string, bool)> offMap, List<(Button, string, string, bool)> domMap)
+        {
+            if (!offMap.Exists(e => e.Item1 == Button.Grip))
+                offMap.Add((Button.Grip, "pin", L.T("Κράτα: μετακίνηση μοντέλου", "Hold: move model"), false));
+            if (!PanelGrip(ctx) && !domMap.Exists(e => e.Item1 == Button.Grip))
+                domMap.Add((Button.Grip, "pin", L.T("Και τα δύο grip: ζουμ / στροφή", "Both grips: zoom / turn"), false));
+        }
+
+        // Contexts whose panels can be carried with the dominant grip.
+        private static bool PanelGrip(string ctx) =>
+            ctx != "basic" && ctx != "project" && ctx != "time" && ctx != "nav" && ctx != "route";
 
         // A guide step can ask for the trigger where the context map leaves it bare (no project
         // loaded yet): give it a badge, so the spotlight has something to pulse.
@@ -522,8 +544,7 @@ namespace QuestMarkerApp.UI
             }
             hand.Badges.Clear();
 
-            if (hand.IsLeft == Hands.LeftHanded && context != "basic" && context != "project" && context != "time"
-                && context != "nav" && context != "route")
+            if (hand.IsLeft == Hands.LeftHanded && PanelGrip(context))
                 map.Add((Button.Grip, "pin", L.T("Κράτα: μετακίνηση", "Hold: move"), false));
             map.Sort((a, b) => a.button.CompareTo(b.button)); // top of the controller first
             foreach (var (button, icon, action, mirror) in map)

@@ -56,6 +56,8 @@ namespace QuestMarkerApp.UI
         private ProjectPoint point;
         private string markerId;
         private Transform target;
+        // Opened from a real marker (closes when it goes), not from a dot on the model preview.
+        private bool fromMarker;
         private MarkerManager markers;
         private int requestSerial;
 
@@ -197,6 +199,7 @@ namespace QuestMarkerApp.UI
             point = p;
             markerId = id;
             target = markerTransform;
+            fromMarker = markerTransform != null && markerTransform.GetComponent<Marker>() != null;
             IsOpen = true;
             MarkerIdOpen = markerId;
 
@@ -306,8 +309,11 @@ namespace QuestMarkerApp.UI
             // another sensor, so resolve the marker by id each time and close if it is gone.
             if (markers != null && !string.IsNullOrEmpty(markerId))
             {
-                if (!markers.ActiveMarkers.TryGetValue(markerId, out Marker m) || m == null) { Close(); return; }
-                target = m.transform;
+                if (markers.ActiveMarkers.TryGetValue(markerId, out Marker m) && m != null) target = m.transform;
+                else if (fromMarker) { Close(); return; }
+                // From the model preview with no real marker (not aligned yet): distance and
+                // height to a dot on a miniature mean nothing, so show "—" and the elevation.
+                else target = null;
             }
             if (target == null)
             {

@@ -1,0 +1,6 @@
+<!-- GameObject.CreatePrimitive adds a collider from native code, which the IL2CPP
+     stripper cannot see: without this the build logs "class 'SphereCollider' doesn't exist"
+     for every marker and panel primitive. -->
+<linker>
+  <assembly fullname="UnityEngine.PhysicsModule" preserve="all" />
+</linker>

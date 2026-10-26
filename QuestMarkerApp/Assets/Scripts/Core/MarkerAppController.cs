@@ -216,6 +216,8 @@ namespace QuestMarkerApp.Core
             ModelOverlay.Importers["dxf"] = (path, options, progress, cancel) => DxfImporter.Load(path, options, progress);
             var model = Child<ModelOverlay>("ModelOverlay");
             model.Init(projectAlignment, markerManager);
+            // The project's sensors as dots on the tabletop / life-size preview of that model.
+            Child<ModelSensors>("ModelSensors").Init(model, projectAlignment, markerManager, sensorCard);
             if (localServer != null)
             {
                 // Kept so Cleanup can unsubscribe: the server may outlive this controller.

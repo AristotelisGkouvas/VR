@@ -45,6 +45,7 @@ namespace QuestMarkerApp.UI
         private InspectionRoute route;
         private FlowPanel flowPanel;
         private ModelOverlay model;
+        private ModelSensors modelSensors;
         // Created after the menu: looked up on first use.
         private VoiceCommands voice;
         private VoiceCommands Voice => voice != null ? voice : (voice = FindAnyObjectByType<VoiceCommands>());
@@ -124,6 +125,7 @@ namespace QuestMarkerApp.UI
             route = FindAnyObjectByType<InspectionRoute>();
             flowPanel = FindAnyObjectByType<FlowPanel>();
             model = FindAnyObjectByType<ModelOverlay>();
+            modelSensors = FindAnyObjectByType<ModelSensors>();
             Build();
             root.gameObject.SetActive(false);
         }
@@ -813,6 +815,21 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                // Stick walking through the 1:1 copy; rising / sinking follows at 0.7x.
+                Label = L.T("Ταχύτητα πλοήγησης", "Walk speed"),
+                Value = () => ModelOverlay.WalkSpeed.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m/s",
+                Run = ModelOverlay.CycleWalkSpeed
+            });
+            y = Row(y, new Item
+            {
+                // Dots per sensor on the tabletop / 1:1 preview; on the site the real markers stand.
+                Label = L.T("Αισθητήρες στη μακέτα", "Sensors on model"),
+                Value = () => modelSensors == null ? "—" : modelSensors.Status,
+                Enabled = () => modelSensors != null,
+                Run = () => ModelSensors.Enabled = !ModelSensors.Enabled
+            });
+            y = Row(y, new Item
+            {
                 Label = L.T("Ακμές", "Edges"),
                 Value = () => model != null && model.ShowEdges ? L.T("Εμφάνιση", "Shown") : L.T("Απόκρυψη", "Hidden"),
                 Enabled = () => model != null && model.IsLoaded,
@@ -841,9 +858,11 @@ namespace QuestMarkerApp.UI
             });
             string ip = serverText.Split(':')[0];
             var note = VrUi.Text("ModelNote", body, 28, y + 8, Width - 56, 96,
-                L.T($"Μακέτα / 1:1: κράτα το grip του {Hands.OffHandSideName} χειριστηρίου για μετακίνηση και περιστροφή.\n"
+                L.T($"Μακέτα / 1:1: grip του {Hands.OffHandSideName}: μετακίνηση και περιστροφή · "
+                    + "και τα δύο grip ή το άλλο stick: ζουμ.\n"
                     + $"Αποστολή από το PC: python send_model.py αρχείο.obj|dxf|ifc --quest-ip {ip} --api-key ",
-                    $"Tabletop / 1:1: hold the grip of the {Hands.OffHandSideName} controller to move and rotate.\n"
+                    $"Tabletop / 1:1: {Hands.OffHandSideName} grip: move and rotate · "
+                    + "both grips or the other stick: zoom.\n"
                     + $"Send from the PC: python send_model.py file.obj|dxf|ifc --quest-ip {ip} --api-key ")
                 + (server != null ? server.ApiKey : ""),
                 13f, Brand.FgSubtle);

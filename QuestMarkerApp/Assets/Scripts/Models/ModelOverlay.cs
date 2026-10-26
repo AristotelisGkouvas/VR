@@ -46,7 +46,11 @@ namespace QuestMarkerApp.Models
         private const float EyeHeight = 1.6f;
         /// <summary>Stick walking through the life-size copy: steady walking pace (no ramp-up,
         /// which is what makes artificial motion queasy) and snap turns.</summary>
-        private const float WalkSpeed = 1.4f;
+        private const string WalkSpeedKey = "model.walkSpeed";
+        /// <summary>The menu's walk speeds, m/s; 1.4 is a steady walking pace.</summary>
+        public static readonly float[] WalkSpeeds = { 0.7f, 1.4f, 3f, 6f };
+        /// <summary>Rising / sinking by stick runs at this fraction of the walk speed (about 1 m/s by default).</summary>
+        private const float VerticalSpeedFactor = 0.7f;
         private const float SnapTurnDegrees = 30f;
         private const float StickDeadZone = 0.25f;
         /// <summary>Radius around the model's centre sampled for the life-size ground height.</summary>
@@ -83,6 +87,29 @@ namespace QuestMarkerApp.Models
         private static bool? enabledCache;
 
         private static ViewMode? viewCache;
+
+        private static float? walkSpeedCache;
+
+        /// <summary>Stick walking speed through the life-size copy, m/s (PlayerPrefs "model.walkSpeed", default 1.4).</summary>
+        public static float WalkSpeed
+        {
+            get => walkSpeedCache ?? (float)(walkSpeedCache = Mathf.Clamp(PlayerPrefs.GetFloat(WalkSpeedKey, 1.4f), 0.1f, 20f));
+            set
+            {
+                walkSpeedCache = Mathf.Clamp(value, 0.1f, 20f);
+                PlayerPrefs.SetFloat(WalkSpeedKey, walkSpeedCache.Value);
+                PlayerPrefs.Save();
+            }
+        }
+
+        /// <summary>The next speed of <see cref="WalkSpeeds"/> after the current one, wrapping round.</summary>
+        public static void CycleWalkSpeed()
+        {
+            float now = WalkSpeed;
+            foreach (float s in WalkSpeeds)
+                if (s > now + 0.01f) { WalkSpeed = s; return; }
+            WalkSpeed = WalkSpeeds[0];
+        }
 
         /// <summary>Master switch (PlayerPrefs "model.show").</summary>
         public static bool Enabled
@@ -127,12 +154,30 @@ namespace QuestMarkerApp.Models
         /// labels them). The user stands still in the real room; the model moves past them.
         /// </summary>
         public static bool WalkActive { get; private set; }
+
+        /// <summary>True while a tabletop or life-size preview is on show (ControllerHints labels the grips).</summary>
+        public static bool PreviewShown { get; private set; }
+
+        /// <summary>Two-handed zoom may shrink the tabletop to this fraction of its default size.</summary>
+        private const float MinTabletopZoom = 0.2f;
+        /// <summary>Hold time of the scale readout after the last change, seconds.</summary>
+        private const float ScaleReadoutHold = 1.2f;
 #if !MOBILE_PREVIEW
+        private enum GrabMode { None, One, Two }
+        private GrabMode grabMode;
+        // One hand: the pose at grab start, relative to the off hand.
         private Vector3 grabHandPos, grabRootPos;
         private float grabHandYaw;
         private Quaternion grabRootRot;
+        // Two hands: midpoint, spread and heading of the pair at grab start, and the root then.
+        private Vector3 pairMid, pairRootPos;
+        private float pairDist, pairScale, pairYaw, pairTurn;
+        private Quaternion pairRootRot;
         private OVRCameraRig rig;
 #endif
+        private RectTransform scaleTag;
+        private TMPro.TextMeshProUGUI scaleText;
+        private float scaleShownAt = -10f;
 
         private readonly List<GameObject> groupObjects = new List<GameObject>();
         private readonly List<GameObject> edgeObjects = new List<GameObject>();
@@ -153,6 +198,10 @@ namespace QuestMarkerApp.Models
         public bool IsLoading => loading;
         public string LoadedName => loadedName;
         public ModelData Model => model;
+        /// <summary>The transform the model's groups hang under (project-local metres, x East, y Up, z North).</summary>
+        public Transform Root => root;
+        /// <summary>Model-local extent of every vertex of the loaded model.</summary>
+        public Bounds ModelBounds => modelBounds;
         public IReadOnlyList<ModelGroup> Groups => model != null ? (IReadOnlyList<ModelGroup>)model.Groups : Array.Empty<ModelGroup>();
 
         /// <summary>
@@ -216,7 +265,7 @@ namespace QuestMarkerApp.Models
             : View == ViewMode.LifeSize ? Placement.LifeSize
             : CanPlaceInProject ? Placement.Project : Placement.Tabletop;
 
-        /// <summary>Places the preview in front of the user again (no effect on the site placement).</summary>
+        /// <summary>Places the preview in front of the user again, at its default scale (no effect on the site placement).</summary>
         public void ResetPreview()
         {
             if (CurrentPlacement != Placement.Project) placed = null;
@@ -268,19 +317,26 @@ namespace QuestMarkerApp.Models
             if (root == null) return;
             bool show = model != null && !loading && Enabled;
             bool walk = false;
+            bool preview = false;
             if (show)
             {
                 Placement p = CurrentPlacement;
                 if (placed != p) Place(p);
+                preview = p != Placement.Project;
 #if !MOBILE_PREVIEW
-                if (p != Placement.Project) Grab();
+                if (preview) Grab();
+                else EndGrab();
                 // Only the life-size preview: on the site the model must stay on the real building.
                 walk = p == Placement.LifeSize && !grabbing && WalkAllowed();
                 if (walk) Walk();
 #endif
             }
             WalkActive = walk;
+            PreviewShown = preview;
             if (root.gameObject.activeSelf != show) root.gameObject.SetActive(show);
+            if (scaleTag != null && scaleTag.gameObject.activeSelf
+                && (!preview || Time.unscaledTime - scaleShownAt > ScaleReadoutHold))
+                scaleTag.gameObject.SetActive(false);
         }
 
         // Disabling stops BuildRoutine without a word; left alone the status would read
@@ -288,6 +344,7 @@ namespace QuestMarkerApp.Models
         private void OnDisable()
         {
             WalkActive = false;
+            PreviewShown = false;
             if (!loading) return;
             bool partial = building;
             CancelPending();
@@ -338,6 +395,9 @@ namespace QuestMarkerApp.Models
         private void Place(Placement p)
         {
             placed = p;
+#if !MOBILE_PREVIEW
+            EndGrab();
+#endif
             grabbing = false;
             if (p == Placement.Project) ApplyPose();
             else PlacePreview(p);
@@ -378,7 +438,7 @@ namespace QuestMarkerApp.Models
             Vector3 pivot, target;
             if (p == Placement.Tabletop)
             {
-                scale = TabletopSize / Mathf.Max(modelBounds.size.x, modelBounds.size.z, 0.01f);
+                scale = TabletopScale;
                 pivot = new Vector3(modelBounds.center.x, modelBounds.min.y, modelBounds.center.z);
                 target = head.position + forward * TabletopDistance + Vector3.down * TabletopDrop;
             }
@@ -396,34 +456,153 @@ namespace QuestMarkerApp.Models
             root.position = target - yaw * (pivot * scale);
         }
 
+        /// <summary>Root scale of the default tabletop miniature: the longest horizontal side becomes 1 m.</summary>
+        private float TabletopScale => TabletopSize / Mathf.Max(modelBounds.size.x, modelBounds.size.z, 0.01f);
+
+        // Zoom limits. Tabletop: from a fifth of the default miniature up to real size. Life
+        // size: down to the default miniature, so the walk-through copy can be shrunk to look
+        // at as a whole. A model smaller than a metre starts above 1:1, which stays allowed.
+        private float ClampScale(float s)
+        {
+            float tabletop = TabletopScale;
+            float hi = Mathf.Max(1f, tabletop);
+            float lo = placed == Placement.LifeSize ? Mathf.Min(tabletop, 1f) : tabletop * MinTabletopZoom;
+            return Mathf.Clamp(s, Mathf.Min(lo, hi), hi);
+        }
+
 #if !MOBILE_PREVIEW
+        private void EndGrab()
+        {
+            grabMode = GrabMode.None;
+            grabbing = false;
+        }
+
         // Off-hand grip held: the preview follows that controller (position, and turning about
-        // the vertical only, so a miniature never tips over).
+        // the vertical only, so a miniature never tips over); the dominant stick zooms about
+        // the hand meanwhile. Both grips: zoom by the spread of the hands about their midpoint,
+        // turn with the line between them, carry with the midpoint. Each change of mode starts
+        // from the pose of that frame, so letting go of one hand never makes the model jump.
         private void Grab()
         {
-            if (!Hands.OffHandGripHeld())
-            {
-                grabbing = false;
-                return;
-            }
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();
-            Transform hand = Hands.OffHandAnchor(rig);
-            if (hand == null) return;
+            Transform off = Hands.OffHandAnchor(rig), dom = Hands.DominantAnchor(rig);
+            bool offHeld = off != null && Hands.OffHandGripHeld();
+            bool domHeld = dom != null && Hands.GripHeld();
 
-            float handYaw = hand.eulerAngles.y;
-            if (!grabbing)
+            // The dominant grip also carries panels (VrPointer runs first and claims it on the
+            // press): a grip that picked up a panel never starts a two-handed grab.
+            GrabMode want = GrabMode.None;
+            if (offHeld && domHeld && (grabMode == GrabMode.Two || !VrPointer.IsDragging)) want = GrabMode.Two;
+            else if (offHeld) want = GrabMode.One;
+
+            if (want != grabMode)
             {
-                grabbing = true;
-                grabHandPos = hand.position;
-                grabHandYaw = handYaw;
-                grabRootPos = root.position;
-                grabRootRot = root.rotation;
+                grabMode = want;
+                grabbing = want != GrabMode.None;
+                if (want == GrabMode.One) StartOneHand(off);
+                else if (want == GrabMode.Two) StartTwoHands(off.position, dom.position);
                 return;
             }
-            Quaternion turn = Quaternion.Euler(0f, Mathf.DeltaAngle(grabHandYaw, handYaw), 0f);
+            if (grabMode == GrabMode.One) OneHand(off, domHeld);
+            else if (grabMode == GrabMode.Two) TwoHands(off.position, dom.position);
+        }
+
+        private void StartOneHand(Transform hand)
+        {
+            grabHandPos = hand.position;
+            grabHandYaw = hand.eulerAngles.y;
+            grabRootPos = root.position;
+            grabRootRot = root.rotation;
+        }
+
+        private void OneHand(Transform hand, bool domHeld)
+        {
+            // Dominant stick up/down: exponential zoom about the grabbing hand, x2 per second at
+            // full tilt. Not while it drives a panel (dragging, scrolling a menu or list).
+            float stick = Hands.DominantStickY();
+            if (!domHeld && Mathf.Abs(stick) > StickDeadZone && !UiState.InputBlocked)
+            {
+                float s = root.localScale.x;
+                float next = ClampScale(s * Mathf.Pow(2f, stick * Time.unscaledDeltaTime));
+                if (!Mathf.Approximately(next, s))
+                {
+                    // Scaling the start offset is the same as scaling about the hand from here on.
+                    grabRootPos = grabHandPos + (grabRootPos - grabHandPos) * (next / s);
+                    root.localScale = Vector3.one * next;
+                }
+                ShowScale(hand.position + Vector3.up * 0.09f);
+            }
+            Quaternion turn = Quaternion.Euler(0f, Mathf.DeltaAngle(grabHandYaw, hand.eulerAngles.y), 0f);
             root.rotation = turn * grabRootRot;
             root.position = hand.position + turn * (grabRootPos - grabHandPos);
         }
+
+        private void StartTwoHands(Vector3 off, Vector3 dom)
+        {
+            pairMid = (off + dom) * 0.5f;
+            // A floor on the spread: hands touching would turn a twitch into a huge zoom.
+            pairDist = Mathf.Max(Vector3.Distance(off, dom), 0.05f);
+            pairYaw = PairYaw(off, dom, 0f);
+            pairTurn = 0f;
+            pairScale = root.localScale.x;
+            pairRootPos = root.position;
+            pairRootRot = root.rotation;
+        }
+
+        private void TwoHands(Vector3 off, Vector3 dom)
+        {
+            Vector3 mid = (off + dom) * 0.5f;
+            float s = ClampScale(pairScale * Mathf.Max(Vector3.Distance(off, dom), 0.01f) / pairDist);
+            float ratio = s / pairScale;
+            // Summed frame by frame, so turning the pair past 180° keeps going instead of flipping.
+            float yaw = PairYaw(off, dom, pairYaw);
+            pairTurn += Mathf.DeltaAngle(pairYaw, yaw);
+            pairYaw = yaw;
+            Quaternion turn = Quaternion.Euler(0f, pairTurn, 0f);
+            root.localScale = Vector3.one * s;
+            root.rotation = turn * pairRootRot;
+            root.position = mid + turn * ((pairRootPos - pairMid) * ratio);
+            ShowScale(mid + Vector3.up * 0.07f);
+        }
+
+        // Heading of the level line from the off hand to the dominant hand; hands stacked one
+        // above the other have none, and the last heading stands.
+        private static float PairYaw(Vector3 off, Vector3 dom, float previous)
+        {
+            Vector3 v = dom - off;
+            v.y = 0f;
+            return v.sqrMagnitude < 0.0004f ? previous : Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg;
+        }
+#endif
+
+        // A short-lived "1:250" over the hands while zooming.
+        private void ShowScale(Vector3 position)
+        {
+            if (scaleTag == null)
+            {
+                scaleTag = VrUi.CreateCanvas("ModelScale", transform, new Vector2(150f, 46f), 0.0006f);
+                VrUi.Card("Bg", scaleTag, 0, 0, 150, 46, Brand.Surface.WithAlpha(0.92f), Brand.BorderStrong, 14);
+                scaleText = VrUi.Text("Scale", scaleTag, 8, 6, 134, 34, "", 22f, Brand.Fg, true, TMPro.TextAlignmentOptions.Center);
+            }
+            scaleShownAt = Time.unscaledTime;
+            if (!scaleTag.gameObject.activeSelf) scaleTag.gameObject.SetActive(true);
+            scaleText.text = ScaleText(root.localScale.x);
+            scaleTag.position = position;
+            Camera cam = Camera.main;
+            if (cam != null) VrUi.FaceViewer(scaleTag, cam.transform);
+        }
+
+        // Rounded the way a drawing scale is written: 1:7, 1:85, 1:250, 1:1200.
+        private static string ScaleText(float s)
+        {
+            if (s >= 0.995f && s <= 1.005f) return "1:1";
+            if (s > 1f) return s.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + ":1";
+            float n = 1f / Mathf.Max(s, 1e-6f);
+            int step = n < 20f ? 1 : n < 200f ? 5 : n < 2000f ? 10 : 100;
+            return "1:" + Mathf.Max(1, Mathf.RoundToInt(n / step) * step);
+        }
+
+#if !MOBILE_PREVIEW
 
         // The sticks belong to whatever is open: menus and lists scroll with them, the
         // alignment panel picks sensors, the time machine scrubs.
@@ -461,10 +640,17 @@ namespace QuestMarkerApp.Models
                 }
             }
 
-            // Dominant stick left/right: snap turn about the user's head.
+            // Dominant stick up/down: rise or sink (to a floor above, or under a bridge deck),
+            // steady pace like walking. Only when the push is more vertical than sideways, so
+            // a slightly diagonal snap turn does not also lift the user.
             float turn = Hands.DominantStickX();
+            float lift = Hands.DominantStickY();
+            if (Mathf.Abs(lift) > StickDeadZone && Mathf.Abs(lift) > Mathf.Abs(turn))
+                root.position -= Vector3.up * (Mathf.Sign(lift) * WalkSpeed * VerticalSpeedFactor * Time.unscaledDeltaTime);
+
+            // Dominant stick left/right: snap turn about the user's head.
             if (Mathf.Abs(turn) < 0.3f) snapArmed = true;
-            else if (snapArmed && Mathf.Abs(turn) > 0.7f)
+            else if (snapArmed && Mathf.Abs(turn) > 0.7f && Mathf.Abs(turn) >= Mathf.Abs(lift))
             {
                 snapArmed = false;
                 // Turning the user right = turning the world left around them.
