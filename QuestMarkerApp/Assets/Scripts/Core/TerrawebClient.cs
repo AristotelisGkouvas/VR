@@ -30,8 +30,9 @@ namespace QuestMarkerApp.Core
         // Trust-on-first-use pin: SHA-256 of the certificate seen on the first request to a
         // host that is allowed an untrusted certificate. Key is PrefPin + host.
         private const string PrefPin = "tw.pin.";
-        private const string CertificateChangedError =
-            "Το πιστοποιητικό του server άλλαξε — έλεγξε τη σύνδεση ή καθάρισε τον server από τις ρυθμίσεις.";
+        private static string CertificateChangedError => L.T(
+            "Το πιστοποιητικό του server άλλαξε — έλεγξε τη σύνδεση ή καθάρισε τον server από τις ρυθμίσεις.",
+            "The server's certificate changed — check the connection or clear the server in settings.");
         public const string DefaultServer = "https://demo.iqsoft.xyz";
         // Earlier builds defaulted to the bare-IP server; carry such installs over to the default.
         private const string LegacyServer = "https://89.116.27.151";
@@ -189,7 +190,7 @@ namespace QuestMarkerApp.Core
             string access = (string)tokens?["access"], refresh = (string)tokens?["refresh"];
             if (string.IsNullOrEmpty(access) || string.IsNullOrEmpty(refresh))
             {
-                onError("Μη έγκυρη απάντηση σύνδεσης από τον server");
+                onError(L.T("Μη έγκυρη απάντηση σύνδεσης από τον server", "Invalid login response from the server"));
                 yield break;
             }
             accessToken = access;
@@ -260,7 +261,7 @@ namespace QuestMarkerApp.Core
             Get("auth/profile/", t =>
             {
                 var profile = t as JObject;
-                if (profile == null) { fail("Μη έγκυρη απάντηση προφίλ"); return; }
+                if (profile == null) { fail(L.T("Μη έγκυρη απάντηση προφίλ", "Invalid profile response")); return; }
                 var current = profile["current_project"] as JObject;
                 CurrentProjectId = (int?)current?["id"];
                 CurrentProjectName = (string)current?["name"];
@@ -311,7 +312,7 @@ namespace QuestMarkerApp.Core
             yield return Get($"sensors/types/{typeId}/", t =>
             {
                 var type = t as JObject;
-                if (type == null) { fail("Μη έγκυρη απάντηση τύπου αισθητήρα"); return; }
+                if (type == null) { fail(L.T("Μη έγκυρη απάντηση τύπου αισθητήρα", "Invalid sensor type response")); return; }
                 typeCache[typeId] = type;
                 ok(type);
             }, fail);
@@ -323,6 +324,43 @@ namespace QuestMarkerApp.Core
         /// </summary>
         public IEnumerator GetActiveAlertEvents(Action<JArray> ok, Action<string> fail) =>
             Get("alerts/events/?active=true", t => ok(Results(t)), fail);
+
+        /// <summary>
+        /// The current project's active limits, every page (the endpoint always paginates, up to
+        /// 10,000 a page: one request in practice). Each carries is_current; the caller keeps
+        /// those. Field-crew accounts may lack CanViewLimits: a 403 calls
+        /// <paramref name="forbidden"/>, not <paramref name="fail"/>.
+        /// </summary>
+        public IEnumerator GetLimits(Action<JArray> ok, Action forbidden, Action<string> fail)
+        {
+            const int MaxPages = 5;
+            var all = new JArray();
+            for (int page = 1; page <= MaxPages; page++)
+            {
+                JToken result = null;
+                string error = null;
+                bool denied = false;
+                // lastResponseCode is read inside the callback, in the same frame Send set it.
+                yield return Get($"sensors/limits/?is_active=true&page={page}&page_size=10000",
+                    t => result = t, e => { if (lastResponseCode == 403) denied = true; else error = e; });
+                if (denied) { forbidden(); yield break; }
+                if (error != null) { fail(error); yield break; }
+                foreach (JToken l in Results(result)) all.Add(l);
+                if ((result as JObject)?["next"] == null || result["next"].Type == JTokenType.Null) break;
+            }
+            ok(all);
+        }
+
+        /// <summary>
+        /// Readings of an area (or the whole project) since <paramref name="dateFromIso"/>, newest
+        /// first, one page: the latest values of many sensors in a single request.
+        /// </summary>
+        public IEnumerator GetRecentMeasurements(string areaId, string dateFromIso, int pageSize,
+            Action<JArray, int> ok, Action<string> fail) =>
+            Get("sensors/measurements/?ordering=-meas_date&page=1&page_size=" + pageSize
+                + (string.IsNullOrEmpty(areaId) ? "" : "&area=" + Uri.EscapeDataString(areaId))
+                + (string.IsNullOrEmpty(dateFromIso) ? "" : "&date_from=" + Uri.EscapeDataString(dateFromIso)),
+                t => ok(Results(t), (int?)(t as JObject)?["count"] ?? Results(t).Count), fail);
 
         private static JArray Results(JToken t) => t as JArray ?? ((t as JObject)?["results"] as JArray) ?? new JArray();
 
@@ -338,14 +376,16 @@ namespace QuestMarkerApp.Core
         private IEnumerator Send(string method, string path, JObject body, bool auth,
             Action<JToken> ok, Action<string> fail, bool retried = false, string bearer = null)
         {
-            if (string.IsNullOrEmpty(Server)) { fail("Δεν έχει οριστεί server"); yield break; }
+            if (string.IsNullOrEmpty(Server)) { fail(L.T("Δεν έχει οριστεί server", "No server set")); yield break; }
             if (auth && bearer == null && string.IsNullOrEmpty(accessToken))
             {
                 bool refreshed = false;
                 yield return RefreshAccess(r => refreshed = r);
                 if (!refreshed)
                 {
-                    fail(lastResponseCode == 0 ? "Χωρίς σύνδεση δικτύου — δοκίμασε ξανά" : "Χρειάζεται σύνδεση");
+                    fail(lastResponseCode == 0
+                        ? L.T("Χωρίς σύνδεση δικτύου — δοκίμασε ξανά", "No network connection — try again")
+                        : L.T("Χρειάζεται σύνδεση", "Login required"));
                     yield break;
                 }
             }
@@ -408,13 +448,13 @@ namespace QuestMarkerApp.Core
 
                 JToken parsed;
                 try { parsed = string.IsNullOrEmpty(req.downloadHandler.text) ? new JObject() : JToken.Parse(req.downloadHandler.text); }
-                catch (Exception e) { fail("Μη έγκυρη απάντηση: " + e.Message); yield break; }
+                catch (Exception e) { fail(L.T("Μη έγκυρη απάντηση: ", "Invalid response: ") + e.Message); yield break; }
                 // A throwing callback must surface as an error, not silently end this coroutine.
                 try { ok(parsed); }
                 catch (Exception e)
                 {
                     Debug.LogWarning($"[Terraweb] {method} {path}: callback failed — {e}");
-                    fail("Σφάλμα επεξεργασίας απάντησης: " + e.Message);
+                    fail(L.T("Σφάλμα επεξεργασίας απάντησης: ", "Error handling the response: ") + e.Message);
                 }
             }
         }
@@ -422,11 +462,11 @@ namespace QuestMarkerApp.Core
         private static string Describe(UnityWebRequest req)
         {
             if (req.result == UnityWebRequest.Result.ConnectionError)
-                return "Δεν υπάρχει σύνδεση με τον server (" + req.error + ")";
+                return L.T("Δεν υπάρχει σύνδεση με τον server (", "Cannot reach the server (") + req.error + ")";
             string detail = null;
             try { detail = (string)JToken.Parse(req.downloadHandler.text)?["detail"]; }
             catch { /* not JSON */ }
-            if (req.responseCode == 401) return detail ?? "Λάθος στοιχεία σύνδεσης";
+            if (req.responseCode == 401) return detail ?? L.T("Λάθος στοιχεία σύνδεσης", "Wrong username or password");
             return $"HTTP {req.responseCode}: {detail ?? req.error}";
         }
 

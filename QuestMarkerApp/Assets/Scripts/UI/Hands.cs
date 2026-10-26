@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -38,12 +39,13 @@ namespace QuestMarkerApp.UI
         public static string OffHandPrimaryName => LeftHanded ? "A" : "X";
         /// <summary>Y / B on the other hand.</summary>
         public static string OffHandSecondaryName => LeftHanded ? "B" : "Y";
-        /// <summary>Genitive: "του δεξιού / αριστερού χειριστηρίου".</summary>
-        public static string DominantSideName => LeftHanded ? "αριστερού" : "δεξιού";
-        /// <summary>Nominative: "Δεξί" / "Αριστερό".</summary>
-        public static string DominantSide => LeftHanded ? "Αριστερό" : "Δεξί";
-        /// <summary>Genitive of the other hand: "του αριστερού / δεξιού χειριστηρίου".</summary>
-        public static string OffHandSideName => LeftHanded ? "δεξιού" : "αριστερού";
+        // In English the side names are plain lower-case adjectives: "the right controller".
+        /// <summary>Genitive: "του δεξιού / αριστερού χειριστηρίου"; English "right" / "left".</summary>
+        public static string DominantSideName => LeftHanded ? L.T("αριστερού", "left") : L.T("δεξιού", "right");
+        /// <summary>Nominative: "Δεξί" / "Αριστερό"; English "Right" / "Left".</summary>
+        public static string DominantSide => LeftHanded ? L.T("Αριστερό", "Left") : L.T("Δεξί", "Right");
+        /// <summary>Genitive of the other hand: "του αριστερού / δεξιού χειριστηρίου"; English "left" / "right".</summary>
+        public static string OffHandSideName => LeftHanded ? L.T("δεξιού", "right") : L.T("αριστερού", "left");
 
 #if !MOBILE_PREVIEW
         public static OVRInput.Controller Dominant => LeftHanded ? OVRInput.Controller.LTouch : OVRInput.Controller.RTouch;

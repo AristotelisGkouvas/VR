@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Targets</title>
+<!--
+  Printed targets for the headset's office practice (Μενού › Βοήθεια › Εξάσκηση).
+  Matches Core/PracticeProject.cs: P1 and P2 are 3.00 m apart, centre to centre, on the floor.
+  One target per A4 page. Print at 100 % ("Actual size"), never "Fit to page".
+-->
+<style>
+  :root {
+    --ink: #10201f;
+    --muted: #4a5a58;
+    --accent: #ffd400;   /* the app's control-point yellow */
+    --pink: #ff33e6;     /* the controller tip cursor */
+    --paper: #ffffff;
+    --screen: #e9ecea;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--screen);
+    color: var(--ink);
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .toolbar {
+    max-width: 210mm;
+    margin: 16px auto 0;
+    padding: 0 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 14px;
+  }
+  .toolbar button {
+    font: inherit;
+    font-weight: 700;
+    padding: 10px 18px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+  }
+  .page {
+    width: 210mm;
+    height: 297mm;
+    margin: 16px auto;
+    padding: 12mm 14mm;
+    background: var(--paper);
+    box-shadow: 0 2px 12px rgba(0,0,0,.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    page-break-after: always;
+    break-after: page;
+  }
+  .page:last-of-type { page-break-after: auto; break-after: auto; }
+  .head {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10pt;
+    letter-spacing: .08em;
+    color: var(--muted);
+  }
+  .badge {
+    background: var(--accent);
+    color: var(--ink);
+    font-weight: 800;
+    padding: 1.5mm 4mm;
+    border-radius: 10mm;
+    letter-spacing: .12em;
+  }
+  .label {
+    font-size: 44pt;
+    font-weight: 900;
+    line-height: 1;
+    margin: 3mm 0 2mm;
+  }
+  .target { display: block; }
+  .rule {
+    margin-top: 5mm;
+    font-size: 14pt;
+    font-weight: 700;
+    text-align: center;
+  }
+  .rule .en { display: block; font-weight: 400; color: var(--muted); font-size: 12pt; margin-top: 1mm; }
+  .bottom {
+    margin-top: auto;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6mm;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+  .bottom h2 { font-size: 10pt; margin: 0 0 1.5mm; letter-spacing: .06em; }
+  .bottom ol { margin: 0; padding-left: 4.5mm; }
+  .scale {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+    font-size: 9pt;
+    color: var(--muted);
+  }
+  @media screen and (max-width: 840px) {
+    .page { transform-origin: top left; zoom: .45; }
+  }
+  @page { size: A4 portrait; margin: 0; }
+  @media print {
+    body { background: var(--paper); }
+    .toolbar { display: none; }
+    .page { margin: 0; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button type="button" onclick="window.print()">Εκτύπωση / Print</button>
+  <span>A4 · 100 % («Πραγματικό μέγεθος» / "Actual size"), όχι «Προσαρμογή» / not "Fit to page".</span>
+</div>
+
+<template id="target-page">
+  <section class="page">
+    <div class="head">
+      <span>TERRAWEB · QUEST</span>
+      <span class="badge">ΕΞΑΣΚΗΣΗ / PRACTICE</span>
+    </div>
+    <div class="label" data-label></div>
+
+    <!-- 160 mm crosshair: rings every 20 mm, ticks every 10 mm, a 4 mm centre dot. -->
+    <svg class="target" width="160mm" height="160mm" viewBox="0 0 160 160" aria-hidden="true">
+      <rect x="0.4" y="0.4" width="159.2" height="159.2" fill="none" stroke="#10201f" stroke-width="0.8"/>
+      <g fill="none" stroke="#10201f">
+        <circle cx="80" cy="80" r="70" stroke-width="1.2"/>
+        <circle cx="80" cy="80" r="50" stroke-width="0.5"/>
+        <circle cx="80" cy="80" r="30" stroke-width="0.5"/>
+        <circle cx="80" cy="80" r="12" stroke-width="0.8" stroke="#ff33e6"/>
+      </g>
+      <g stroke="#10201f" stroke-width="0.7">
+        <line x1="0" y1="80" x2="74" y2="80"/>
+        <line x1="86" y1="80" x2="160" y2="80"/>
+        <line x1="80" y1="0" x2="80" y2="74"/>
+        <line x1="80" y1="86" x2="80" y2="160"/>
+      </g>
+      <g stroke="#10201f" stroke-width="0.4" data-ticks></g>
+      <circle cx="80" cy="80" r="2" fill="#10201f"/>
+      <text x="80" y="156" text-anchor="middle" font-size="4" fill="#4a5a58"
+            font-family="Helvetica, Arial, sans-serif">160 mm</text>
+    </svg>
+
+    <div class="rule">
+      Βάλε το P2 3,00 m από το P1 (κέντρο με κέντρο)
+      <span class="en">Place P2 3.00 m from P1 (centre to centre)</span>
+    </div>
+
+    <div class="bottom">
+      <div>
+        <h2>ΟΔΗΓΙΕΣ</h2>
+        <ol>
+          <li>Έλεγξε την κλίμακα: η μπάρα κάτω πρέπει να είναι ακριβώς 10 cm.</li>
+          <li>Κόλλησε τα δύο φύλλα επίπεδα στο πάτωμα, 3,00 m κέντρο με κέντρο (μέτρο). Ελεύθερος χώρος γύρω τους.</li>
+          <li>Στα γυαλιά: Μενού › Βοήθεια › Εξάσκηση (ή «Εξάσκηση» κάτω από τη Σύνδεση).</li>
+          <li>Ακούμπα τη ροζ μύτη του χειριστηρίου στην κεντρική κουκκίδα του P1, πάτα Trigger. Μετά το P2.</li>
+          <li>Οι αισθητήρες είναι ψεύτικοι. Έξοδος: Μενού › Βοήθεια › Έξοδος από εξάσκηση.</li>
+        </ol>
+      </div>
+      <div lang="en">
+        <h2>INSTRUCTIONS</h2>
+        <ol>
+          <li>Check the scale: the bar below must measure exactly 10 cm.</li>
+          <li>Tape both sheets flat on the floor, 3.00 m centre to centre (use a tape measure). Keep the area clear.</li>
+          <li>In the headset: Menu › Help › Practice (or "Practice" under Log in).</li>
+          <li>Rest the controller's pink tip on P1's centre dot and press the trigger. Then P2.</li>
+          <li>The sensors are made up. To leave: Menu › Help › Leave practice.</li>
+        </ol>
+      </div>
+      <div class="scale">
+        <svg width="104mm" height="10mm" viewBox="0 0 104 10" aria-label="10 cm scale bar">
+          <g data-scale></g>
+        </svg>
+        <span>10 cm · αν δεν είναι 10 cm, ξανατύπωσε στο 100 % / if it is not 10 cm, print again at 100 %</span>
+      </div>
+    </div>
+  </section>
+</template>
+
+<main id="pages"></main>
+
+<script>
+  // Two identical sheets but for the label; built from one template so they cannot drift apart.
+  (function () {
+    var tpl = document.getElementById('target-page');
+    var out = document.getElementById('pages');
+    var ns = 'http://www.w3.org/2000/svg';
+
+    function line(g, x1, y1, x2, y2) {
+      var l = document.createElementNS(ns, 'line');
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+      l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+      g.appendChild(l);
+    }
+
+    ['P1', 'P2'].forEach(function (name) {
+      var page = tpl.content.cloneNode(true);
+      page.querySelector('[data-label]').textContent = name;
+
+      // Millimetre ticks along both cross lines, longer every 10 mm.
+      var ticks = page.querySelector('[data-ticks]');
+      for (var d = -70; d <= 70; d += 5) {
+        if (d === 0) continue;
+        var len = d % 10 === 0 ? 3 : 1.5;
+        line(ticks, 80 + d, 80 - len, 80 + d, 80 + len);
+        line(ticks, 80 - len, 80 + d, 80 + len, 80 + d);
+      }
+
+      // 100 mm bar, alternating 10 mm blocks, labelled 0 and 10 cm.
+      var bar = page.querySelector('[data-scale]');
+      for (var i = 0; i < 10; i++) {
+        var r = document.createElementNS(ns, 'rect');
+        r.setAttribute('x', 2 + i * 10); r.setAttribute('y', 1);
+        r.setAttribute('width', 10); r.setAttribute('height', 3);
+        r.setAttribute('fill', i % 2 ? '#ffffff' : '#10201f');
+        r.setAttribute('stroke', '#10201f'); r.setAttribute('stroke-width', '0.3');
+        bar.appendChild(r);
+      }
+      [['0', 2], ['10 cm', 102]].forEach(function (t) {
+        var tx = document.createElementNS(ns, 'text');
+        tx.setAttribute('x', t[1]); tx.setAttribute('y', 9);
+        tx.setAttribute('font-size', '3.2'); tx.setAttribute('text-anchor', 'middle');
+        tx.setAttribute('font-family', 'Helvetica, Arial, sans-serif');
+        tx.textContent = t[0];
+        bar.appendChild(tx);
+      });
+
+      out.appendChild(page);
+    });
+  })();
+</script>
+</body>
+</html>

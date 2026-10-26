@@ -56,6 +56,8 @@ namespace QuestMarkerApp.UI
         private readonly List<ControlRow> controlRows = new List<ControlRow>();
         private Image doneButton;
         private TextMeshProUGUI doneLabel;
+        // Texts set once in Build, re-set by Relabel when the language changes.
+        private TextMeshProUGUI eyebrow, captionH, captionV, captionYaw, controlHeader, listButtonLabel, listHeader, guideButtonLabel;
 
         // List page.
         private TextMeshProUGUI listCount;
@@ -91,13 +93,13 @@ namespace QuestMarkerApp.UI
 
             // Header
             VrUi.Panel("Mark", root, 24, 26, 10, 10, Brand.Primary, 5);
-            VrUi.Text("Eyebrow", root, 42, 18, 300, 26, "ΕΥΘΥΓΡΑΜΜΙΣΗ", 13f, Brand.FgSubtle, true)
-                .characterSpacing = 6f;
+            eyebrow = VrUi.Text("Eyebrow", root, 42, 18, 300, 26, "", 13f, Brand.FgSubtle, true);
+            eyebrow.characterSpacing = 6f;
             title = VrUi.Text("Title", root, 24, 44, Width - 124, 36, "", 26f, Brand.Fg, true);
             VrUi.Button("Close", root, Width - 58, 18, 38, 38, "close", null, () => owner.SetMode(false));
             // 600-sensor areas: type part of a name instead of scrolling for a minute.
             VrUi.Button("Search", root, Width - 102, 18, 38, 38, "search", null,
-                () => VrKeyboard.Shared.Open("Αναζήτηση αισθητήρα", "", false,
+                () => VrKeyboard.Shared.Open(L.T("Αναζήτηση αισθητήρα", "Search sensor"), "", false,
                     q => { if (owner.SelectMatch(q)) ShowList(true); }, null),
                 enabled: () => !UiState.AnyModal);
             subtitle = VrUi.Text("Subtitle", root, 24, 80, Width - 48, 22, "", 14f, Brand.FgSubtle);
@@ -113,6 +115,31 @@ namespace QuestMarkerApp.UI
             listPage = VrUi.Rect("List", root, 0, BodyTop, Width, Height - BodyTop);
             BuildList();
             listPage.gameObject.SetActive(false);
+            Relabel();
+            L.Changed += OnLanguageChanged;
+        }
+
+        private void OnDestroy() => L.Changed -= OnLanguageChanged;
+
+        // The build-once texts are re-set; the rest is rewritten by Refresh, now if the panel
+        // is up, else on the next opening (ProjectAlignment refreshes it then).
+        private void OnLanguageChanged()
+        {
+            Relabel();
+            gaugeReadKey = gaugeDhKey = long.MinValue;
+            if (owner != null && root != null && root.gameObject.activeInHierarchy) Refresh(owner);
+        }
+
+        private void Relabel()
+        {
+            eyebrow.text = L.T("ΕΥΘΥΓΡΑΜΜΙΣΗ", "ALIGNMENT");
+            captionH.text = L.T("Οριζόντιο", "Horizontal");
+            captionV.text = L.T("Κατακόρυφο", "Vertical");
+            captionYaw.text = L.T("Γωνία", "Angle");
+            controlHeader.text = L.T("ΣΗΜΕΙΑ ΕΛΕΓΧΟΥ", "CONTROL POINTS");
+            listButtonLabel.text = L.T("Λίστα", "List");
+            listHeader.text = L.T("ΑΙΣΘΗΤΗΡΕΣ", "SENSORS");
+            guideButtonLabel.text = L.T("Οδηγός", "Guide");
         }
 
         // ------------------------------------------------------------------
@@ -122,13 +149,13 @@ namespace QuestMarkerApp.UI
         private void BuildStepper()
         {
             stepperBlock = VrUi.Rect("Stepper", guidePage, BoxX, 0, BoxW, 34);
-            string[] names = { "Σημείο 1", "Σημείο 2", "Έλεγχος (3ο)" };
+            // Named in RefreshGuide.
             float segW = (BoxW - 12f) / 3f;
             for (int i = 0; i < 3; i++)
             {
                 float x = i * (segW + 6f);
                 Image bar = VrUi.Panel("Bar" + i, stepperBlock, x, 0, segW, 6, Brand.SurfaceSunken, 3);
-                var text = VrUi.Text("Step" + i, stepperBlock, x, 10, segW, 20, names[i], 12f, Brand.FgSubtle, true);
+                var text = VrUi.Text("Step" + i, stepperBlock, x, 10, segW, 20, "", 12f, Brand.FgSubtle, true);
                 steps.Add((bar, text));
             }
         }
@@ -176,14 +203,14 @@ namespace QuestMarkerApp.UI
             verdictDot = VrUi.Panel("Dot", verdictBlock, 16, 18, 10, 10, Brand.Primary, 5);
             verdictWord = VrUi.Text("Word", verdictBlock, 34, 10, Inner - 18, 26, "", 17f, Brand.Primary, true);
             verdictHint = VrUi.Text("Hint", verdictBlock, 16, 36, Inner, 20, "", 12.5f, Brand.FgMuted);
-            metricH = Metric(verdictBlock, 16, 62, "Οριζόντιο");
-            metricV = Metric(verdictBlock, 16 + Inner / 3f, 62, "Κατακόρυφο");
-            metricYaw = Metric(verdictBlock, 16 + Inner * 2f / 3f, 62, "Γωνία");
+            metricH = Metric(verdictBlock, 16, 62, out captionH);
+            metricV = Metric(verdictBlock, 16 + Inner / 3f, 62, out captionV);
+            metricYaw = Metric(verdictBlock, 16 + Inner * 2f / 3f, 62, out captionYaw);
         }
 
-        private static TextMeshProUGUI Metric(Transform parent, float x, float y, string caption)
+        private static TextMeshProUGUI Metric(Transform parent, float x, float y, out TextMeshProUGUI caption)
         {
-            VrUi.Text("Caption", parent, x, y, 120, 16, caption, 11.5f, Brand.FgSubtle);
+            caption = VrUi.Text("Caption", parent, x, y, 120, 16, "", 11.5f, Brand.FgSubtle);
             return VrUi.Text("Value", parent, x, y + 16, 120, 24, "", 17f, Brand.Fg, true);
         }
 
@@ -191,8 +218,8 @@ namespace QuestMarkerApp.UI
         {
             float h = 36f + 16f + MaxControlRows * 28f + 20f + 26f + 12f;
             controlBlock = VrUi.Rect("Control", guidePage, BoxX, 0, BoxW, h);
-            VrUi.Text("Header", controlBlock, 4, 4, 240, 24, "ΣΗΜΕΙΑ ΕΛΕΓΧΟΥ", 12f, Brand.FgSubtle, true)
-                .characterSpacing = 5f;
+            controlHeader = VrUi.Text("Header", controlBlock, 4, 4, 240, 24, "", 12f, Brand.FgSubtle, true);
+            controlHeader.characterSpacing = 5f;
             controlCount = VrUi.Text("Count", controlBlock, BoxW - 104, 4, 100, 24, "", 12f, Brand.FgSubtle, false,
                 TextAlignmentOptions.MidlineRight);
             // The box itself is resized per refresh to the rows it shows.
@@ -217,11 +244,12 @@ namespace QuestMarkerApp.UI
         private void BuildActions()
         {
             actionsBlock = VrUi.Rect("Actions", guidePage, BoxX, 0, BoxW, 46);
-            RectTransform done = VrUi.Button("Done", actionsBlock, 0, 0, BoxW - 118, 46, null, "Ολοκλήρωση",
+            RectTransform done = VrUi.Button("Done", actionsBlock, 0, 0, BoxW - 118, 46, null, L.T("Ολοκλήρωση", "Finish"),
                 () => owner.SetMode(false), true, false, () => CanFinish(owner));
             doneButton = done.GetComponent<Image>();
             doneLabel = done.GetComponentInChildren<TextMeshProUGUI>();
-            VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", "Λίστα", () => ShowList(true));
+            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", "", () => ShowList(true))
+                .GetComponentInChildren<TextMeshProUGUI>();
         }
 
         private static bool CanFinish(ProjectAlignment a) =>
@@ -234,15 +262,15 @@ namespace QuestMarkerApp.UI
         private void BuildList()
         {
             listTop = 30f;
-            VrUi.Text("ListHeader", listPage, 24, 0, 200, 24, "ΑΙΣΘΗΤΗΡΕΣ", 13f, Brand.FgSubtle, true)
-                .characterSpacing = 6f;
+            listHeader = VrUi.Text("ListHeader", listPage, 24, 0, 200, 24, "", 13f, Brand.FgSubtle, true);
+            listHeader.characterSpacing = 6f;
             listCount = VrUi.Text("ListCount", listPage, Width - 224, 0, 200, 24, "", 13f, Brand.FgSubtle,
                 false, TextAlignmentOptions.MidlineRight);
             for (int i = 0; i < Rows; i++) rows.Add(BuildRow(i));
             VrUi.Panel("ScrollTrack", listPage, Width - 18, listTop, 4, Rows * RowH, Brand.SurfaceSunken, 2);
             scrollThumb = VrUi.Panel("ScrollThumb", listPage, Width - 18, listTop, 4, 40, Brand.FgFaint, 2);
-            VrUi.Button("Guide", listPage, BoxX, Height - BodyTop - 62, 150, 46, "chevron-right", "Οδηγός",
-                () => ShowList(false), false, true);
+            guideButtonLabel = VrUi.Button("Guide", listPage, BoxX, Height - BodyTop - 62, 150, 46, "chevron-right", "",
+                () => ShowList(false), false, true).GetComponentInChildren<TextMeshProUGUI>();
         }
 
         private Row BuildRow(int i)
@@ -298,9 +326,13 @@ namespace QuestMarkerApp.UI
             IReadOnlyList<ProjectPoint> points = a.Points;
             title.text = a.ProjectName;
             int n = a.PlacedCount;
-            subtitle.text = a.IsAligned
-                ? $"{Plural(n)} ελέγχου · ευθυγραμμισμένο"
-                : $"{points.Count} αισθητήρες · {Plural(n)} ελέγχου";
+            subtitle.text = L.En
+                ? a.IsAligned
+                    ? $"{ControlPoints(n)} · aligned"
+                    : $"{Sensors(points.Count)} · {ControlPoints(n)}"
+                : a.IsAligned
+                    ? $"{ControlPoints(n)} · ευθυγραμμισμένο"
+                    : $"{points.Count} αισθητήρες · {ControlPoints(n)}";
 
             // Browsing (the selection moved, nothing placed) shows the list; a touch or undo
             // (the placed count changed) brings the guide back.
@@ -321,7 +353,11 @@ namespace QuestMarkerApp.UI
             listPage.gameObject.SetActive(show);
         }
 
-        private static string Plural(int n) => n == 1 ? "1 σημείο" : $"{n} σημεία";
+        private static string ControlPoints(int n) => L.En
+            ? n == 1 ? "1 control point" : $"{n} control points"
+            : n == 1 ? "1 σημείο ελέγχου" : $"{n} σημεία ελέγχου";
+
+        private static string Sensors(int n) => n == 1 ? "1 sensor" : $"{n} sensors";
 
         private void RefreshGuide(ProjectAlignment a)
         {
@@ -336,7 +372,7 @@ namespace QuestMarkerApp.UI
                 steps[i].bar.color = done ? Brand.Control : current ? Brand.Primary : Brand.SurfaceSunken;
                 steps[i].text.color = current ? Brand.Fg : Brand.FgSubtle;
                 steps[i].text.text = done && i < order.Count ? DisplayName(a, order[i])
-                    : i == 0 ? "Σημείο 1" : i == 1 ? "Σημείο 2" : "Έλεγχος (3ο)";
+                    : i == 0 ? L.T("Σημείο 1", "Point 1") : i == 1 ? L.T("Σημείο 2", "Point 2") : L.T("Έλεγχος (3ο)", "Check (3rd)");
             }
 
             bool worst = !string.IsNullOrEmpty(a.WorstId);
@@ -346,8 +382,7 @@ namespace QuestMarkerApp.UI
             // verdict's hint already carries the detail.
             bool showMessage = !string.IsNullOrEmpty(a.LastMessage) && !(showTarget && showVerdict);
             messageText.text = a.LastMessage ?? "";
-            messageText.color = a.LastMessage != null && (a.LastMessage.StartsWith("Έλεγχος OK") || a.LastMessage.StartsWith("Η θέση"))
-                ? Brand.Primary : Brand.Warning;
+            messageText.color = a.LastMessageIsGood ? Brand.Primary : Brand.Warning;
 
             if (showTarget) RefreshTarget(a);
             if (showVerdict) RefreshVerdict(a);
@@ -367,7 +402,7 @@ namespace QuestMarkerApp.UI
             bool canFinish = CanFinish(a);
             doneButton.color = canFinish ? Brand.Primary : Brand.Primary.WithAlpha(0.35f);
             doneLabel.color = canFinish ? Brand.PrimaryFg : Brand.PrimaryFg.WithAlpha(0.6f);
-            doneLabel.text = canFinish && n == 2 ? "Ολοκλήρωση χωρίς έλεγχο" : "Ολοκλήρωση";
+            doneLabel.text = canFinish && n == 2 ? L.T("Ολοκλήρωση χωρίς έλεγχο", "Finish without check") : L.T("Ολοκλήρωση", "Finish");
         }
 
         private static float Place(RectTransform block, bool show, float y, float h, float gap)
@@ -386,10 +421,10 @@ namespace QuestMarkerApp.UI
             if (worst) a.TryGetPoint(ProjectAlignment.MarkerPrefix + a.WorstId, out target);
             if (target == null && a.SelectedIndex >= 0 && a.SelectedIndex < a.Points.Count) target = a.Points[a.SelectedIndex];
 
-            string label = a.NeedsCheck ? "ΕΠΙΒΕΒΑΙΩΣΗ ΘΕΣΗΣ"
-                : worst ? "ΞΑΝΑ-ΑΓΓΙΞΕ"
-                : n == 0 ? "ΠΡΩΤΟ ΣΗΜΕΙΟ"
-                : n == 1 ? "ΕΠΟΜΕΝΟ ΣΗΜΕΙΟ" : "ΣΗΜΕΙΟ ΕΛΕΓΧΟΥ (ΠΡΟΑΙΡΕΤΙΚΟ)";
+            string label = a.NeedsCheck ? L.T("ΕΠΙΒΕΒΑΙΩΣΗ ΘΕΣΗΣ", "CONFIRM POSITION")
+                : worst ? L.T("ΞΑΝΑ-ΑΓΓΙΞΕ", "TOUCH AGAIN")
+                : n == 0 ? L.T("ΠΡΩΤΟ ΣΗΜΕΙΟ", "FIRST POINT")
+                : n == 1 ? L.T("ΕΠΟΜΕΝΟ ΣΗΜΕΙΟ", "NEXT POINT") : L.T("ΣΗΜΕΙΟ ΕΛΕΓΧΟΥ (ΠΡΟΑΙΡΕΤΙΚΟ)", "CONTROL POINT (OPTIONAL)");
             targetLabel.text = label;
             targetLabel.color = worst ? Brand.Danger : a.NeedsCheck ? Brand.Warning : Brand.FgSubtle;
 
@@ -403,8 +438,8 @@ namespace QuestMarkerApp.UI
                 targetGlyph.color = placed ? Brand.PrimaryFg : Color.white;
                 targetName.text = string.IsNullOrEmpty(target.label) ? target.id : target.label;
                 string meta = $"H {target.h:F2}";
-                if (placed) meta += " · σημείο ελέγχου";
-                else if (target.id == a.SuggestedId) meta += " · <color=#5bcce5>προτεινόμενο</color>";
+                if (placed) meta += L.T(" · σημείο ελέγχου", " · control point");
+                else if (target.id == a.SuggestedId) meta += L.T(" · <color=#5bcce5>προτεινόμενο</color>", " · <color=#5bcce5>suggested</color>");
                 targetMeta.text = meta;
             }
             else
@@ -414,8 +449,8 @@ namespace QuestMarkerApp.UI
             }
 
             targetInstr.text = a.NeedsCheck
-                ? "Ακούμπησε ένα γνωστό σημείο και πάτα Trigger"
-                : "Ροζ μύτη στο σημείο και Trigger";
+                ? L.T("Ακούμπησε ένα γνωστό σημείο και πάτα Trigger", "Touch a known point and press Trigger")
+                : L.T("Ροζ μύτη στο σημείο και Trigger", "Pink tip on the point, then Trigger");
 
             // Gauge, or a short reason, under the instruction.
             ProjectAlignment.LiveGuide g = a.Live;
@@ -429,9 +464,12 @@ namespace QuestMarkerApp.UI
             }
 
             string why = a.NeedsCheck
-                ? "Η ευθυγράμμιση είναι από προηγούμενη φορά. Κατά προτίμηση ένα από τα σημεία ελέγχου."
-                : worst ? $"<color=#db5a46>Απέχει {Centimetres(a.Residual(a.WorstId) ?? 0f)} από τα άλλα.</color> {Hands.SecondaryName}: αναίρεση."
-                : n == 2 ? "Με 2 σημεία το σφάλμα δεν ελέγχεται."
+                ? L.T("Η ευθυγράμμιση είναι από προηγούμενη φορά. Κατά προτίμηση ένα από τα σημεία ελέγχου.",
+                      "This alignment is from an earlier session. Preferably touch one of the control points.")
+                : worst ? (L.En
+                    ? $"<color=#db5a46>{Centimetres(a.Residual(a.WorstId) ?? 0f)} off from the others.</color> {Hands.SecondaryName}: undo."
+                    : $"<color=#db5a46>Απέχει {Centimetres(a.Residual(a.WorstId) ?? 0f)} από τα άλλα.</color> {Hands.SecondaryName}: αναίρεση.")
+                : n == 2 ? L.T("Με 2 σημεία το σφάλμα δεν ελέγχεται.", "With 2 points the error is not checked.")
                 : "";
             bool showWhy = !gauge && !string.IsNullOrEmpty(why);
             targetWhy.gameObject.SetActive(showWhy);
@@ -473,7 +511,9 @@ namespace QuestMarkerApp.UI
                 gaugeReadKey = readKey;
                 gaugeRef = g.RefId;
                 string hex = ColorUtility.ToHtmlStringRGB(col);
-                gaugeRead.text = $"Από {g.RefId}: <color=#{hex}><b>{g.Measured:F2} m</b></color> <color=#8ca09e>/ πρέπει {g.Expected:F2} m</color>";
+                gaugeRead.text = L.En
+                    ? $"From {g.RefId}: <color=#{hex}><b>{g.Measured:F2} m</b></color> <color=#8ca09e>/ target {g.Expected:F2} m</color>"
+                    : $"Από {g.RefId}: <color=#{hex}><b>{g.Measured:F2} m</b></color> <color=#8ca09e>/ πρέπει {g.Expected:F2} m</color>";
             }
             float t = Mathf.Clamp(0.5f + diff / (2f * GaugeScale), 0.02f, 0.98f);
             gaugeNeedle.color = col;
@@ -486,7 +526,8 @@ namespace QuestMarkerApp.UI
             if (dhKey == gaugeDhKey) return;
             gaugeDhKey = dhKey;
             gaugeDh.text = dhKey != long.MaxValue
-                ? $"ΔH {Signed(g.MeasuredDh)} / πρέπει {Signed(g.ExpectedDh)}" : "";
+                ? L.En ? $"ΔH {Signed(g.MeasuredDh)} / target {Signed(g.ExpectedDh)}" : $"ΔH {Signed(g.MeasuredDh)} / πρέπει {Signed(g.ExpectedDh)}"
+                : "";
         }
 
         private void RefreshVerdict(ProjectAlignment a)
@@ -500,29 +541,39 @@ namespace QuestMarkerApp.UI
             if (!string.IsNullOrEmpty(a.WorstId))
             {
                 q = Brand.Danger;
-                word = "Ένα σημείο διαφωνεί";
-                hint = $"Ξανατοποθέτησε το {a.WorstId} · απόκλιση {Centimetres(a.Residual(a.WorstId) ?? 0f)}";
+                word = L.T("Ένα σημείο διαφωνεί", "One point disagrees");
+                hint = L.En
+                    ? $"Re-place {a.WorstId} · off by {Centimetres(a.Residual(a.WorstId) ?? 0f)}"
+                    : $"Ξανατοποθέτησε το {a.WorstId} · απόκλιση {Centimetres(a.Residual(a.WorstId) ?? 0f)}";
             }
             else if (n == 2)
             {
                 // Two points always fit their rotation exactly: only their distance is checked.
                 q = worst > UsableResidual ? Brand.Danger : Brand.Warning;
-                word = worst > UsableResidual ? "Μεγάλο σφάλμα" : "Χωρίς έλεγχο";
-                hint = pair.Valid && pair.Project < 5f
-                    ? $"Βάση {pair.Project:F1} m, χρειάζονται τουλάχιστον 5 m"
-                    : pair.Valid
-                        ? $"Εκτίμηση ±{Centimetres(a.PredictedError)} στα {a.FarthestDistance:F0} m · {Signed(pair.Measured - pair.Project)} στη βάση"
-                        : "Πρόσθεσε ένα 3ο σημείο για έλεγχο";
+                word = worst > UsableResidual ? L.T("Μεγάλο σφάλμα", "Large error") : L.T("Χωρίς έλεγχο", "Unchecked");
+                if (L.En)
+                    hint = pair.Valid && pair.Project < 5f
+                        ? $"Baseline {pair.Project:F1} m, needs at least 5 m"
+                        : pair.Valid
+                            ? $"Est. ±{Centimetres(a.PredictedError)} at {a.FarthestDistance:F0} m · {Signed(pair.Measured - pair.Project)} on baseline"
+                            : "Add a 3rd point to check";
+                else
+                    hint = pair.Valid && pair.Project < 5f
+                        ? $"Βάση {pair.Project:F1} m, χρειάζονται τουλάχιστον 5 m"
+                        : pair.Valid
+                            ? $"Εκτίμηση ±{Centimetres(a.PredictedError)} στα {a.FarthestDistance:F0} m · {Signed(pair.Measured - pair.Project)} στη βάση"
+                            : "Πρόσθεσε ένα 3ο σημείο για έλεγχο";
                 if (!string.IsNullOrEmpty(a.SuggestedId) && (!pair.Valid || pair.Project >= 5f))
-                    hint += $" · πρόταση {a.SuggestedId}";
+                    hint += L.T(" · πρόταση ", " · try ") + a.SuggestedId;
             }
             else
             {
                 q = worst <= GoodResidual ? Brand.Primary : worst <= UsableResidual ? Brand.Warning : Brand.Danger;
-                word = worst <= GoodResidual ? "Καλή ακρίβεια" : worst <= UsableResidual ? "Μέτρια ακρίβεια" : "Μεγάλο σφάλμα";
+                word = worst <= GoodResidual ? L.T("Καλή ακρίβεια", "Good accuracy")
+                    : worst <= UsableResidual ? L.T("Μέτρια ακρίβεια", "Fair accuracy") : L.T("Μεγάλο σφάλμα", "Large error");
                 hint = worst <= GoodResidual
-                    ? $"{Plural(n)} ελέγχου συμφωνούν"
-                    : "Ξανατοποθέτησε το σημείο με το μεγαλύτερο σφάλμα";
+                    ? L.En ? $"{ControlPoints(n)} {(n == 1 ? "agrees" : "agree")}" : $"{ControlPoints(n)} συμφωνούν"
+                    : L.T("Ξανατοποθέτησε το σημείο με το μεγαλύτερο σφάλμα", "Re-place the point with the largest error");
             }
 
             verdictDot.color = q;
@@ -554,14 +605,14 @@ namespace QuestMarkerApp.UI
                     : res == null || res <= GoodResidual ? Brand.Control
                     : res <= UsableResidual ? Brand.Warning : Brand.Danger;
                 r.Number.color = suspect ? Brand.Danger : Brand.Control;
-                r.Badge.text = res == null ? "τοποθετήθηκε" : Centimetres(res.Value);
+                r.Badge.text = res == null ? L.T("τοποθετήθηκε", "placed") : Centimetres(res.Value);
                 r.Badge.color = tone;
                 r.BadgeBg.color = tone.WithAlpha(0.16f);
             }
             bool more = n > MaxControlRows;
             controlMore.gameObject.SetActive(more);
-            controlMore.text = more ? $"+{n - MaxControlRows} ακόμη" : "";
-            controlUndo.text = $"{Hands.SecondaryName}: αναίρεση του τελευταίου";
+            controlMore.text = more ? (L.En ? $"+{n - MaxControlRows} more" : $"+{n - MaxControlRows} ακόμη") : "";
+            controlUndo.text = L.En ? $"{Hands.SecondaryName}: undo the last one" : $"{Hands.SecondaryName}: αναίρεση του τελευταίου";
 
             float rowsH = shown * 28f + (more ? 20f : 0f);
             controlMore.rectTransform.anchoredPosition = new Vector2(16f, -(44f + shown * 28f));
@@ -633,13 +684,13 @@ namespace QuestMarkerApp.UI
                 Color tone = suspect ? Brand.Danger
                     : res == null || res <= GoodResidual ? Brand.Control
                     : res <= UsableResidual ? Brand.Warning : Brand.Danger;
-                r.Badge.text = res == null ? "ΕΛΕΓΧΟΣ" : "ΕΛΕΓΧ · " + Centimetres(res.Value);
+                r.Badge.text = res == null ? L.T("ΕΛΕΓΧΟΣ", "CONTROL") : L.T("ΕΛΕΓΧ · ", "CTRL · ") + Centimetres(res.Value);
                 r.Badge.color = tone;
                 r.BadgeBg.color = tone.WithAlpha(0.16f);
             }
             else if (suggested)
             {
-                r.Badge.text = "ΠΡΟΤΑΣΗ";
+                r.Badge.text = L.T("ΠΡΟΤΑΣΗ", "SUGGESTED");
                 r.Badge.color = Brand.Info;
                 r.BadgeBg.color = Brand.Info.WithAlpha(0.16f);
             }

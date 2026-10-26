@@ -116,16 +116,20 @@ namespace QuestMarkerApp.Markers
                 markers.OnMarkersCleared += onMarkersCleared;
             }
             if (project != null) project.OnAlignmentChanged += onAlignmentChanged;
+            L.Changed += OnLanguageChanged;
             dirty = true;
         }
+
+        // The labels are written by Plot: a rebuild rewrites them in the new language.
+        private void OnLanguageChanged() => dirty = true;
 
         /// <summary>Why ribbons can't be shown right now, or null when they can.</summary>
         public string Unavailable()
         {
-            if (project == null || !project.HasProject) return "Χωρίς έργο";
+            if (project == null || !project.HasProject) return L.T("Χωρίς έργο", "No project");
             if (!SensorHistory.HasDisplacements || SensorHistory.ProjectId != project.TerrawebProjectId)
-                return "Χωρίς ιστορικό μετρήσεων";
-            if (!project.IsAligned) return "Πρώτα ευθυγράμμιση";
+                return L.T("Χωρίς ιστορικό μετρήσεων", "No survey history");
+            if (!project.IsAligned) return L.T("Πρώτα ευθυγράμμιση", "Align first");
             return null;
         }
 
@@ -139,6 +143,7 @@ namespace QuestMarkerApp.Markers
                 markers.OnMarkersCleared -= onMarkersCleared;
             }
             if (project != null) project.OnAlignmentChanged -= onAlignmentChanged;
+            L.Changed -= OnLanguageChanged;
             foreach (Ribbon r in items)
                 if (r.Root != null) Destroy(r.Root.gameObject);
             items.Clear();
@@ -335,9 +340,14 @@ namespace QuestMarkerApp.Markers
             Vector3 end = pointBuf[n - 1];
             r.Dot.localPosition = new Vector3(end.x, end.y, -0.01f);
 
-            r.Label.text = fallback
-                ? $"{count} μετρ. · {lastMm:F1} mm"
-                : $"{WindowDays} ημ · {lastMm:F1} mm";
+            if (L.En)
+                r.Label.text = fallback
+                    ? $"{count} readings · {lastMm:F1} mm"
+                    : $"{WindowDays} d · {lastMm:F1} mm";
+            else
+                r.Label.text = fallback
+                    ? $"{count} μετρ. · {lastMm:F1} mm"
+                    : $"{WindowDays} ημ · {lastMm:F1} mm";
         }
 
         private static double Magnitude(in SensorHistory.Sample s)

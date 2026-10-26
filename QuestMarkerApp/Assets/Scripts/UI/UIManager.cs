@@ -198,6 +198,8 @@ namespace QuestMarkerApp.UI
                 calibrationSystem.OnCalibrationComplete += OnCalibrationChanged;
                 calibrationSystem.OnCalibrationReset += OnCalibrationReset;
             }
+
+            L.Changed += SetupInstructions;
         }
 
         private void UnsubscribeFromEvents()
@@ -221,6 +223,8 @@ namespace QuestMarkerApp.UI
                 calibrationSystem.OnCalibrationComplete -= OnCalibrationChanged;
                 calibrationSystem.OnCalibrationReset -= OnCalibrationReset;
             }
+
+            L.Changed -= SetupInstructions;
         }
 
         private void UpdateCanvasPosition()
@@ -291,12 +295,18 @@ namespace QuestMarkerApp.UI
             if (instructionsText != null)
             {
                 instructionsText.text =
-                    "<b>Οδηγίες Χρήσης:</b>\n\n" +
+                    L.T("<b>Οδηγίες Χρήσης:</b>\n\n" +
                     "• POST /api/coordinates — σημεία\n" +
                     "• GET /api/coordinates — λίστα σημείων\n" +
                     "• DELETE /api/coordinates/{id} — διαγραφή\n" +
                     "• X: Μενού\n" +
-                    "• Σκανδάλη: Επιλογή αισθητήρα";
+                    "• Σκανδάλη: Επιλογή αισθητήρα",
+                    "<b>How to use:</b>\n\n" +
+                    "• POST /api/coordinates — points\n" +
+                    "• GET /api/coordinates — list points\n" +
+                    "• DELETE /api/coordinates/{id} — delete\n" +
+                    "• X: Menu\n" +
+                    "• Trigger: select sensor");
             }
         }
 

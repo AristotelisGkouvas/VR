@@ -57,6 +57,7 @@ namespace QuestMarkerApp.Core
 
         private void Awake()
         {
+            L.Init(); // cache the language on the main thread before any worker reads it
             ValidateComponents();
         }
 
@@ -188,6 +189,7 @@ namespace QuestMarkerApp.Core
             Child<VrPointer>("VrPointer");
             Child<BoundaryControl>("BoundaryControl");
             Child<DisplayPerformance>("DisplayPerformance");
+            Child<AnchorFieldTest>("AnchorFieldTest");
             terraweb = gameObject.GetComponent<TerrawebClient>() ?? gameObject.AddComponent<TerrawebClient>();
             flowPanel = Child<FlowPanel>("FlowPanel");
             var flow = Child<TerrawebFlow>("TerrawebFlow");
@@ -203,6 +205,7 @@ namespace QuestMarkerApp.Core
             // Field tools the menu offers: 30-day ribbons by the icons, polled alert changes,
             // an ordered inspection walk. The menu finds them by type.
             Child<HistoryRibbons>("HistoryRibbons").Init(projectAlignment, markerManager);
+            Child<LimitBars>("LimitBars").Init(projectAlignment, markerManager);
             Child<LiveAlerts>("LiveAlerts").Init(terraweb, projectAlignment);
             route = Child<InspectionRoute>("InspectionRoute");
             route.Init(projectAlignment, markerManager, flowPanel);
@@ -249,12 +252,14 @@ namespace QuestMarkerApp.Core
                 // "Stop" words never get here: VoiceCommands handles them, route included.
                 string a = arg ?? "";
                 if (InspectionRoute.IsActive) route.Skip();
-                else if (a.Contains("συναγερμ") || a.Contains("alarm")) route.StartAlerts();
+                else if (a.Contains("συναγερμ") || a.Contains("προειδοπ") || a.Contains("alarm") || a.Contains("alert")) route.StartAlerts();
                 else route.StartAll();
             };
             var hintsGo = new GameObject("ControllerHints");
             hintsGo.transform.SetParent(transform, false);
             hintsGo.AddComponent<ControllerHints>().Init(projectAlignment);
+            // First-use guide: a coach card over the off hand, on a first run or from Help.
+            Child<Onboarding>("Onboarding").Init(projectAlignment, markerManager, terraweb, flowPanel);
             // The main menu carries the server/marker status the old floating HUD showed.
             FindAnyObjectByType<UIManager>()?.Suppress();
 
@@ -268,7 +273,8 @@ namespace QuestMarkerApp.Core
         private System.Collections.IEnumerator OpenMenuWhenEmpty()
         {
             yield return new WaitForSeconds(1.5f);
-            if ((projectAlignment == null || !projectAlignment.HasProject) && !UiState.AnyModal)
+            // Not while the guide is teaching the menu button: opening it here would do the step for them.
+            if ((projectAlignment == null || !projectAlignment.HasProject) && !UiState.AnyModal && !Onboarding.HoldsMenu)
                 mainMenu?.Open(userInitiated: false); // keeps the first-run controller labels showing
         }
 
@@ -306,7 +312,7 @@ namespace QuestMarkerApp.Core
             entries.Sort((a, b) => a.dist.CompareTo(b.dist));
             var items = entries.ConvertAll(e => e.item);
 
-            flowPanel.ShowList("Πλοήγηση", "Διάλεξε αισθητήρα", items, item =>
+            flowPanel.ShowList(L.T("Πλοήγηση", "Navigate"), L.T("Διάλεξε αισθητήρα", "Pick a sensor"), items, item =>
             {
                 var (markerId, point) = ((string, ProjectPoint))item.Tag;
                 flowPanel.Close();

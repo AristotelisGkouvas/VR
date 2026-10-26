@@ -50,10 +50,15 @@ namespace QuestMarkerApp.UI
         {
             if (lastLoaded == DateTime.MinValue) return "";
             TimeSpan ago = DateTime.UtcNow - lastLoaded;
-            if (ago.TotalMinutes < 1) return "μόλις τώρα";
-            if (ago.TotalMinutes < 60) return $"πριν {(int)ago.TotalMinutes} λεπτά";
-            if (ago.TotalHours < 24) return $"πριν {(int)ago.TotalHours} ώρες";
-            return ago.TotalDays < 2 ? "χθες" : $"πριν {(int)ago.TotalDays} ημέρες";
+            if (ago.TotalMinutes < 1) return L.T("μόλις τώρα", "just now");
+            if (ago.TotalMinutes < 60)
+                return L.En ? ((int)ago.TotalMinutes == 1 ? "1 min ago" : $"{(int)ago.TotalMinutes} min ago")
+                    : $"πριν {(int)ago.TotalMinutes} λεπτά";
+            if (ago.TotalHours < 24)
+                return L.En ? ((int)ago.TotalHours == 1 ? "1 hour ago" : $"{(int)ago.TotalHours} hours ago")
+                    : $"πριν {(int)ago.TotalHours} ώρες";
+            return ago.TotalDays < 2 ? L.T("χθες", "yesterday")
+                : L.En ? $"{(int)ago.TotalDays} days ago" : $"πριν {(int)ago.TotalDays} ημέρες";
         }
 
         /// <summary>Reload the same project and area from the main menu.</summary>
@@ -149,8 +154,12 @@ namespace QuestMarkerApp.UI
                 loginFields.Add(new FlowField { Label = "Χρήστης", Value = client.Username, Placeholder = "username" });
                 loginFields.Add(new FlowField { Label = "Κωδικός", Secret = true, Placeholder = "••••••" });
             }
-            string title = error == null ? "Σύνδεση" : "Σύνδεση · " + error;
-            panel.ShowForm(Eyebrow, title, loginFields, "Σύνδεση", Submit, panel.Close);
+            // The fields are kept between visits: relabel them for the current language.
+            loginFields[1].Label = L.T("Χρήστης", "User");
+            loginFields[2].Label = L.T("Κωδικός", "Password");
+            string login = L.T("Σύνδεση", "Log in");
+            string title = error == null ? login : login + " · " + error;
+            panel.ShowForm(Eyebrow, title, loginFields, login, Submit, panel.Close);
         }
 
         private void Submit(List<FlowField> fields)
@@ -158,18 +167,19 @@ namespace QuestMarkerApp.UI
             string server = fields[0].Value, user = fields[1].Value, password = fields[2].Value;
             if (string.IsNullOrWhiteSpace(user) || string.IsNullOrEmpty(password))
             {
-                ShowLogin("συμπλήρωσε χρήστη και κωδικό");
+                ShowLogin(L.T("συμπλήρωσε χρήστη και κωδικό", "enter user and password"));
                 return;
             }
             string target = string.IsNullOrWhiteSpace(server) ? TerrawebClient.DefaultServer : server.Trim();
             if (!target.StartsWith("http", StringComparison.OrdinalIgnoreCase)) target = "https://" + target;
             client.SetServer(target, TerrawebClient.NeedsUntrusted(target));
             fields[2].Value = ""; // the request has its own copy; nothing keeps the password
-            Busy("Σύνδεση", "Σύνδεση…", client.AllowUntrustedCertificate
-                ? client.Server + "\n(!) διεύθυνση IP: το πιστοποιητικό γίνεται δεκτό την πρώτη φορά και μετά ελέγχεται"
+            Busy(L.T("Σύνδεση", "Log in"), L.T("Σύνδεση…", "Logging in…"), client.AllowUntrustedCertificate
+                ? client.Server + L.T("\n(!) διεύθυνση IP: το πιστοποιητικό γίνεται δεκτό την πρώτη φορά και μετά ελέγχεται",
+                    "\n(!) IP address: the certificate is accepted the first time and checked after that")
                 : client.Server);
             StartCoroutine(client.Login(user.Trim(), password,
-                Live<string>(error => panel.ShowMessage(Eyebrow, "Σύνδεση", "Η σύνδεση απέτυχε", error, false,
+                Live<string>(error => panel.ShowMessage(Eyebrow, L.T("Σύνδεση", "Log in"), L.T("Η σύνδεση απέτυχε", "Login failed"), error, false,
                     () => ShowLogin(null))),
                 Live(LoadProjects)));
         }
@@ -180,7 +190,7 @@ namespace QuestMarkerApp.UI
 
         private void LoadProjects()
         {
-            Busy("Έργα", "Φόρτωση έργων…");
+            Busy(L.T("Έργα", "Projects"), L.T("Φόρτωση έργων…", "Loading projects…"));
             StartCoroutine(client.GetProfile(
                 Live<JObject>(_ => StartCoroutine(client.GetProjects(Live<JArray>(ShowProjects), Fail(LoadProjects)))),
                 Fail(LoadProjects)));
@@ -200,13 +210,13 @@ namespace QuestMarkerApp.UI
                 {
                     Label = (string)p["name"],
                     Sub = string.IsNullOrEmpty((string)p["description"]) ? $"id {id}" : (string)p["description"],
-                    Value = client.CurrentProjectId == id ? "τρέχον" : "",
+                    Value = client.CurrentProjectId == id ? L.T("τρέχον", "current") : "",
                     Tag = p
                 });
             }
-            items.Add(new FlowItem { Label = "Αποσύνδεση", Sub = client.Username, Tag = "logout" });
+            items.Add(new FlowItem { Label = L.T("Αποσύνδεση", "Log out"), Sub = client.Username, Tag = "logout" });
 
-            panel.ShowList(Eyebrow, "Διάλεξε έργο", items, item =>
+            panel.ShowList(Eyebrow, L.T("Διάλεξε έργο", "Pick a project"), items, item =>
             {
                 if (item.Tag as string == "logout")
                 {
@@ -221,7 +231,8 @@ namespace QuestMarkerApp.UI
                     return;
                 }
                 projectName = (string)p["name"];
-                Busy(projectName, "Επιλογή έργου…", "Το ίδιο έργο γίνεται τρέχον και στο web του χρήστη.");
+                Busy(projectName, L.T("Επιλογή έργου…", "Selecting project…"),
+                    L.T("Το ίδιο έργο γίνεται τρέχον και στο web του χρήστη.", "It also becomes the current project on the user's web app."));
                 selectedProjectId = id;
                 StartCoroutine(client.SelectProject(id, projectName, Live(LoadAreas), Fail(LoadProjects)));
             }, panel.Close);
@@ -229,7 +240,7 @@ namespace QuestMarkerApp.UI
 
         private void LoadAreas()
         {
-            Busy(projectName, "Φόρτωση περιοχών…");
+            Busy(projectName, L.T("Φόρτωση περιοχών…", "Loading areas…"));
             StartCoroutine(client.GetAreas(Live<JArray>(ShowAreas), Fail(LoadProjects)));
         }
 
@@ -239,7 +250,7 @@ namespace QuestMarkerApp.UI
             foreach (JToken a in areas)
                 items.Add(new FlowItem { Label = (string)a["name"], Sub = (string)a["description"], Tag = a });
             // Whole project last: on a big project it is the slow, usually refused choice.
-            items.Add(new FlowItem { Label = "Όλο το έργο", Sub = $"Έως {MaxSensors} αισθητήρες", Tag = null });
+            items.Add(new FlowItem { Label = L.T("Όλο το έργο", "Whole project"), Sub = L.T($"Έως {MaxSensors} αισθητήρες", $"Up to {MaxSensors} sensors"), Tag = null });
 
             panel.ShowList(Eyebrow, projectName, items, item =>
             {
@@ -252,19 +263,20 @@ namespace QuestMarkerApp.UI
         {
             string scope = areaName == null ? projectName : $"{projectName} · {areaName}";
             string loadedAreaId = areaId, loadedAreaName = areaName;
-            Busy(scope, "Έλεγχος πλήθους…");
+            Busy(scope, L.T("Έλεγχος πλήθους…", "Counting sensors…"));
             // Ask for the count first: Line4Demo's whole project is 15,209 sensors (tens of MB of
             // JSON) — downloading that only to refuse it froze the headset.
             StartCoroutine(client.GetSensorCount(areaId, Live<int>(count =>
             {
                 if (count > MaxSensors)
                 {
-                    panel.ShowMessage(Eyebrow, scope, $"Πολλοί αισθητήρες ({count})",
-                        $"Διάλεξε μια περιοχή — πάνω από {MaxSensors} εικονίδια δεν διαβάζονται στον χώρο.",
+                    panel.ShowMessage(Eyebrow, scope, L.T($"Πολλοί αισθητήρες ({count})", $"Too many sensors ({count})"),
+                        L.T($"Διάλεξε μια περιοχή — πάνω από {MaxSensors} εικονίδια δεν διαβάζονται στον χώρο.",
+                            $"Pick an area — over {MaxSensors} icons are unreadable in the room."),
                         false, LoadAreas);
                     return;
                 }
-                Busy(scope, $"Φόρτωση {count} αισθητήρων…");
+                Busy(scope, L.T($"Φόρτωση {count} αισθητήρων…", count == 1 ? "Loading 1 sensor…" : $"Loading {count} sensors…"));
                 StartCoroutine(client.GetSensors(areaId,
                     Live<JArray>(sensors => StartCoroutine(LoadHistory(scope, sensors, loadedAreaId, loadedAreaName))),
                     Fail(LoadAreas)));
@@ -324,7 +336,8 @@ namespace QuestMarkerApp.UI
                             },
                             _ => { running--; done++; }));
                     }
-                    if (done != shown) Busy(scope, "Ιστορικό μετρήσεων…", $"{shown = done} / {ids.Count} αισθητήρες");
+                    if (done != shown) Busy(scope, L.T("Ιστορικό μετρήσεων…", "Reading history…"),
+                        L.En ? $"{shown = done} / {ids.Count} sensors" : $"{shown = done} / {ids.Count} αισθητήρες");
                     yield return null;
                     if (token != session) yield break;
                 }
@@ -333,6 +346,12 @@ namespace QuestMarkerApp.UI
             {
                 Debug.Log($"[Terraweb] {ids.Count} survey sensors — history skipped (limit {MaxHistorySensors})");
             }
+            if (token != session) yield break;
+            // Alert limits and the latest values they are judged on (after the history, which
+            // already holds most 3D points' values). Never blocks the load: no permission or an
+            // error only leaves the limit views off.
+            Busy(scope, L.T("Όρια συναγερμού…", "Alert limits…"));
+            yield return SensorLimits.Load(client, this, selectedProjectId, sensors, areaId, () => token == session);
             if (token != session) yield break;
             Apply(scope, sensors, areaId, areaName);
         }
@@ -344,8 +363,11 @@ namespace QuestMarkerApp.UI
             int n = project.points.Length;
             if (n == 0)
             {
-                panel.ShowMessage(Eyebrow, scope, "Κανένας αισθητήρας με θέση",
-                    $"{sensors.Count} αισθητήρες, κανένας με τρισδιάστατη θέση (γεωγραφικό μήκος/πλάτος και υψόμετρο).",
+                panel.ShowMessage(Eyebrow, scope, L.T("Κανένας αισθητήρας με θέση", "No sensor with a position"),
+                    L.T($"{sensors.Count} αισθητήρες, κανένας με τρισδιάστατη θέση (γεωγραφικό μήκος/πλάτος και υψόμετρο).",
+                        sensors.Count == 1
+                            ? "1 sensor, without a 3D position (longitude/latitude and elevation)."
+                            : $"{sensors.Count} sensors, none with a 3D position (longitude/latitude and elevation)."),
                     false, LoadAreas);
                 return;
             }
@@ -365,8 +387,8 @@ namespace QuestMarkerApp.UI
         private Action<string> Fail(Action back) =>
             Live<string>(error =>
             {
-                if (!client.IsLoggedIn) { ShowLogin("η σύνδεση έληξε"); return; }
-                panel.ShowMessage(Eyebrow, "Σφάλμα", "Κάτι πήγε στραβά", error, false, back);
+                if (!client.IsLoggedIn) { ShowLogin(L.T("η σύνδεση έληξε", "session expired")); return; }
+                panel.ShowMessage(Eyebrow, L.T("Σφάλμα", "Error"), L.T("Κάτι πήγε στραβά", "Something went wrong"), error, false, back);
             });
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -244,7 +245,7 @@ namespace QuestMarkerApp.UI
         // Long lists (areas, sensor picker): jump to the next item containing the query.
         private void Search()
         {
-            VrKeyboard.Shared.Open("Αναζήτηση", "", false, q =>
+            VrKeyboard.Shared.Open(L.T("Αναζήτηση", "Search"),"", false, q =>
             {
                 if (string.IsNullOrWhiteSpace(q)) return;
                 for (int step = 1; step <= items.Count; step++)

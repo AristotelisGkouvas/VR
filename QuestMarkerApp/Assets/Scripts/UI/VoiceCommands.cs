@@ -11,9 +11,11 @@ using QuestMarkerApp.Markers;
 namespace QuestMarkerApp.UI
 {
     /// <summary>
-    /// Greek voice commands with push-to-talk: hold the off-hand thumbstick click, speak
-    /// ("βρες Κ5", "δείξε συναγερμούς", "χρονομηχανή", "κλείσε"...), release, and the command
-    /// runs. A small tag above the off-hand controller shows "Ακούω…" while listening and the
+    /// Greek and English voice commands with push-to-talk: hold the off-hand thumbstick click,
+    /// speak ("βρες Κ5", "δείξε συναγερμούς", "χρονομηχανή", "κλείσε", "find K5", "show alarms",
+    /// "close"...), release, and the command runs. Both languages are accepted whatever the
+    /// interface language (a crew may mix them); only the replies follow <see cref="L"/>.
+    /// A small tag above the off-hand controller shows "Ακούω…" while listening and the
     /// reply for a moment afterwards. The grammar (<see cref="Parse"/>) and the sensor-name
     /// matching (<see cref="MatchSensor"/>) are pure and engine-independent: the speech engine
     /// is an <see cref="IVoiceRecognizer"/> — Wit.ai when the Meta Voice SDK is installed,
@@ -125,21 +127,21 @@ namespace QuestMarkerApp.UI
             if (IsListening) IsListening = false;
         }
 
-        /// <summary>"Wit.ai" or "Πληκτρολόγιο".</summary>
-        public string EngineName => usesKeyboard ? "Πληκτρολόγιο" : "Wit.ai";
+        /// <summary>"Wit.ai" or "Πληκτρολόγιο" / "Keyboard".</summary>
+        public string EngineName => usesKeyboard ? L.T("Πληκτρολόγιο", "Keyboard") : "Wit.ai";
 
         /// <summary>Menu row value: engine and the button that triggers it, or "Ανενεργό".</summary>
         public string Status
         {
             get
             {
-                int key = (Enabled ? 1 : 0) | (Hands.LeftHanded ? 2 : 0) | (usesKeyboard ? 4 : 0);
+                int key = (Enabled ? 1 : 0) | (Hands.LeftHanded ? 2 : 0) | (usesKeyboard ? 4 : 0) | (L.En ? 8 : 0);
                 if (key != statusKey)
                 {
                     statusKey = key;
                     // The off-hand is the left controller for a right-handed user.
-                    string side = Hands.LeftHanded ? "δεξ." : "αριστ.";
-                    statusText = !Enabled ? "Ανενεργό" : $"{EngineName} · stick {side}";
+                    if (L.En) statusText = !Enabled ? "Off" : $"{EngineName} · {(Hands.LeftHanded ? "right" : "left")} stick";
+                    else statusText = !Enabled ? "Ανενεργό" : $"{EngineName} · stick {(Hands.LeftHanded ? "δεξ." : "αριστ.")}";
                 }
                 return statusText;
             }
@@ -229,21 +231,21 @@ namespace QuestMarkerApp.UI
                 case Kind.Find: return Find(cmd.Argument);
                 case Kind.ShowAlarms: return ShowAlarms();
                 case Kind.TimeMachine:
-                    if (displacement == null) return "Δεν υπάρχει χρονομηχανή";
+                    if (displacement == null) return L.T("Δεν υπάρχει χρονομηχανή", "No time machine");
                     string why = displacement.Unavailable();
                     if (why != null && !DisplacementView.IsActive) { Feedback.Play(Feedback.Sound.Warn); return why; }
                     displacement.Toggle();
-                    return DisplacementView.IsActive ? "Χρονομηχανή" : "Χρονομηχανή: κλείσιμο";
+                    return DisplacementView.IsActive ? L.T("Χρονομηχανή", "Time machine") : L.T("Χρονομηχανή: κλείσιμο", "Time machine: closed");
                 case Kind.Menu:
-                    if (menu == null) return "Δεν υπάρχει μενού";
+                    if (menu == null) return L.T("Δεν υπάρχει μενού", "No menu");
                     Feedback.Play(Feedback.Sound.Click);
                     menu.Toggle();
-                    return MainMenu.IsOpen ? "Μενού" : "Μενού: κλείσιμο";
+                    return MainMenu.IsOpen ? L.T("Μενού", "Menu") : L.T("Μενού: κλείσιμο", "Menu: closed");
                 case Kind.Close: return CloseTopmost();
                 case Kind.Labels:
                     Marker.LabelsVisible = !Marker.LabelsVisible;
                     Feedback.Play(Feedback.Sound.Click);
-                    return Marker.LabelsVisible ? "Ετικέτες: ναι" : "Ετικέτες: όχι";
+                    return Marker.LabelsVisible ? L.T("Ετικέτες: ναι", "Labels: on") : L.T("Ετικέτες: όχι", "Labels: off");
                 case Kind.Stop:
                 {
                     Feedback.Play(Feedback.Sound.Click);
@@ -251,58 +253,58 @@ namespace QuestMarkerApp.UI
                     // never in OnRouteRequested: naming the route stops it whatever is on top.
                     string said = (utterance ?? "").ToLowerInvariant();
                     bool namesRoute = said.Contains("διαδρομ") || said.Contains("επιθεώρ") || said.Contains("επιθεωρ")
-                        || said.Contains("route");
-                    if (namesRoute && InspectionRoute.IsActive && Route != null) { Route.Stop(); return "Διαδρομή: διακοπή"; }
+                        || said.Contains("route") || said.Contains("inspect");
+                    if (namesRoute && InspectionRoute.IsActive && Route != null) { Route.Stop(); return L.T("Διαδρομή: διακοπή", "Route: stopped"); }
                     // A bare "σταμάτα" ends only the topmost, in B's order (UiState.Context):
                     // stopping navigation must not also end the inspection with a report.
-                    if (SensorNavigator.IsActive) { navigator?.Stop(); return "Πλοήγηση: διακοπή"; }
-                    if (DisplacementView.IsActive) { displacement?.Close(); return "Χρονομηχανή: κλείσιμο"; }
-                    if (InspectionRoute.IsActive && Route != null) { Route.Stop(); return "Διαδρομή: διακοπή"; }
-                    return "Διακοπή";
+                    if (SensorNavigator.IsActive) { navigator?.Stop(); return L.T("Πλοήγηση: διακοπή", "Navigation: stopped"); }
+                    if (DisplacementView.IsActive) { displacement?.Close(); return L.T("Χρονομηχανή: κλείσιμο", "Time machine: closed"); }
+                    if (InspectionRoute.IsActive && Route != null) { Route.Stop(); return L.T("Διαδρομή: διακοπή", "Route: stopped"); }
+                    return L.T("Διακοπή", "Stopped");
                 }
                 case Kind.Align:
-                    if (alignment == null || !alignment.HasProject) { Feedback.Play(Feedback.Sound.Warn); return "Φόρτωσε πρώτα έργο"; }
+                    if (alignment == null || !alignment.HasProject) { Feedback.Play(Feedback.Sound.Warn); return L.T("Φόρτωσε πρώτα έργο", "Load a project first"); }
                     Feedback.Play(Feedback.Sound.Click);
                     alignment.SetMode(true);
-                    return "Ευθυγράμμιση";
+                    return L.T("Ευθυγράμμιση", "Alignment");
                 case Kind.Route:
-                    if (OnRouteRequested == null) { Feedback.Play(Feedback.Sound.Warn); return "Δεν υπάρχει ακόμα"; }
+                    if (OnRouteRequested == null) { Feedback.Play(Feedback.Sound.Warn); return L.T("Δεν υπάρχει ακόμα", "Not available yet"); }
                     Feedback.Play(Feedback.Sound.Click);
                     OnRouteRequested(cmd.Argument);
-                    return "Διαδρομή επιθεώρησης";
+                    return L.T("Διαδρομή επιθεώρησης", "Inspection route");
                 case Kind.Undo:
-                    if (app == null) return "Δεν γίνεται";
+                    if (app == null) return L.T("Δεν γίνεται", "Can't do that");
                     app.Undo();
-                    return "Αναίρεση";
+                    return L.T("Αναίρεση", "Undo");
                 case Kind.ClearAll:
                     // Too destructive for a misheard word: the menu asks for a second press.
                     Feedback.Play(Feedback.Sound.Warn);
-                    return "Μόνο από το μενού";
+                    return L.T("Μόνο από το μενού", "Only from the menu");
                 default:
                     Feedback.Play(Feedback.Sound.Warn);
-                    return "Δεν κατάλαβα: «" + utterance.Trim() + "»";
+                    return L.En ? "Didn't understand: “" + utterance.Trim() + "”" : "Δεν κατάλαβα: «" + utterance.Trim() + "»";
             }
         }
 
         private string Find(string spoken)
         {
-            if (alignment == null || !alignment.HasProject) { Feedback.Play(Feedback.Sound.Warn); return "Φόρτωσε πρώτα έργο"; }
+            if (alignment == null || !alignment.HasProject) { Feedback.Play(Feedback.Sound.Warn); return L.T("Φόρτωσε πρώτα έργο", "Load a project first"); }
             ProjectPoint p = MatchSensor(spoken, alignment.Points);
-            if (p == null) { Feedback.Play(Feedback.Sound.Warn); return "Δεν βρέθηκε: «" + spoken + "»"; }
+            if (p == null) { Feedback.Play(Feedback.Sound.Warn); return L.En ? "Not found: “" + spoken + "”" : "Δεν βρέθηκε: «" + spoken + "»"; }
             return NavigateTo(p);
         }
 
         private string NavigateTo(ProjectPoint p)
         {
-            if (!alignment.IsAligned) { Feedback.Play(Feedback.Sound.Warn); return "Πρώτα ευθυγράμμιση"; }
-            if (navigator == null) return "Δεν υπάρχει πλοήγηση";
+            if (!alignment.IsAligned) { Feedback.Play(Feedback.Sound.Warn); return L.T("Πρώτα ευθυγράμμιση", "Align first"); }
+            if (navigator == null) return L.T("Δεν υπάρχει πλοήγηση", "No navigation");
             navigator.Navigate(ProjectAlignment.MarkerPrefix + p.id, p);
-            return "Πλοήγηση: " + NameOf(p);
+            return L.T("Πλοήγηση: ", "Navigating: ") + NameOf(p);
         }
 
         private string ShowAlarms()
         {
-            if (alignment == null || !alignment.HasProject || flowPanel == null) { Feedback.Play(Feedback.Sound.Warn); return "Φόρτωσε πρώτα έργο"; }
+            if (alignment == null || !alignment.HasProject || flowPanel == null) { Feedback.Play(Feedback.Sound.Warn); return L.T("Φόρτωσε πρώτα έργο", "Load a project first"); }
             var list = new List<FlowItem>();
             // Alarms first, then alerts, each in project order.
             for (int tier = 0; tier < 2; tier++)
@@ -317,7 +319,7 @@ namespace QuestMarkerApp.UI
                     list.Add(new FlowItem
                     {
                         Label = NameOf(p),
-                        Sub = isAlarm ? "Συναγερμός" : "Προειδοποίηση",
+                        Sub = isAlarm ? L.T("Συναγερμός", "Alarm") : L.T("Προειδοποίηση", "Alert"),
                         Value = "",
                         Icon = string.IsNullOrEmpty(p.icon) ? null : p.icon,
                         Color = isAlarm ? Brand.Danger : Brand.Warning,
@@ -325,34 +327,36 @@ namespace QuestMarkerApp.UI
                     });
                 }
             }
-            if (list.Count == 0) { Feedback.Play(Feedback.Sound.Ping); return "Κανένας συναγερμός"; }
+            if (list.Count == 0) { Feedback.Play(Feedback.Sound.Ping); return L.T("Κανένας συναγερμός", "No alarms"); }
 
             Feedback.Play(Feedback.Sound.Click);
             if (MainMenu.IsOpen) menu?.Close();
-            flowPanel.ShowList("ΦΩΝΗΤΙΚΗ ΕΝΤΟΛΗ", "Συναγερμοί", list,
+            flowPanel.ShowList(L.T("ΦΩΝΗΤΙΚΗ ΕΝΤΟΛΗ", "VOICE COMMAND"), L.T("Συναγερμοί", "Alarms"), list,
                 item =>
                 {
                     flowPanel.Close();
                     if (item?.Tag is ProjectPoint picked) ShowReply(NavigateTo(picked));
                 },
                 () => flowPanel.Close());
-            return list.Count == 1 ? "1 συναγερμός" : list.Count + " συναγερμοί";
+            return L.En ? (list.Count == 1 ? "1 alarm" : list.Count + " alarms")
+                : list.Count == 1 ? "1 συναγερμός" : list.Count + " συναγερμοί";
         }
 
-        /// <summary>"κλείσε": the panel in front first; with none up, whatever runs in the world.</summary>
+        /// <summary>"κλείσε" / "close": the panel in front first; with none up, whatever runs in the world.</summary>
         private string CloseTopmost()
         {
             Feedback.Play(Feedback.Sound.Click);
-            if (VrKeyboard.IsOpen) { VrKeyboard.CancelOpen(); return "Κλείσιμο"; }
-            if (FlowPanel.IsOpen && flowPanel != null) { flowPanel.Close(); return "Κλείσιμο"; }
-            if (SensorCard.IsOpen && sensorCard != null) { sensorCard.Close(); return "Κλείσιμο"; }
-            if (MainMenu.IsOpen && menu != null) { menu.Close(); return "Μενού: κλείσιμο"; }
+            string closed = L.T("Κλείσιμο", "Closed");
+            if (VrKeyboard.IsOpen) { VrKeyboard.CancelOpen(); return closed; }
+            if (FlowPanel.IsOpen && flowPanel != null) { flowPanel.Close(); return closed; }
+            if (SensorCard.IsOpen && sensorCard != null) { sensorCard.Close(); return closed; }
+            if (MainMenu.IsOpen && menu != null) { menu.Close(); return L.T("Μενού: κλείσιμο", "Menu: closed"); }
             bool any = false;
             if (SensorNavigator.IsActive && navigator != null) { navigator.Stop(); any = true; }
             if (DisplacementView.IsActive && displacement != null) { displacement.Close(); any = true; }
             else if (!any && InspectionRoute.IsActive && Route != null) { Route.Stop(); any = true; }
             if (alignment != null && alignment.IsModeActive) { alignment.SetMode(false); any = true; }
-            return any ? "Κλείσιμο" : "Τίποτα ανοιχτό";
+            return any ? closed : L.T("Τίποτα ανοιχτό", "Nothing open");
         }
 
         private static string NameOf(ProjectPoint p) => string.IsNullOrEmpty(p.label) ? p.id : p.label;
@@ -362,21 +366,27 @@ namespace QuestMarkerApp.UI
         // ------------------------------------------------------------------
 
         // Each keyword list is matched against the normalised utterance (see Normalize). Greek
-        // stems first; the Latin forms let the keyboard fallback (Latin keys only) drive it.
-        private static readonly string[] FindWords = { "βρεσ", "βρει", "πηγαινε", "πλοηγηση", "δειξε μου το", "δειξε μου", "που ειναι", "vres", "find", "go to", "goto", "pigaine" };
-        private static readonly string[] AlarmWords = { "συναγερμ", "προειδοποι", "alarm", "alert", "synagerm" };
-        private static readonly string[] TimeWords = { "χρονομηχαν", "μετακινησ", "time machine", "xronomixan", "hronomihan" };
+        // stems first, then English, then greeklish; the Latin forms also let the keyboard
+        // fallback (Latin keys only) drive it. English is always accepted, whatever L.Current:
+        // a crew may mix languages. Not display text: never pass these through L.T.
+        // Longer phrases before their prefixes ("navigate to" before "navigate"): on a tie the
+        // first listed wins in ArgumentAfter.
+        private static readonly string[] FindWords = { "βρεσ", "βρει", "πηγαινε", "πλοηγηση", "δειξε μου το", "δειξε μου", "που ειναι", "vres", "find", "go to", "goto", "navigate to", "navigate", "take me to", "show me", "show", "where is", "where's", "wheres", "locate", "pigaine" };
+        private static readonly string[] AlarmWords = { "συναγερμ", "προειδοποι", "alarm", "alert", "warning", "synagerm" };
+        private static readonly string[] TimeWords = { "χρονομηχαν", "μετακινησ", "time machine", "displacement", "movement", "xronomixan", "hronomihan" };
         private static readonly string[] MenuWords = { "μενου", "menu", "menou" };
-        private static readonly string[] CloseWords = { "κλεισε", "κλεισιμο", "close", "kleise" };
+        // No "hide" here: "hide labels" must reach LabelWords, and Close is tested first.
+        private static readonly string[] CloseWords = { "κλεισε", "κλεισιμο", "close", "go back", "back", "exit", "dismiss", "kleise" };
         private static readonly string[] LabelWords = { "ετικετ", "label", "etiket" };
-        private static readonly string[] StopWords = { "σταματα", "στοπ", "διακοπη", "stop", "stamata", "diakopi" };
-        private static readonly string[] AlignWords = { "ευθυγραμμ", "align", "efthygram", "eythygram" };
-        private static readonly string[] RouteWords = { "διαδρομη", "επιθεωρηση", "route", "diadromi", "epitheorisi" };
+        private static readonly string[] StopWords = { "σταματα", "στοπ", "διακοπη", "stop", "cancel", "halt", "stamata", "diakopi" };
+        private static readonly string[] AlignWords = { "ευθυγραμμ", "align", "calibrat", "efthygram", "eythygram" };
+        // "inspection" before "inspect", so StripKeywords leaves no "ion" behind.
+        private static readonly string[] RouteWords = { "διαδρομη", "επιθεωρηση", "route", "inspection", "inspect", "diadromi", "epitheorisi" };
         private static readonly string[] UndoWords = { "αναιρεση", "undo", "anairesi" };
-        private static readonly string[] ClearWords = { "καθαρισ", "clear", "katharis" };
+        private static readonly string[] ClearWords = { "καθαρισ", "clear", "delete", "remove", "katharis" };
         private static readonly string[] AllWords = { "ολ", "all" };
-        // Filler between the verb and the sensor name: "πήγαινε στον αισθητήρα Κ5".
-        private static readonly string[] Fillers = { "στο", "στη", "στην", "στον", "στουσ", "το", "τον", "την", "τη", "τα", "μου", "σε", "προσ", "αισθητηρα", "αισθητηρασ", "σημειο", "σταθμο", "to", "the", "sensor" };
+        // Filler between the verb and the sensor name: "πήγαινε στον αισθητήρα Κ5", "go to sensor K5".
+        private static readonly string[] Fillers = { "στο", "στη", "στην", "στον", "στουσ", "το", "τον", "την", "τη", "τα", "μου", "σε", "προσ", "αισθητηρα", "αισθητηρασ", "σημειο", "σταθμο", "to", "the", "sensor", "point", "station" };
 
         /// <summary>Turn one utterance into a command; <see cref="Kind.None"/> when nothing matched.</summary>
         public static Command Parse(string utterance)
@@ -445,8 +455,35 @@ namespace QuestMarkerApp.UI
 
         private static bool ContainsAny(string n, string[] words)
         {
-            foreach (string w in words) if (n.Contains(w)) return true;
+            foreach (string w in words) if (IndexOfKeyword(n, w) >= 0) return true;
             return false;
+        }
+
+        // Short English words that are also the start of other words ("backfill", "showroom",
+        // "exiting"): these must stand alone. Other Latin keywords are stems ("calibrat",
+        // "label" → "labels") and only need to start a word.
+        private static readonly HashSet<string> WholeWords = new HashSet<string>
+        {
+            "back", "go back", "halt", "exit", "show", "show me", "stop", "all", "undo", "menu",
+            "find", "close", "clear", "cancel", "route"
+        };
+
+        /// <summary>
+        /// Where the keyword occurs, or -1. Greek stems match anywhere, as before; a Latin
+        /// keyword must start a word, so "halt" does not fire inside "asphalt".
+        /// </summary>
+        private static int IndexOfKeyword(string n, string w)
+        {
+            if (w.Length == 0 || w[0] > 0x7f) return n.IndexOf(w, StringComparison.Ordinal);
+            bool whole = WholeWords.Contains(w);
+            for (int i = n.IndexOf(w, StringComparison.Ordinal); i >= 0; i = n.IndexOf(w, i + 1, StringComparison.Ordinal))
+            {
+                int end = i + w.Length;
+                if (i > 0 && n[i - 1] != ' ') continue;
+                if (whole && end < n.Length && n[end] != ' ') continue;
+                return i;
+            }
+            return -1;
         }
 
         /// <summary>Text after the first matching verb, with filler words removed; null when no verb.</summary>
@@ -455,7 +492,7 @@ namespace QuestMarkerApp.UI
             int best = -1, bestEnd = 0;
             foreach (string w in words)
             {
-                int i = n.IndexOf(w, StringComparison.Ordinal);
+                int i = IndexOfKeyword(n, w);
                 if (i < 0 || (best >= 0 && i >= best)) continue;
                 best = i;
                 bestEnd = i + w.Length;
@@ -638,7 +675,7 @@ namespace QuestMarkerApp.UI
                 tag.gameObject.SetActive(state != 0);
                 if (state == 1)
                 {
-                    tagText.text = usesKeyboard ? "Πληκτρολόγηση…" : "Ακούω…";
+                    tagText.text = usesKeyboard ? L.T("Πληκτρολόγηση…", "Typing…") : L.T("Ακούω…", "Listening…");
                     tagText.color = Brand.Fg;
                     dot.gameObject.SetActive(true);
                 }

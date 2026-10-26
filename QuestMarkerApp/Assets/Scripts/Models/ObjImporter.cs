@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using UnityEngine;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.Models
 {
@@ -480,7 +481,7 @@ namespace QuestMarkerApp.Models
                 TextReader r = st.OpenMtl?.Invoke(file);
                 if (r == null)
                 {
-                    if (st.OpenMtl != null) { st.MissingMtl++; st.Model.Warnings.Add($"Το αρχείο υλικών {file} δεν βρέθηκε"); }
+                    if (st.OpenMtl != null) { st.MissingMtl++; st.Model.Warnings.Add(L.T($"Το αρχείο υλικών {file} δεν βρέθηκε", $"Material file {file} not found")); }
                     continue;
                 }
                 // Texture names in the MTL are relative to the MTL itself, which mtllib may
@@ -626,19 +627,26 @@ namespace QuestMarkerApp.Models
             m.LineCount = lines;
             m.LocalBounds = min.x <= max.x ? new Bounds((min + max) * 0.5f, max - min) : new Bounds(Vector3.zero, Vector3.zero);
 
-            if (tris == 0 && lines == 0) m.Warnings.Add("Το αρχείο δεν περιέχει γεωμετρία");
-            if (removed > 0) m.Warnings.Add($"{removed} ομάδες χωρίς γεωμετρία παραλείφθηκαν");
-            if (st.UnknownIndexFaces > 0) m.Warnings.Add($"{st.UnknownIndexFaces} όψεις με άγνωστους δείκτες κορυφών παραλείφθηκαν");
-            if (st.Degenerate > 0) m.Warnings.Add($"{st.Degenerate} εκφυλισμένα τρίγωνα απορρίφθηκαν");
-            if (st.BadLines > 0) m.Warnings.Add($"{st.BadLines} γραμμές δεν αναγνωρίστηκαν");
-            if (st.BadUvFaces > 0) m.Warnings.Add($"{st.BadUvFaces} όψεις με ελλιπείς συντεταγμένες υφής σχεδιάστηκαν χωρίς υφή");
+            // Worker thread: L is cached on the main thread at startup (L.Init).
+            if (tris == 0 && lines == 0) m.Warnings.Add(L.T("Το αρχείο δεν περιέχει γεωμετρία", "The file has no geometry"));
+            if (removed > 0) m.Warnings.Add(L.T($"{removed} ομάδες χωρίς γεωμετρία παραλείφθηκαν",
+                $"{removed} group{(removed == 1 ? "" : "s")} without geometry skipped"));
+            if (st.UnknownIndexFaces > 0) m.Warnings.Add(L.T($"{st.UnknownIndexFaces} όψεις με άγνωστους δείκτες κορυφών παραλείφθηκαν",
+                $"{st.UnknownIndexFaces} face{(st.UnknownIndexFaces == 1 ? "" : "s")} with unknown vertex indices skipped"));
+            if (st.Degenerate > 0) m.Warnings.Add(L.T($"{st.Degenerate} εκφυλισμένα τρίγωνα απορρίφθηκαν",
+                $"{st.Degenerate} degenerate triangle{(st.Degenerate == 1 ? "" : "s")} dropped"));
+            if (st.BadLines > 0) m.Warnings.Add(L.T($"{st.BadLines} γραμμές δεν αναγνωρίστηκαν",
+                $"{st.BadLines} line{(st.BadLines == 1 ? "" : "s")} not recognised"));
+            if (st.BadUvFaces > 0) m.Warnings.Add(L.T($"{st.BadUvFaces} όψεις με ελλιπείς συντεταγμένες υφής σχεδιάστηκαν χωρίς υφή",
+                $"{st.BadUvFaces} face{(st.BadUvFaces == 1 ? "" : "s")} with incomplete texture coordinates drawn untextured"));
             int noUv = 0;
             foreach (ModelGroup g in m.Groups)
             {
                 // A map without vt indices cannot be placed on the faces: draw the group plain.
                 if (g.TexturePath != null && g.UVs.Count == 0) { g.TexturePath = null; g.Color = DefaultColor; noUv++; }
             }
-            if (noUv > 0) m.Warnings.Add($"{noUv} ομάδες έχουν υφή αλλά όχι συντεταγμένες υφής: χωρίς υφή");
+            if (noUv > 0) m.Warnings.Add(L.T($"{noUv} ομάδες έχουν υφή αλλά όχι συντεταγμένες υφής: χωρίς υφή",
+                $"{noUv} group{(noUv == 1 ? " has" : "s have")} a texture but no texture coordinates: untextured"));
         }
 
         private static void Extend(List<Vector3> pts, ref Vector3 min, ref Vector3 max)

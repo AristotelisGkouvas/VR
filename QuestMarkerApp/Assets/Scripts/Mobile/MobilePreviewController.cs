@@ -137,10 +137,15 @@ namespace QuestMarkerApp.Mobile
                     serverHint = "\nAPI: " + cachedServerUrl;
 
                 string info =
-                    "MOBILE PREVIEW (απλή 3D κάμερα)\n" +
-                    "• 1 δάχτυλο: περιστροφή\n" +
-                    "• 2 δάχτυλα: pan / pinch zoom\n" +
-                    "• Grid: 1 κελί = 1 μέτρο\n" +
+                    (L.En
+                        ? "MOBILE PREVIEW (simple 3D camera)\n" +
+                          "• 1 finger: rotate\n" +
+                          "• 2 fingers: pan / pinch zoom\n" +
+                          "• Grid: 1 cell = 1 metre\n"
+                        : "MOBILE PREVIEW (απλή 3D κάμερα)\n" +
+                          "• 1 δάχτυλο: περιστροφή\n" +
+                          "• 2 δάχτυλα: pan / pinch zoom\n" +
+                          "• Grid: 1 κελί = 1 μέτρο\n") +
                     "Markers: " + count + (max > 0 ? "/" + max : "") +
                     serverHint;
 

@@ -227,10 +227,10 @@ namespace QuestMarkerApp.Models
         {
             get
             {
-                if (loading) return $"Φόρτωση {Mathf.RoundToInt(Progress * 100f)}%";
-                if (error != null) return "Σφάλμα: " + error;
-                if (model == null) return "Χωρίς μοντέλο";
-                return $"{loadedName} · {CountText(model)}" + (hasTextures ? " · με υφή" : "");
+                if (loading) return L.En ? $"Loading {Mathf.RoundToInt(Progress * 100f)}%" : $"Φόρτωση {Mathf.RoundToInt(Progress * 100f)}%";
+                if (error != null) return L.T("Σφάλμα: ", "Error: ") + error;
+                if (model == null) return L.T("Χωρίς μοντέλο", "No model");
+                return $"{loadedName} · {CountText(model)}" + (hasTextures ? L.T(" · με υφή", " · textured") : "");
             }
         }
 
@@ -242,7 +242,7 @@ namespace QuestMarkerApp.Models
         {
             if (loading) return Status;
             if (error != null) return Status;
-            if (model == null) return "Χωρίς μοντέλο";
+            if (model == null) return L.T("Χωρίς μοντέλο", "No model");
             return null;
         }
 
@@ -299,7 +299,7 @@ namespace QuestMarkerApp.Models
                 model = null;
                 loadedName = null;
             }
-            error = "Η φόρτωση διακόπηκε";
+            error = L.T("Η φόρτωση διακόπηκε", "Loading was interrupted");
             OnChanged?.Invoke();
         }
 
@@ -494,7 +494,7 @@ namespace QuestMarkerApp.Models
             error = null;
             if (!Importers.TryGetValue(info.Format ?? "", out Importer importer))
             {
-                error = $"Μη υποστηριζόμενη μορφή: {info.Format}";
+                error = L.T($"Μη υποστηριζόμενη μορφή: {info.Format}", $"Unsupported format: {info.Format}");
                 OnChanged?.Invoke();
                 return;
             }
@@ -558,7 +558,7 @@ namespace QuestMarkerApp.Models
                 if (task.IsFaulted)
                 {
                     Exception e = task.Exception != null ? task.Exception.GetBaseException() : null;
-                    error = e != null ? e.Message : "άγνωστο σφάλμα";
+                    error = e != null ? e.Message : L.T("άγνωστο σφάλμα", "unknown error");
                     Debug.LogWarning($"[Model] Import of {info.Name} failed: {error}");
                     OnChanged?.Invoke();
                 }
@@ -584,7 +584,8 @@ namespace QuestMarkerApp.Models
                 if (tex != null) textures[kv.Key] = tex;
                 else
                 {
-                    string msg = $"Η εικόνα υφής {System.IO.Path.GetFileName(kv.Key)} δεν διαβάστηκε";
+                    string msg = L.T($"Η εικόνα υφής {System.IO.Path.GetFileName(kv.Key)} δεν διαβάστηκε",
+                        $"Texture image {System.IO.Path.GetFileName(kv.Key)} could not be read");
                     model.Warnings.Add(msg);
                     Debug.LogWarning($"[Model] {msg} ({kv.Key})");
                 }
@@ -667,7 +668,8 @@ namespace QuestMarkerApp.Models
                 {
                     // No normals: ModelTextured is unlit (see BuildGroup).
                     gb.EdgeIndices = BuildEdges(g, MaxEdgesPerGroup, token, out bool skipped);
-                    if (skipped) data.Warnings.Add($"Ομάδα «{g.Name}»: πάρα πολλές ακμές, χωρίς περίγραμμα");
+                    if (skipped) data.Warnings.Add(L.T($"Ομάδα «{g.Name}»: πάρα πολλές ακμές, χωρίς περίγραμμα",
+                        $"Group \u201c{g.Name}\u201d: too many edges, no outline"));
                 }
                 result.Groups.Add(gb);
             }
@@ -724,21 +726,24 @@ namespace QuestMarkerApp.Models
             try
             {
                 var fi = new System.IO.FileInfo(path);
-                if (!fi.Exists) msg = $"Λείπει η εικόνα υφής {file}";
-                else if (fi.Length > MaxTextureFileBytes) msg = $"Η εικόνα υφής {file} είναι πολύ μεγάλη ({fi.Length / (1 << 20)} MB)";
+                if (!fi.Exists) msg = L.T($"Λείπει η εικόνα υφής {file}", $"Texture image {file} is missing");
+                else if (fi.Length > MaxTextureFileBytes)
+                    msg = L.T($"Η εικόνα υφής {file} είναι πολύ μεγάλη ({fi.Length / (1 << 20)} MB)",
+                        $"Texture image {file} is too large ({fi.Length / (1 << 20)} MB)");
                 else
                 {
                     bytes = System.IO.File.ReadAllBytes(path);
                     if (TryImageSize(bytes, out int w, out int h) && (w > MaxTextureSize || h > MaxTextureSize))
                     {
-                        msg = $"Η εικόνα υφής {file} είναι {w}x{h} px, μέγιστο {MaxTextureSize}";
+                        msg = L.T($"Η εικόνα υφής {file} είναι {w}x{h} px, μέγιστο {MaxTextureSize}",
+                            $"Texture image {file} is {w}x{h} px, max {MaxTextureSize}");
                         bytes = null;
                     }
                 }
             }
             catch (Exception e)
             {
-                msg = $"Η εικόνα υφής {file} δεν διαβάστηκε: {e.Message}";
+                msg = L.T($"Η εικόνα υφής {file} δεν διαβάστηκε: {e.Message}", $"Texture image {file} could not be read: {e.Message}");
                 bytes = null;
             }
             if (msg != null)
@@ -1129,9 +1134,9 @@ namespace QuestMarkerApp.Models
         private static string CountText(ModelData m)
         {
             var parts = new List<string>(2);
-            if (m.TriangleCount > 0) parts.Add(Compact(m.TriangleCount) + " τρίγωνα");
-            if (m.LineCount > 0) parts.Add(Compact(m.LineCount) + " γραμμές");
-            return parts.Count > 0 ? string.Join(" · ", parts) : "χωρίς γεωμετρία";
+            if (m.TriangleCount > 0) parts.Add(Compact(m.TriangleCount) + L.T(" τρίγωνα", m.TriangleCount == 1 ? " triangle" : " triangles"));
+            if (m.LineCount > 0) parts.Add(Compact(m.LineCount) + L.T(" γραμμές", m.LineCount == 1 ? " line" : " lines"));
+            return parts.Count > 0 ? string.Join(" · ", parts) : L.T("χωρίς γεωμετρία", "no geometry");
         }
 
         private static string Compact(int n)

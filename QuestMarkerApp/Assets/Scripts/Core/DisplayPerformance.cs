@@ -12,7 +12,10 @@ namespace QuestMarkerApp.Core
     public class DisplayPerformance : MonoBehaviour
     {
         public static readonly float[] Rates = { 72f, 90f };
-        public static readonly string[] FoveationNames = { "Ανενεργό", "Χαμηλό", "Μεσαίο", "Υψηλό" };
+        private static readonly string[] FoveationNamesEl = { "Ανενεργό", "Χαμηλό", "Μεσαίο", "Υψηλό" };
+        private static readonly string[] FoveationNamesEn = { "Off", "Low", "Medium", "High" };
+        /// <summary>Display names in the interface language; the index is the saved level.</summary>
+        public static string[] FoveationNames => L.En ? FoveationNamesEn : FoveationNamesEl;
 
         private const string RateKey = "ui.refreshHz";
         private const string FoveationKey = "ui.foveation";

@@ -72,6 +72,10 @@ namespace QuestMarkerApp.Core
         private bool awaitingAnchor;
 
         public event Action OnAlignmentChanged;
+        /// <summary>A control point was touched: its id and the tip's world position (after the solve).</summary>
+        public event Action<string, Vector3> OnPointPlaced;
+        /// <summary>A placed control point was removed (undo).</summary>
+        public event Action<string> OnPointRemoved;
 
         private ProjectRequest project;
         private double originE, originN, originH;
@@ -84,6 +88,9 @@ namespace QuestMarkerApp.Core
         private bool needsCheck;
         private float farthestDistance, predictedError;
         private string lastMessage;
+        // The last message when it was good news: compared by reference, so a language switch
+        // after it was set does not change its colour.
+        private string goodMessage;
         private bool recenterHooked;
         private readonly HashSet<string> renderedIds = new HashSet<string>();
         // Set by a touch: the next render plays the light wave outwards from that spot.
@@ -137,6 +144,11 @@ namespace QuestMarkerApp.Core
         public bool HasProject => project != null && project.points != null && project.points.Length > 0;
         public bool IsModeActive => modeActive;
         public bool IsAligned => isAligned;
+        /// <summary>
+        /// The built-in office practice project (PracticeProject): never saved, restored or
+        /// reported to the LAN, and its touches raise no placement events.
+        /// </summary>
+        public bool IsPractice { get; private set; }
         public string ProjectName => HasProject && !string.IsNullOrEmpty(project.name) ? project.name : "Project";
         /// <summary>Backend project the sensors came from (0 for CSV / bridge projects).</summary>
         public int TerrawebProjectId => HasProject ? project.terrawebProjectId : 0;
@@ -233,6 +245,8 @@ namespace QuestMarkerApp.Core
         public float PredictedError => predictedError;
         /// <summary>One-off feedback for the panel (e.g. the result of a re-check).</summary>
         public string LastMessage => lastMessage;
+        /// <summary>The last message is good news (check OK, position restored), in either language.</summary>
+        public bool LastMessageIsGood => lastMessage != null && ReferenceEquals(lastMessage, goodMessage);
 
         private static string DataPath(string file) => Path.Combine(Application.persistentDataPath, file);
 
@@ -383,7 +397,8 @@ namespace QuestMarkerApp.Core
             awaitingAnchor = false;
             if (!anchors.IsPersistentAnchor) return;
             needsCheck = false;
-            lastMessage = "Η θέση επανήλθε από το spatial anchor του χώρου.";
+            lastMessage = L.T("Η θέση επανήλθε από το spatial anchor του χώρου.", "Position restored from the room's spatial anchor.");
+            goodMessage = lastMessage;
             Render();
             // The panel opened itself for a re-check that is no longer needed: close it rather
             // than leave it up with a prompt the message now contradicts.
@@ -399,13 +414,15 @@ namespace QuestMarkerApp.Core
             if (placements.Count == 0) return;
             if (anchors != null && anchors.IsPersistentAnchor) return;
             needsCheck = true;
-            lastMessage = "Έγινε recenter — ακούμπησε ξανά ένα σημείο ελέγχου για έλεγχο.";
+            lastMessage = L.T("Έγινε recenter — ακούμπησε ξανά ένα σημείο ελέγχου για έλεγχο.",
+                "Recentered — touch a control point again to check.");
             Render();
             RefreshPanel();
             OnAlignmentChanged?.Invoke();
         }
 
-        public void SetProject(ProjectRequest request)
+        /// <param name="practice">The office practice project: starts with no placements and is never saved.</param>
+        public void SetProject(ProjectRequest request, bool practice = false)
         {
             if (request?.points == null || request.points.Length == 0)
             {
@@ -419,12 +436,14 @@ namespace QuestMarkerApp.Core
                 if (p != null && string.IsNullOrEmpty(p.id)) p.id = (i + 1).ToString();
             }
 
-            bool sameProject = HasProject && project.name == request.name;
-            var keep = sameProject ? new Dictionary<string, Vector3>(placements) : LoadPlacements(request.name);
+            bool sameProject = HasProject && project.name == request.name && IsPractice == practice;
+            var keep = sameProject ? new Dictionary<string, Vector3>(placements)
+                : practice ? new Dictionary<string, Vector3>() : LoadPlacements(request.name);
             var keepOrder = sameProject ? new List<string>(placementOrder) : new List<string>(keep.Keys);
             bool restored = !sameProject && keep.Count > 0;
 
             project = request;
+            IsPractice = practice;
             // Round the origin to whole metres so local offsets stay readable in logs. Taken from
             // the first usable point: a null or non-finite first entry would throw / turn every
             // project-local coordinate into NaN.
@@ -453,7 +472,8 @@ namespace QuestMarkerApp.Core
                 // Trusted again as soon as the saved spatial anchor relocalises (or already has).
                 needsCheck = anchors == null || !anchors.IsPersistentAnchor;
                 awaitingAnchor = needsCheck && anchors != null && !anchors.IsInitialized;
-                lastMessage = "Ευθυγράμμιση από προηγούμενη φορά — ακούμπησε ξανά ένα σημείο ελέγχου για έλεγχο.";
+                lastMessage = L.T("Ευθυγράμμιση από προηγούμενη φορά — ακούμπησε ξανά ένα σημείο ελέγχου για έλεγχο.",
+                    "Alignment from last time — touch a control point again to check.");
             }
             else if (!sameProject)
             {
@@ -465,6 +485,24 @@ namespace QuestMarkerApp.Core
             Save();
             Debug.Log($"[Project] '{request.name}' loaded with {request.points.Length} points " +
                       $"(origin E{originE} N{originN} H{originH})");
+        }
+
+        /// <summary>
+        /// Drop the practice project and bring back the last real project saved on this headset
+        /// (its placements flagged for a re-check, as after a restart).
+        /// </summary>
+        public void LeavePractice()
+        {
+            if (!IsPractice) return;
+            SetMode(false);
+            project = null;
+            IsPractice = false;
+            placements.Clear();
+            placementOrder.Clear();
+            needsCheck = false;
+            lastMessage = null;
+            Solve(); // no project: removes its markers and tells listeners
+            Load();
         }
 
         public void ResetPlacements()
@@ -501,7 +539,7 @@ namespace QuestMarkerApp.Core
                     return true;
                 }
             }
-            lastMessage = $"Δεν βρέθηκε «{query}».";
+            lastMessage = L.T($"Δεν βρέθηκε «{query}».", $"\u201c{query}\u201d not found.");
             RefreshPanel();
             return false;
         }
@@ -576,7 +614,7 @@ namespace QuestMarkerApp.Core
                 if (PlaceSelectedAt(tip))
                 {
                     Feedback.Buzz(Hands.Dominant, 0.6f, 0.08f);
-                    bool moved = lastMessage != null && lastMessage.StartsWith("Ο χώρος μετακινήθηκε");
+                    bool moved = lastMessage != null && lastMessage.StartsWith(L.T("Ο χώρος μετακινήθηκε", "The room moved"));
                     if (moved) Feedback.Play(Feedback.Sound.Warn);
                     else if (isAligned && !wasAligned)
                     {
@@ -584,7 +622,7 @@ namespace QuestMarkerApp.Core
                         Feedback.Play(Feedback.Sound.Success);
                         Feedback.Buzz(Hands.Dominant, 0.8f, 0.25f);
                     }
-                    else if (lastMessage != null && lastMessage.StartsWith("Έλεγχος OK"))
+                    else if (lastMessage != null && lastMessage.StartsWith(L.T("Έλεγχος OK", "Check OK")))
                         Feedback.Play(Feedback.Sound.Success);
                     else Feedback.Play(Feedback.Sound.Place);
                 }
@@ -634,13 +672,16 @@ namespace QuestMarkerApp.Core
                 needsCheck = false;
                 if (off <= RecheckTolerance)
                 {
-                    lastMessage = $"Έλεγχος OK — το {point.id} απέχει {off * 100f:F0} cm.";
+                    lastMessage = L.T($"Έλεγχος OK — το {point.id} απέχει {off * 100f:F0} cm.",
+                        $"Check OK — {point.id} is {off * 100f:F0} cm off.");
+                    goodMessage = lastMessage;
                 }
                 else
                 {
                     placements.Clear();
                     placementOrder.Clear();
-                    lastMessage = $"Ο χώρος μετακινήθηκε ({off:F2} m) — τοποθέτησε ξανά τα σημεία ελέγχου.";
+                    lastMessage = L.T($"Ο χώρος μετακινήθηκε ({off:F2} m) — τοποθέτησε ξανά τα σημεία ελέγχου.",
+                        $"The room moved ({off:F2} m) — place the control points again.");
                 }
             }
             else if (needsCheck)
@@ -652,7 +693,8 @@ namespace QuestMarkerApp.Core
                 placementOrder.Clear();
                 needsCheck = false;
                 awaitingAnchor = false;
-                lastMessage = "Τα παλιά σημεία ελέγχου δεν επαρκούσαν για έλεγχο και απορρίφθηκαν — τοποθέτησε ξανά τα σημεία ελέγχου.";
+                lastMessage = L.T("Τα παλιά σημεία ελέγχου δεν επαρκούσαν για έλεγχο και απορρίφθηκαν — τοποθέτησε ξανά τα σημεία ελέγχου.",
+                    "The old control points were too few to check and were dropped — place the control points again.");
             }
 
             placements[point.id] = local;
@@ -671,6 +713,8 @@ namespace QuestMarkerApp.Core
 
             Solve();
             Save();
+            // Practice touches are not field data: no anchors or log rows (AnchorFieldTest).
+            if (!IsPractice) OnPointPlaced?.Invoke(point.id, worldPosition);
             return true;
         }
 
@@ -680,6 +724,7 @@ namespace QuestMarkerApp.Core
             placementOrder.Remove(id);
             Solve();
             Save();
+            if (!IsPractice) OnPointRemoved?.Invoke(id);
         }
 
         /// <summary>Undo the most recent touch and select that sensor again.</summary>
@@ -689,7 +734,7 @@ namespace QuestMarkerApp.Core
             string id = placementOrder[placementOrder.Count - 1];
             for (int i = 0; i < project.points.Length; i++)
                 if (project.points[i]?.id == id) { selectedIndex = i; break; }
-            lastMessage = $"Αναιρέθηκε το {id}.";
+            lastMessage = L.T($"Αναιρέθηκε το {id}.", $"Undid {id}.");
             RemovePlacement(id);
             return true;
         }
@@ -765,7 +810,8 @@ namespace QuestMarkerApp.Core
                     // Two sensors touched at the same physical spot: Atan2(0,0) would "solve"
                     // to 0 deg and the whole site would render at an arbitrary heading.
                     Debug.LogWarning("[Project] Touches too close together to solve rotation");
-                    lastMessage = "Τα σημεία ακουμπήθηκαν στο ίδιο μέρος. Ακούμπησε το καθένα στη δική του θέση.";
+                    lastMessage = L.T("Τα σημεία ακουμπήθηκαν στο ίδιο μέρος. Ακούμπησε το καθένα στη δική του θέση.",
+                        "The points were touched at the same spot. Touch each one at its own position.");
                 }
                 else
                 {
@@ -796,7 +842,8 @@ namespace QuestMarkerApp.Core
                     if (pairs.Count >= 3 && rmsHorizontal > 0.10f && LooksMirrored(pairs, rmsHorizontal))
                     {
                         worstId = null;
-                        lastMessage = "Τα σημεία ταιριάζουν μόνο κατοπτρικά: πιθανώς έχουν αντιστραφεί οι στήλες E/N (X/Y) στα δεδομένα.";
+                        lastMessage = L.T("Τα σημεία ταιριάζουν μόνο κατοπτρικά: πιθανώς έχουν αντιστραφεί οι στήλες E/N (X/Y) στα δεδομένα.",
+                            "The points only fit mirrored: the E/N (X/Y) columns are probably swapped in the data.");
                         Debug.LogWarning("[Project] Control points fit far better with E and N swapped — check the CRS axis order / CSV columns");
                     }
                 }
@@ -1147,6 +1194,8 @@ namespace QuestMarkerApp.Core
 
         public string StatusJson()
         {
+            // Practice is never reported as a project: the PC must not take it for site data.
+            if (IsPractice) return "{\"loaded\":false,\"practice\":true,\"aligned\":false}";
             var sb = new StringBuilder("{");
             sb.Append("\"loaded\":").Append(HasProject ? "true" : "false");
             if (HasProject)
@@ -1187,7 +1236,8 @@ namespace QuestMarkerApp.Core
 
         private void Save()
         {
-            if (!HasProject) return;
+            // Practice stays in memory: on disk it would come back on the next launch as "the last project".
+            if (!HasProject || IsPractice) return;
             try
             {
                 var list = new List<SavedPlacement>();

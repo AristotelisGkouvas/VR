@@ -112,7 +112,7 @@ namespace QuestMarkerApp.API
             "/api/coordinates", "/api/status", "/api/logs", "/api/clear", "/api/undo", "/api/calibrate",
             "/api/calibrate/start", "/api/calibrate/status", "/api/calibrate/reset", "/api/session",
             "/api/session/new", "/api/gps-origin", "/api/anchors", "/api/layer", "/api/project",
-            "/api/project/reset", "/api/model", "/api/models"
+            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest"
         };
         private long requestCount;
         private DateTime startedAtUtc;
@@ -121,6 +121,7 @@ namespace QuestMarkerApp.API
         private string lastExportedSessionJson = "";
         // Application.persistentDataPath is main-thread only: cached in Awake for the HTTP workers.
         private string modelsDirectory = "";
+        private string fieldTestDirectory = "";
 
         public int Port => port;
         /// <summary>Per-device key every LAN client (PC bridge, scripts) must send as X-Api-Key.</summary>
@@ -140,6 +141,7 @@ namespace QuestMarkerApp.API
             allowCORS = false;
             security = new ApiSecurity(securityConfig);
             modelsDirectory = Path.Combine(Application.persistentDataPath, "models");
+            fieldTestDirectory = Path.Combine(Application.persistentDataPath, FieldTestLog.FolderName);
             if (markerManager == null) markerManager = FindAnyObjectByType<MarkerManager>();
             if (calibrationSystem == null) calibrationSystem = FindAnyObjectByType<CoordinateCalibration>();
             if (sessionManager == null) sessionManager = FindAnyObjectByType<SessionManager>();
@@ -548,7 +550,16 @@ namespace QuestMarkerApp.API
                 return HandleModelDelete(name, response);
             }
 
-            if (KnownPaths.Contains(path) || path.StartsWith("/api/coordinates/") || path.StartsWith("/api/model/"))
+            if (path == "/api/fieldtest" && method == "GET") return HandleFieldTestList(response);
+            if (path.StartsWith("/api/fieldtest/") && method == "GET")
+            {
+                string rawPath = request.Url.AbsolutePath.TrimEnd('/');
+                string name = Uri.UnescapeDataString(rawPath.Substring(rawPath.LastIndexOf('/') + 1));
+                return HandleFieldTestDownload(name, response);
+            }
+
+            if (KnownPaths.Contains(path) || path.StartsWith("/api/coordinates/") || path.StartsWith("/api/model/")
+                || path.StartsWith("/api/fieldtest/"))
             {
                 SendJson(response, 405, "{\"error\":\"Method not allowed\",\"method\":\"" + EscapeJson(method) +
                                         "\",\"path\":\"" + EscapeJson(path) + "\"}");
@@ -783,7 +794,7 @@ namespace QuestMarkerApp.API
                 "\"port\":" + port + ",\"version\":\"" + AppVersion + "\"}";
             string json = RunOnMainThread(() =>
             {
-                int markers = markerManager != null ? markerManager.ActiveMarkerCount : 0;
+                int markers = markerManager != null ? markerManager.ReportedMarkerCount : 0;
                 int max = markerManager != null ? markerManager.MaxMarkers : 0;
                 bool calibrated = calibrationSystem != null && calibrationSystem.IsCalibrated;
                 bool calibrating = calibrationSystem != null && calibrationSystem.IsCalibrating;
@@ -1532,6 +1543,100 @@ namespace QuestMarkerApp.API
             sb.Append(']');
             SendJson(response, 200, sb.ToString());
             return 200;
+        }
+
+        /// <summary>GET /api/fieldtest — the anchor field test CSVs (persistentDataPath/fieldtest).</summary>
+        private int HandleFieldTestList(HttpListenerResponse response)
+        {
+            var sb = new StringBuilder(256);
+            sb.Append('[');
+            bool first = true;
+            foreach (string file in FieldTestFiles())
+            {
+                if (!first) sb.Append(',');
+                first = false;
+                long size = 0;
+                DateTime modified = DateTime.MinValue;
+                try { var info = new FileInfo(file); size = info.Length; modified = info.LastWriteTimeUtc; } catch { /* listed bare */ }
+                sb.Append('{');
+                JsonText.AppendField(sb, "file", Path.GetFileName(file)); sb.Append(',');
+                sb.Append("\"bytes\":").Append(size).Append(',');
+                JsonText.AppendField(sb, "modifiedUtc", modified.ToString("o", System.Globalization.CultureInfo.InvariantCulture));
+                sb.Append('}');
+            }
+            sb.Append(']');
+            SendJson(response, 200, sb.ToString());
+            return 200;
+        }
+
+        /// <summary>
+        /// GET /api/fieldtest/{file} — one CSV as text/csv. The name only selects among the files
+        /// the listing returns (exact match); no path is ever built from it.
+        /// </summary>
+        private int HandleFieldTestDownload(string name, HttpListenerResponse response)
+        {
+            string match = null;
+            foreach (string file in FieldTestFiles())
+                if (string.Equals(Path.GetFileName(file), name, StringComparison.Ordinal)) { match = file; break; }
+            if (match == null)
+            {
+                SendJson(response, 404, "{\"error\":\"Field test file not found\",\"file\":\"" + EscapeJson(name) + "\"}");
+                return 404;
+            }
+
+            byte[] data;
+            try
+            {
+                // The app may be appending a row right now: share the file for writing.
+                using (var stream = new FileStream(match, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var copy = new MemoryStream())
+                {
+                    stream.CopyTo(copy);
+                    data = copy.ToArray();
+                }
+            }
+            catch (Exception e)
+            {
+                SendJson(response, 500, "{\"error\":\"Could not read file: " + EscapeJson(e.Message) + "\"}");
+                return 500;
+            }
+
+            try
+            {
+                response.StatusCode = 200;
+                response.ContentType = "text/csv; charset=utf-8";
+                response.Headers.Add("Cache-Control", "no-store");
+                response.AddHeader("Content-Disposition", "attachment; filename=\"" + Path.GetFileName(match) + "\"");
+                response.ContentLength64 = data.Length;
+                using (Stream output = response.OutputStream)
+                    output.Write(data, 0, data.Length);
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogError($"[LocalAPIServer] Response error: {e.Message}");
+            }
+            finally
+            {
+                try { response.Close(); } catch { /* */ }
+            }
+            return 200;
+        }
+
+        // Only *.csv directly in the field test folder (the per-project anchor JSONs are not served).
+        private string[] FieldTestFiles()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(fieldTestDirectory) || !Directory.Exists(fieldTestDirectory)) return Array.Empty<string>();
+                string[] files = Directory.GetFiles(fieldTestDirectory, "*.csv", SearchOption.TopDirectoryOnly);
+                Array.Sort(files, StringComparer.Ordinal);
+                return files;
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning($"[LocalAPIServer] Field test folder unreadable: {e.Message}");
+                return Array.Empty<string>();
+            }
         }
 
         /// <summary>The sidecar's fields without the outer braces, or null when absent/unusable.</summary>

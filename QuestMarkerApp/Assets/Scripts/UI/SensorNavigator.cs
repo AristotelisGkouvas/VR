@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using QuestMarkerApp.API;
+using QuestMarkerApp.Core;
 using QuestMarkerApp.Markers;
 
 namespace QuestMarkerApp.UI
@@ -43,16 +44,25 @@ namespace QuestMarkerApp.UI
             markers = markerManager;
             Build();
             Hands.OnChanged += RefreshHint;
+            L.Changed += OnLanguageChanged;
         }
 
         private void RefreshHint()
         {
-            if (hint != null) hint.text = $"{Hands.SecondaryName}: διακοπή πλοήγησης";
+            if (hint != null) hint.text = L.En ? $"{Hands.SecondaryName}: stop navigation" : $"{Hands.SecondaryName}: διακοπή πλοήγησης";
+        }
+
+        // Title and detail are rewritten on the next frame once their key is reset.
+        private void OnLanguageChanged()
+        {
+            RefreshHint();
+            textKey = int.MinValue;
         }
 
         private void OnDestroy()
         {
             Hands.OnChanged -= RefreshHint;
+            L.Changed -= OnLanguageChanged;
             if (IsActive) { IsActive = false; TargetName = null; }
         }
 
@@ -187,7 +197,7 @@ namespace QuestMarkerApp.UI
                 if (!markers.ActiveMarkers.TryGetValue(targetId, out targetMarker) || targetMarker == null)
                 {
                     title.text = TargetName;
-                    detail.text = "Ο αισθητήρας δεν φαίνεται — ευθυγράμμισε το έργο";
+                    detail.text = L.En ? "Sensor not visible — align the project" : "Ο αισθητήρας δεν φαίνεται — ευθυγράμμισε το έργο";
                     PlaceGuide(cam, cam.transform.forward);
                     return;
                 }
@@ -224,9 +234,9 @@ namespace QuestMarkerApp.UI
             {
                 textKey = key;
                 textArrived = arrived;
-                title.text = arrived ? $"Έφτασες · {TargetName}" : TargetName;
+                title.text = arrived ? (L.En ? $"Arrived · {TargetName}" : $"Έφτασες · {TargetName}") : TargetName;
                 detail.text = arrived
-                    ? $"{(dh >= 0 ? "+" : "")}{dh:F2} m από τα μάτια σου"
+                    ? (L.En ? $"{(dh >= 0 ? "+" : "")}{dh:F2} m from eye level" : $"{(dh >= 0 ? "+" : "")}{dh:F2} m από τα μάτια σου")
                     : $"{(horizontal < 10f ? horizontal.ToString("F1") : horizontal.ToString("F0"))} m   ·   "
                       + $"{(dh >= 0 ? "↑" : "↓")} {Mathf.Abs(dh):F1} m";
             }

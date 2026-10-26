@@ -102,18 +102,19 @@ namespace QuestMarkerApp.Core
         private bool toastVisible;
         private float toastShownAt;
 
-        /// <summary>Short line for the main menu, in Greek.</summary>
+        /// <summary>Short line for the main menu, in the interface language.</summary>
         public string Status
         {
             get
             {
-                if (!Enabled) return "Ανενεργό";
-                if (!Connected) return "Χωρίς σύνδεση";
-                if (requesting) return "Ενημέρωση…";
+                if (!Enabled) return L.T("Ανενεργό", "Off");
+                if (!Connected) return L.T("Χωρίς σύνδεση", "Not connected");
+                if (requesting) return L.T("Ενημέρωση…", "Updating…");
                 if (lastError != null) return lastError;
-                if (lastSuccess < 0f) return "Ενημέρωση…";
+                if (lastSuccess < 0f) return L.T("Ενημέρωση…", "Updating…");
                 int seconds = (int)(Time.unscaledTime - lastSuccess);
                 int key = seconds < 60 ? seconds : seconds < 3600 ? 1000 + seconds / 60 : 100000 + seconds / 3600;
+                key = key * 2 + (L.En ? 1 : 0); // a language change rewrites the cached text
                 if (key != ageKey)
                 {
                     ageKey = key;
@@ -125,11 +126,11 @@ namespace QuestMarkerApp.Core
 
         private static string Ago(int seconds)
         {
-            if (seconds < 60) return $"πριν {seconds} δευτ.";
+            if (seconds < 60) return L.En ? $"{seconds} s ago" : $"πριν {seconds} δευτ.";
             int minutes = seconds / 60;
-            if (minutes < 60) return minutes == 1 ? "πριν 1 λεπτό" : $"πριν {minutes} λεπτά";
+            if (minutes < 60) return minutes == 1 ? L.T("πριν 1 λεπτό", "1 min ago") : L.En ? $"{minutes} min ago" : $"πριν {minutes} λεπτά";
             int hours = minutes / 60;
-            return hours == 1 ? "πριν 1 ώρα" : $"πριν {hours} ώρες";
+            return hours == 1 ? L.T("πριν 1 ώρα", "1 hour ago") : L.En ? $"{hours} hours ago" : $"πριν {hours} ώρες";
         }
 
         /// <summary>Events are scoped to the server's current project: it must be the one in the room.</summary>
@@ -216,7 +217,7 @@ namespace QuestMarkerApp.Core
             if (error != null)
             {
                 failures++;
-                lastError = "Σφάλμα: " + Shorten(error, 48);
+                lastError = L.T("Σφάλμα: ", "Error: ") + Shorten(error, 48);
                 Debug.LogWarning($"[LiveAlerts] Poll failed ({failures}): {error}");
                 yield break;
             }
@@ -300,7 +301,7 @@ namespace QuestMarkerApp.Core
             {
                 int top = RankNone;
                 foreach (Change c in changes) top = Math.Max(top, c.To);
-                Enqueue($"{changes.Count} αλλαγές συναγερμών", DotColor(top));
+                Enqueue(L.T($"{changes.Count} αλλαγές συναγερμών", $"{changes.Count} alert changes"), DotColor(top));
             }
             foreach (Change c in changes)
             {
@@ -311,8 +312,8 @@ namespace QuestMarkerApp.Core
                 if (changes.Count <= BatchThreshold)
                 {
                     Enqueue(string.IsNullOrEmpty(detail)
-                            ? $"<b>{name}</b> · {TierGreek(c.To)}"
-                            : $"<b>{name}</b> · {TierGreek(c.To)} · {detail}",
+                            ? $"<b>{name}</b> · {TierLabel(c.To)}"
+                            : $"<b>{name}</b> · {TierLabel(c.To)} · {detail}",
                         DotColor(c.To));
                 }
                 OnTierChanged?.Invoke(name, tier, detail);
@@ -341,14 +342,15 @@ namespace QuestMarkerApp.Core
             }
         }
 
-        private static string TierGreek(int rank)
+        // The tier names are the same in both languages (the terms the backend and the web use).
+        private static string TierLabel(int rank)
         {
             switch (rank)
             {
-                case RankAlarm: return "Συναγερμός";
-                case RankAlert: return "Προειδοποίηση";
-                case RankReference: return "Αναφορά";
-                default: return "Κανονικό";
+                case RankAlarm: return "alarm";
+                case RankAlert: return "alert";
+                case RankReference: return "reference";
+                default: return "normal";
             }
         }
 
@@ -380,7 +382,7 @@ namespace QuestMarkerApp.Core
             string field = (string)best["field"] ?? "";
             string value = Number(best["value"]).ToString("+0.0;-0.0", CultureInfo.InvariantCulture);
             string limit = Number(best["limit"]).ToString("0.0##", CultureInfo.InvariantCulture);
-            return $"{field} {value} mm (όριο {limit})";
+            return L.T($"{field} {value} mm (όριο {limit})", $"{field} {value} mm (limit {limit})");
         }
 
         // The backend serialises decimals as strings in places; take either.

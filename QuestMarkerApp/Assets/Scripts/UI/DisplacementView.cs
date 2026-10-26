@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using TMPro;
 using Unity.Collections;
 using UnityEngine;
@@ -103,6 +104,16 @@ namespace QuestMarkerApp.UI
             // A named handler, so OnDestroy can unsubscribe (the lambda kept this view alive).
             project.OnAlignmentChanged += OnAlignmentChanged;
             Hands.OnChanged += RefreshHint;
+            L.Changed += OnLanguageChanged;
+        }
+
+        // The hint now; the HUD texts on the next frame once their keys are reset.
+        private void OnLanguageChanged()
+        {
+            RefreshHint();
+            hudScaleShown = float.NaN;
+            hudDateShown = DateTime.MinValue;
+            if (IsActive) SetConstantTexts();
         }
 
         private void OnAlignmentChanged()
@@ -115,16 +126,18 @@ namespace QuestMarkerApp.UI
         private void RefreshHint()
         {
             if (hudHint != null)
-                hudHint.text = $"{Hands.PrimaryName} αναπαραγωγή · stick δεξιά-αριστερά: χρόνος · πάνω-κάτω: κλίμακα · {Hands.SecondaryName} έξοδος";
+                hudHint.text = L.En
+                    ? $"{Hands.PrimaryName} play · stick left-right: time · up-down: scale · {Hands.SecondaryName} exit"
+                    : $"{Hands.PrimaryName} αναπαραγωγή · stick δεξιά-αριστερά: χρόνος · πάνω-κάτω: κλίμακα · {Hands.SecondaryName} έξοδος";
         }
 
         /// <summary>Why it can't open right now, or null when it can.</summary>
         public string Unavailable()
         {
-            if (project == null || !project.HasProject) return "Φόρτωσε έργο από Terraweb";
+            if (project == null || !project.HasProject) return L.T("Φόρτωσε έργο από Terraweb", "Load a project from Terraweb");
             if (!SensorHistory.HasDisplacements || SensorHistory.ProjectId != project.TerrawebProjectId)
-                return "Χωρίς ιστορικό · φόρτωσε ξανά το έργο";
-            if (!project.IsAligned) return "Μετά την ευθυγράμμιση";
+                return L.T("Χωρίς ιστορικό · φόρτωσε ξανά το έργο", "No history · reload the project");
+            if (!project.IsAligned) return L.T("Μετά την ευθυγράμμιση", "Align first");
             return null;
         }
 
@@ -155,10 +168,7 @@ namespace QuestMarkerApp.UI
             IsActive = true;
             hudSnap = true; // it used to glide in from wherever it was last closed (or the origin)
             hud.gameObject.SetActive(true);
-            hudCount.text = $"{items.Count} σημεία";
-            // Constant while open.
-            hudFrom.text = Format(SensorHistory.First);
-            hudTo.text = Format(SensorHistory.Last);
+            SetConstantTexts();
             hudScaleShown = float.NaN;
             hudDateShown = DateTime.MinValue;
             hudProgressShown = -1f;
@@ -186,9 +196,18 @@ namespace QuestMarkerApp.UI
             if (hud != null) hud.gameObject.SetActive(false);
         }
 
+        // Constant while open (and re-set on a language change).
+        private void SetConstantTexts()
+        {
+            hudCount.text = L.En ? (items.Count == 1 ? "1 point" : $"{items.Count} points") : $"{items.Count} σημεία";
+            hudFrom.text = Format(SensorHistory.First);
+            hudTo.text = Format(SensorHistory.Last);
+        }
+
         private void OnDestroy()
         {
             Hands.OnChanged -= RefreshHint;
+            L.Changed -= OnLanguageChanged;
             if (project != null) project.OnAlignmentChanged -= OnAlignmentChanged;
             IsActive = false;
             foreach (Item it in items)
@@ -586,7 +605,7 @@ namespace QuestMarkerApp.UI
             if (scale != hudScaleShown)
             {
                 hudScaleShown = scale;
-                hudTitle.text = $"Μετακινήσεις · ×{scale:0}";
+                hudTitle.text = L.En ? $"Displacements · ×{scale:0}" : $"Μετακινήσεις · ×{scale:0}";
             }
             DateTime day = at.Date;
             if (day != hudDateShown)
@@ -606,6 +625,9 @@ namespace QuestMarkerApp.UI
             }
         }
 
-        private static string Format(DateTime d) => $"{d.Day} {Months[d.Month - 1]} {d.Year}";
+        // English: "4 Jul 2026" from the invariant culture's month names (always present on device).
+        private static string Format(DateTime d) => L.En
+            ? d.ToString("d MMM yyyy", CultureInfo.InvariantCulture)
+            : $"{d.Day} {Months[d.Month - 1]} {d.Year}";
     }
 }

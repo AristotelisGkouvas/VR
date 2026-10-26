@@ -137,7 +137,8 @@ namespace QuestMarkerApp.Core
             if (anchor != ovrAnchor) yield break;
             if (anchor == null || !created.GetResult())
             {
-                Fail("Το spatial anchor δεν δημιουργήθηκε (υποστήριξη anchors / άδεια;)");
+                Fail(L.T("Το spatial anchor δεν δημιουργήθηκε (υποστήριξη anchors / άδεια;)",
+                    "Spatial anchor not created (anchor support / permission?)"));
                 yield break;
             }
 
@@ -146,12 +147,18 @@ namespace QuestMarkerApp.Core
             if (anchor == null || anchor != ovrAnchor) yield break; // replaced meanwhile
             if (!save.GetResult().Success)
             {
-                Fail("Αποθήκευση spatial anchor απέτυχε: " + save.GetResult().Status);
+                Fail(L.T("Αποθήκευση spatial anchor απέτυχε: ", "Saving the spatial anchor failed: ") + save.GetResult().Status);
                 yield break;
             }
 
             referenceUuid = anchor.Uuid.ToString();
             persistent = true;
+            // The UUID we overwrite was the only record of the previous saved anchor (one that
+            // failed to localise, so it was never bound and ReplaceAnchorObject could not erase
+            // it): erase it by UUID rather than leave it orphaned on the headset.
+            if (Guid.TryParse(PlayerPrefs.GetString(PrefUuid, ""), out Guid previous)
+                && previous != Guid.Empty && previous != anchor.Uuid)
+                OVRSpatialAnchor.EraseAnchorsAsync(Array.Empty<OVRSpatialAnchor>(), new[] { previous });
             PlayerPrefs.SetString(PrefUuid, referenceUuid);
             PlayerPrefs.Save();
             Debug.Log($"[SpatialAnchor] Saved reference anchor {referenceUuid}");
@@ -200,7 +207,7 @@ namespace QuestMarkerApp.Core
             }
             catch (Exception e)
             {
-                Fail("Σύνδεση spatial anchor απέτυχε: " + e.Message);
+                Fail(L.T("Σύνδεση spatial anchor απέτυχε: ", "Attaching the spatial anchor failed: ") + e.Message);
                 done(false);
                 yield break;
             }

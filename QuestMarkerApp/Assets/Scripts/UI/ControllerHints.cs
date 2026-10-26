@@ -127,8 +127,19 @@ namespace QuestMarkerApp.UI
             set => SetPref(ref seenMenu, "ui.seenMenu", !value);
         }
 
+        /// <summary>What a guide step asks the hand to press (Onboarding). Roles, not sides.</summary>
+        public enum Spot { None, Trigger, BothTriggers, Menu, Back }
+
+        /// <summary>
+        /// The button the current guide step asks for pulses (1.0 → 1.25, 1.2 s) and keeps its
+        /// label up, so "press X" sits on the X itself. Menu also lights the off-hand primary,
+        /// which opens the menu too. Set by Onboarding; None otherwise.
+        /// </summary>
+        public static Spot Spotlight { get; set; }
+
         private ProjectAlignment project;
         private ControllerButtonPoses poses;
+        private Spot spot;
         private readonly HandView left = new HandView { IsLeft = true };
         private readonly HandView right = new HandView { IsLeft = false };
         private string context;
@@ -170,7 +181,13 @@ namespace QuestMarkerApp.UI
             right.Root.SetParent(transform, false);
             left.Model = LoadModel("TouchPlusLeft", left.Root);
             right.Model = LoadModel("TouchPlusRight", right.Root);
+            L.Changed += OnLanguageChanged;
         }
+
+        // Labels are laid out once per map: forget the context so LateUpdate rebuilds them.
+        private void OnLanguageChanged() => context = null;
+
+        private void OnDestroy() => L.Changed -= OnLanguageChanged;
 
         private static Transform LoadModel(string name, Transform parent)
         {
@@ -204,15 +221,17 @@ namespace QuestMarkerApp.UI
             bool voiceOn = VoiceCommands.Enabled;
             bool walkOn = Models.ModelOverlay.WalkActive;
             if (ctx != context || handedness != Hands.LeftHanded || timeMachine != time || voice != voiceOn
-                || walk != walkOn)
+                || walk != walkOn || spot != Spotlight)
             {
                 context = ctx;
                 timeMachine = time;
                 voice = voiceOn;
                 walk = walkOn;
+                spot = Spotlight;
                 // Roles, not sides: the pointing hand gets the pointer map.
                 List<(Button, string, string, bool)> offMap = LeftMap(ctx), domMap = RightMap(ctx);
                 if (walkOn) AddWalk(offMap, domMap);
+                AddSpot(offMap, domMap);
                 Rebuild(left, poses.left, Hands.LeftHanded ? domMap : offMap);
                 Rebuild(right, poses.right, Hands.LeftHanded ? offMap : domMap);
                 handedness = Hands.LeftHanded;
@@ -245,10 +264,13 @@ namespace QuestMarkerApp.UI
             Vector3 up = Vector3.ProjectOnPlane(head.up, head.forward).normalized;
 
             bool firstRun = FirstRun;
+            bool dominant = hand.IsLeft == Hands.LeftHanded;
             int visible = 0;
             foreach (Badge b in hand.Badges)
-                if (AlwaysShowLabels || firstRun || Touched(b.Button, c)) visible++;
+                if (AlwaysShowLabels || firstRun || Spotlit(b.Button, dominant) || Touched(b.Button, c)) visible++;
             float top = (visible - 1) * LabelRow * 0.5f;
+            // Smooth swell and back, no blinking.
+            float pulse = 1f + 0.25f * (0.5f - 0.5f * Mathf.Cos(Time.unscaledTime * (2f * Mathf.PI / 1.2f)));
 
             int row = 0;
             foreach (Badge b in hand.Badges) // already ordered top-to-bottom on the controller
@@ -257,13 +279,27 @@ namespace QuestMarkerApp.UI
                 Vector3 p = anchor.TransformPoint(local);
                 b.Icon.position = p;
                 b.Icon.rotation = Quaternion.LookRotation(p - head.position, head.up);
+                bool lit = Spotlit(b.Button, dominant);
+                b.Icon.localScale = Vector3.one * (lit ? pulse : 1f);
 
-                bool label = AlwaysShowLabels || firstRun || Touched(b.Button, c);
+                bool label = AlwaysShowLabels || firstRun || lit || Touched(b.Button, c);
                 if (b.Label.gameObject.activeSelf != label) b.Label.gameObject.SetActive(label);
                 if (!label) continue;
                 b.Label.position = anchor.position + side * LabelColumn + up * (top - row * LabelRow);
                 b.Label.rotation = Quaternion.LookRotation(b.Label.position - head.position, head.up);
                 row++;
+            }
+        }
+
+        private static bool Spotlit(Button b, bool dominant)
+        {
+            switch (Spotlight)
+            {
+                case Spot.Trigger: return b == Button.Trigger && dominant;
+                case Spot.BothTriggers: return b == Button.Trigger;
+                case Spot.Menu: return b == Button.Menu || (b == Button.Primary && !dominant);
+                case Spot.Back: return b == Button.Secondary && dominant;
+                default: return false;
             }
         }
 
@@ -296,59 +332,59 @@ namespace QuestMarkerApp.UI
                 case "form":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Thumbstick, "sort", ctx == "form" ? "Πεδίο" : "Πλοήγηση", false),
-                        (Button.Menu, "close", "Κλείσιμο", false)
+                        (Button.Thumbstick, "sort", ctx == "form" ? L.T("Πεδίο", "Field") : L.T("Πλοήγηση", "Navigate"), false),
+                        (Button.Menu, "close", L.T("Κλείσιμο", "Close"), false)
                     };
                 case "card":
                 case "keyboard":
                     return new List<(Button, string, string, bool)>
-                        { (Button.Menu, "close", ctx == "keyboard" ? "Ακύρωση" : "Κλείσιμο", false) };
+                        { (Button.Menu, "close", ctx == "keyboard" ? L.T("Ακύρωση", "Cancel") : L.T("Κλείσιμο", "Close"), false) };
                 case "align":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "list", "Κλείσιμο ευθυγρ.", false),
-                        (Button.Thumbstick, "sort", "Επιλογή αισθητήρα", false),
-                        (Button.Menu, "menu", "Μενού", false)
+                        (Button.Primary, "list", L.T("Κλείσιμο ευθυγρ.", "Close alignment"), false),
+                        (Button.Thumbstick, "sort", L.T("Επιλογή αισθητήρα", "Select sensor"), false),
+                        (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     };
                 case "project":
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "menu", "Μενού", false),
-                        (Button.Menu, "menu", "Μενού", false)
+                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
+                        (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     });
                 case "route":
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "menu", "Μενού", false),
-                        (Button.Menu, "menu", "Μενού / διακοπή", false)
+                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
+                        (Button.Menu, "menu", L.T("Μενού / διακοπή", "Menu / stop"), false)
                     });
                 case "nav":
                     {
                         var map = new List<(Button, string, string, bool)>
                         {
-                            (Button.Primary, "menu", "Μενού", false),
-                            (Button.Menu, "menu", "Μενού", false)
+                            (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
+                            (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                         };
-                        if (DisplacementView.IsActive) map.Add((Button.Thumbstick, "clock", "Χρόνος / κλίμακα", false));
+                        if (DisplacementView.IsActive) map.Add((Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false));
                         else WithVoice(map);
                         return map;
                     }
                 case "time":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "menu", "Μενού", false),
-                        (Button.Thumbstick, "clock", "Χρόνος / κλίμακα", false),
-                        (Button.Menu, "menu", "Μενού", false)
+                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
+                        (Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false),
+                        (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     };
                 case "message":
                     return new List<(Button, string, string, bool)>
-                        { (Button.Menu, "close", "Κλείσιμο", false) };
+                        { (Button.Menu, "close", L.T("Κλείσιμο", "Close"), false) };
                 default:
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "history", "Αναίρεση", false),
-                        (Button.Primary, "menu", "Μενού", false),
-                        (Button.Menu, "menu", "Μενού", false)
+                        (Button.Secondary, "history", L.T("Αναίρεση", "Undo"), false),
+                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
+                        (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     });
             }
         }
@@ -357,7 +393,7 @@ namespace QuestMarkerApp.UI
         // buttons. It used to be labelled in the project view only, and even with voice off.
         private static List<(Button, string, string, bool)> WithVoice(List<(Button, string, string, bool)> map)
         {
-            if (VoiceCommands.Enabled) map.Add((Button.Thumbstick, "edit", "Κράτα κλικ: φωνή", false));
+            if (VoiceCommands.Enabled) map.Add((Button.Thumbstick, "edit", L.T("Κράτα κλικ: φωνή", "Hold click: voice"), false));
             return map;
         }
 
@@ -366,10 +402,20 @@ namespace QuestMarkerApp.UI
         private static void AddWalk(List<(Button, string, string, bool)> offMap, List<(Button, string, string, bool)> domMap)
         {
             int voiceRow = offMap.FindIndex(e => e.Item1 == Button.Thumbstick);
-            if (voiceRow >= 0) offMap[voiceRow] = (Button.Thumbstick, "compass", "Κίνηση · κράτα κλικ: φωνή", false);
-            else offMap.Add((Button.Thumbstick, "compass", "Κίνηση στο μοντέλο", false));
+            if (voiceRow >= 0) offMap[voiceRow] = (Button.Thumbstick, "compass", L.T("Κίνηση · κράτα κλικ: φωνή", "Move · hold click: voice"), false);
+            else offMap.Add((Button.Thumbstick, "compass", L.T("Κίνηση στο μοντέλο", "Move in model"), false));
             domMap.RemoveAll(e => e.Item1 == Button.Thumbstick);
-            domMap.Add((Button.Thumbstick, "history", "Στροφή 30°", false));
+            domMap.Add((Button.Thumbstick, "history", L.T("Στροφή 30°", "Turn 30°"), false));
+        }
+
+        // A guide step can ask for the trigger where the context map leaves it bare (no project
+        // loaded yet): give it a badge, so the spotlight has something to pulse.
+        private static void AddSpot(List<(Button, string, string, bool)> offMap, List<(Button, string, string, bool)> domMap)
+        {
+            bool both = Spotlight == Spot.BothTriggers;
+            if (Spotlight != Spot.Trigger && !both) return;
+            if (!domMap.Exists(e => e.Item1 == Button.Trigger)) domMap.Add((Button.Trigger, "check", L.T("Πάτα", "Press"), false));
+            if (both && !offMap.Exists(e => e.Item1 == Button.Trigger)) offMap.Add((Button.Trigger, "check", L.T("Πάτα", "Press"), false));
         }
 
         private static List<(Button, string, string, bool)> RightMap(string ctx)
@@ -380,84 +426,84 @@ namespace QuestMarkerApp.UI
                 case "list":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "chevron-right", "Πίσω / Κλείσιμο", true),
-                        (Button.Primary, "check", "Επιλογή", false),
-                        (Button.Thumbstick, "sort", "Πλοήγηση", false),
-                        (Button.Trigger, "check", "Κλικ / Επιλογή", false)
+                        (Button.Secondary, "chevron-right", L.T("Πίσω / Κλείσιμο", "Back / close"), true),
+                        (Button.Primary, "check", L.T("Επιλογή", "Select"), false),
+                        (Button.Thumbstick, "sort", L.T("Πλοήγηση", "Navigate"), false),
+                        (Button.Trigger, "check", L.T("Κλικ / Επιλογή", "Click / select"), false)
                     };
                 case "form":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "chevron-right", "Πίσω", true),
-                        (Button.Primary, "edit", "Επεξεργασία πεδίου", false),
-                        (Button.Thumbstick, "sort", "Πεδίο", false),
-                        (Button.Trigger, "check", "Κλικ / Επεξεργασία", false)
+                        (Button.Secondary, "chevron-right", L.T("Πίσω", "Back"), true),
+                        (Button.Primary, "edit", L.T("Επεξεργασία πεδίου", "Edit field"), false),
+                        (Button.Thumbstick, "sort", L.T("Πεδίο", "Field"), false),
+                        (Button.Trigger, "check", L.T("Κλικ / Επεξεργασία", "Click / edit"), false)
                     };
                 case "card":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "close", "Κλείσιμο", false),
-                        (Button.Primary, "compass", "Πλοήγηση εδώ", false),
+                        (Button.Secondary, "close", L.T("Κλείσιμο", "Close"), false),
+                        (Button.Primary, "compass", L.T("Πλοήγηση εδώ", "Navigate here"), false),
                         // Aimed at another sensor, the trigger switches the card (MarkerAppController).
-                        (Button.Trigger, "check", "Κλικ / άλλος αισθητήρας", false)
+                        (Button.Trigger, "check", L.T("Κλικ / άλλος αισθητήρας", "Click / other sensor"), false)
                     };
                 case "keyboard":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "close", "Ακύρωση", false),
+                        (Button.Secondary, "close", L.T("Ακύρωση", "Cancel"), false),
                         (Button.Primary, "check", "OK", false),
-                        (Button.Trigger, "check", "Πάτα πλήκτρο", false)
+                        (Button.Trigger, "check", L.T("Πάτα πλήκτρο", "Press key"), false)
                     };
                 case "align":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "history", "Αναίρεση σημείου", false),
-                        (Button.Trigger, "pin", "Τοποθέτηση στη μύτη", false)
+                        (Button.Secondary, "history", L.T("Αναίρεση σημείου", "Undo point"), false),
+                        (Button.Trigger, "pin", L.T("Τοποθέτηση στη μύτη", "Place at tip"), false)
                     };
                 case "project":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Trigger, "info", "Καρτέλα αισθητήρα", false)
+                        (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false)
                     };
                 case "route":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "chevron-right", "Παράλειψη σημείου", false),
-                        (Button.Trigger, "info", "Καρτέλα αισθητήρα", false)
+                        (Button.Secondary, "chevron-right", L.T("Παράλειψη σημείου", "Skip point"), false),
+                        (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false)
                     };
                 case "nav":
                     {
                         var map = new List<(Button, string, string, bool)>
                         {
-                            (Button.Secondary, "close", "Διακοπή πλοήγησης", false),
-                            (Button.Trigger, "info", "Καρτέλα αισθητήρα", false)
+                            (Button.Secondary, "close", L.T("Διακοπή πλοήγησης", "Stop navigation"), false),
+                            (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false)
                         };
                         if (DisplacementView.IsActive)
                         {
-                            map.Add((Button.Primary, "play", "Αναπαραγωγή / Παύση", false));
-                            map.Add((Button.Thumbstick, "clock", "Χρόνος / κλίμακα", false));
+                            map.Add((Button.Primary, "play", L.T("Αναπαραγωγή / Παύση", "Play / pause"), false));
+                            map.Add((Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false));
                         }
                         return map;
                     }
                 case "time":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "close", "Έξοδος χρονομηχανής", false),
-                        (Button.Primary, "play", "Αναπαραγωγή / Παύση", false),
-                        (Button.Thumbstick, "clock", "Χρόνος / κλίμακα", false),
-                        (Button.Trigger, "info", "Καρτέλα αισθητήρα", false)
+                        (Button.Secondary, "close", L.T("Έξοδος χρονομηχανής", "Exit time machine"), false),
+                        (Button.Primary, "play", L.T("Αναπαραγωγή / Παύση", "Play / pause"), false),
+                        (Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false),
+                        (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false)
                     };
                 case "message":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "close", "Πίσω", false),
+                        (Button.Secondary, "close", L.T("Πίσω", "Back"), false),
                         (Button.Primary, "check", "OK", false)
                     };
                 default:
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "trash", "Καθαρισμός όλων", false),
-                        (Button.Primary, "location", "Αρχή (0,0,0) εδώ", false)
+                        (Button.Secondary, "trash", L.T("Καθαρισμός όλων", "Clear all"), false),
+                        (Button.Primary, "location", L.T("Αρχή (0,0,0) εδώ", "Origin (0,0,0) here"), false)
                     };
             }
         }
@@ -478,7 +524,7 @@ namespace QuestMarkerApp.UI
 
             if (hand.IsLeft == Hands.LeftHanded && context != "basic" && context != "project" && context != "time"
                 && context != "nav" && context != "route")
-                map.Add((Button.Grip, "pin", "Κράτα: μετακίνηση", false));
+                map.Add((Button.Grip, "pin", L.T("Κράτα: μετακίνηση", "Hold: move"), false));
             map.Sort((a, b) => a.button.CompareTo(b.button)); // top of the controller first
             foreach (var (button, icon, action, mirror) in map)
             {

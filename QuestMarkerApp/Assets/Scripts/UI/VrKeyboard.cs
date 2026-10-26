@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -61,6 +62,8 @@ namespace QuestMarkerApp.UI
         private TextMeshProUGUI caption, field;
         private readonly List<TextMeshProUGUI> keyLabels = new List<TextMeshProUGUI>();
         private TextMeshProUGUI shiftLabel, modeLabel;
+        // Built once and reused: their words are set again on every open, in the current language.
+        private TextMeshProUGUI spaceLabel, backLabel, cancelLabel;
         private string value = "";
         private bool secret, shift, capsLock, symbols, reveal;
         private float lastShiftTap = -1f;
@@ -78,6 +81,9 @@ namespace QuestMarkerApp.UI
             onDone = done;
             onCancel = cancel;
             caption.text = label;
+            spaceLabel.text = L.T("κενό", "space");
+            backLabel.text = L.T("Διαγρ.", "Delete");
+            cancelLabel.text = L.T("Άκυρο", "Cancel");
             active = this;
             IsOpen = true;
             openedFrame = Time.frameCount;
@@ -144,9 +150,12 @@ namespace QuestMarkerApp.UI
             shiftLabel = shiftKey.GetComponentInChildren<TextMeshProUGUI>();
             RectTransform modeKey = VrUi.Button("Mode", root, x0 + 102, by, 80, KeyH, null, "#+=", () => { symbols = !symbols; RefreshKeys(); });
             modeLabel = modeKey.GetComponentInChildren<TextMeshProUGUI>();
-            VrUi.Button("Space", root, x0 + 188, by, 130, KeyH, null, "κενό", () => Type(" "));
-            VrUi.Button("Back", root, x0 + 324, by, 86, KeyH, null, "Διαγρ.", Backspace);
-            VrUi.Button("Cancel", root, Width - Pad - 2 * 76 - 6, by, 76, KeyH, null, "Άκυρο", Cancel);
+            spaceLabel = VrUi.Button("Space", root, x0 + 188, by, 130, KeyH, null, " ", () => Type(" "))
+                .GetComponentInChildren<TextMeshProUGUI>();
+            backLabel = VrUi.Button("Back", root, x0 + 324, by, 86, KeyH, null, " ", Backspace)
+                .GetComponentInChildren<TextMeshProUGUI>();
+            cancelLabel = VrUi.Button("Cancel", root, Width - Pad - 2 * 76 - 6, by, 76, KeyH, null, " ", Cancel)
+                .GetComponentInChildren<TextMeshProUGUI>();
             VrUi.Button("Done", root, Width - Pad - 76, by, 76, KeyH, null, "OK", Submit, true);
             root.gameObject.SetActive(false);
         }

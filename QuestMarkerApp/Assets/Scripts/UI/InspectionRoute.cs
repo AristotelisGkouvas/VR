@@ -92,16 +92,27 @@ namespace QuestMarkerApp.UI
             flowPanel = panel;
             Build();
             Hands.OnChanged += RefreshHint;
+            L.Changed += OnLanguageChanged;
         }
 
         private void RefreshHint()
         {
-            if (hint != null) hint.text = $"{Hands.SecondaryName}: παράλειψη   ·   Μενού: διακοπή";
+            if (hint != null)
+                hint.text = L.En ? $"{Hands.SecondaryName}: skip   ·   Menu: stop" : $"{Hands.SecondaryName}: παράλειψη   ·   Μενού: διακοπή";
+        }
+
+        // The HUD texts are rewritten on the next frame once their keys are reset.
+        private void OnLanguageChanged()
+        {
+            RefreshHint();
+            textKey = int.MinValue;
+            textMissing = false;
         }
 
         private void OnDestroy()
         {
             Hands.OnChanged -= RefreshHint;
+            L.Changed -= OnLanguageChanged;
             Cleanup();
             if (arrowMesh != null) Destroy(arrowMesh);
             if (arrowFar != null) Destroy(arrowFar);
@@ -115,14 +126,14 @@ namespace QuestMarkerApp.UI
         /// <summary>Why a route cannot start right now; null when it can.</summary>
         public string Unavailable(bool alertsOnly = false)
         {
-            if (alignment == null || !alignment.HasProject) return "Χωρίς έργο";
-            if (!alignment.IsAligned) return "Πρώτα ευθυγράμμιση";
+            if (alignment == null || !alignment.HasProject) return L.T("Χωρίς έργο", "No project");
+            if (!alignment.IsAligned) return L.T("Πρώτα ευθυγράμμιση", "Align first");
             if (alertsOnly)
             {
                 bool any = false;
                 foreach (ProjectPoint p in alignment.Points)
                     if (IsAlarm(p) || IsAlert(p)) { any = true; break; }
-                if (!any) return "Κανένας αισθητήρας σε συναγερμό";
+                if (!any) return L.T("Κανένας αισθητήρας σε συναγερμό", "No sensors in alarm");
             }
             return null;
         }
@@ -135,7 +146,7 @@ namespace QuestMarkerApp.UI
             foreach (ProjectPoint p in alignment.Points) if (IsAlarm(p)) list.Add(p);
             int alarms = list.Count;
             foreach (ProjectPoint p in alignment.Points) if (IsAlert(p)) list.Add(p);
-            Begin(list, "Συναγερμοί", alarms);
+            Begin(list, L.T("Συναγερμοί", "Alarms"), alarms);
         }
 
         public void StartAll()
@@ -143,7 +154,7 @@ namespace QuestMarkerApp.UI
             if (alignment == null) return;
             var list = new List<ProjectPoint>();
             foreach (ProjectPoint p in alignment.Points) if (p != null) list.Add(p);
-            Begin(list, "Όλοι οι αισθητήρες", 0);
+            Begin(list, L.T("Όλοι οι αισθητήρες", "All sensors"), 0);
         }
 
         /// <summary>A caller-chosen set; the walking order is still solved from where the user stands.</summary>
@@ -399,7 +410,7 @@ namespace QuestMarkerApp.UI
                     {
                         textMissing = true;
                         textKey = int.MinValue;
-                        detail.text = "Ο αισθητήρας δεν φαίνεται — ευθυγράμμισε το έργο";
+                        detail.text = L.T("Ο αισθητήρας δεν φαίνεται — ευθυγράμμισε το έργο", "Sensor not visible — align the project");
                     }
                     RefreshTitle();
                     RefreshFill();
@@ -440,7 +451,7 @@ namespace QuestMarkerApp.UI
             {
                 textKey = key;
                 detail.text = horizontal <= ArrivedWithin
-                    ? $"Έφτασες   ·   {(dh >= 0 ? "↑" : "↓")} {Mathf.Abs(dh):F1} m"
+                    ? (L.En ? $"Arrived   ·   {(dh >= 0 ? "↑" : "↓")} {Mathf.Abs(dh):F1} m" : $"Έφτασες   ·   {(dh >= 0 ? "↑" : "↓")} {Mathf.Abs(dh):F1} m")
                     : $"{(horizontal < 10f ? horizontal.ToString("F1") : horizontal.ToString("F0"))} m   ·   "
                       + $"{(dh >= 0 ? "↑" : "↓")} {Mathf.Abs(dh):F1} m";
             }
@@ -554,30 +565,36 @@ namespace QuestMarkerApp.UI
                 else normal++;
             }
 
-            string heading = $"{(completed ? "Ολοκληρώθηκε" : "Διακόπηκε")} · {visited} από {stops.Count}";
+            // The summary is shown and also written to the .txt, both in the interface language;
+            // the JSON keeps the state codes.
+            string heading = L.En
+                ? $"{(completed ? "Completed" : "Stopped")} · {visited} of {stops.Count}"
+                : $"{(completed ? "Ολοκληρώθηκε" : "Διακόπηκε")} · {visited} από {stops.Count}";
             var lines = new List<string>
             {
-                $"Διάρκεια {Duration(finishedAt - startedAt)}",
-                $"Συναγερμός {alarms}   ·   Προειδοποίηση {alerts}   ·   Κανονικό {normal}"
+                L.T("Διάρκεια ", "Duration ") + Duration(finishedAt - startedAt),
+                L.En
+                    ? $"Alarm {alarms}   ·   Alert {alerts}   ·   Reference {normal}"
+                    : $"Συναγερμός {alarms}   ·   Προειδοποίηση {alerts}   ·   Κανονικό {normal}"
             };
-            if (skipped.Count > 0) lines.Add("Παραλείφθηκαν: " + string.Join(", ", skipped));
+            if (skipped.Count > 0) lines.Add(L.T("Παραλείφθηκαν: ", "Skipped: ") + string.Join(", ", skipped));
 
             string file = Save(completed, finishedAt, heading, lines);
-            if (file != null) lines.Add("Αρχείο: " + Path.GetFileName(file));
-            else lines.Add("Η αναφορά δεν αποθηκεύτηκε");
+            if (file != null) lines.Add(L.T("Αρχείο: ", "File: ") + Path.GetFileName(file));
+            else lines.Add(L.T("Η αναφορά δεν αποθηκεύτηκε", "Report not saved"));
 
             string project = alignment != null ? alignment.ProjectName : "Project";
             if (flowPanel != null)
-                flowPanel.ShowMessage("Επιθεώρηση", project, heading, string.Join("\n", lines), false, flowPanel.Close);
+                flowPanel.ShowMessage(L.T("Επιθεώρηση", "Inspection"), project, heading, string.Join("\n", lines), false, flowPanel.Close);
             Debug.Log($"[Route] {heading} ({routeTitle})");
         }
 
         private static string Duration(TimeSpan t)
         {
-            if (t.TotalSeconds < 60) return $"{(int)t.TotalSeconds} δευτ.";
+            if (t.TotalSeconds < 60) return L.En ? $"{(int)t.TotalSeconds} s" : $"{(int)t.TotalSeconds} δευτ.";
             int minutes = (int)Math.Round(t.TotalMinutes);
-            if (minutes < 60) return minutes == 1 ? "1 λεπτό" : $"{minutes} λεπτά";
-            return $"{minutes / 60} ώ. {minutes % 60} λ.";
+            if (minutes < 60) return L.En ? $"{minutes} min" : minutes == 1 ? "1 λεπτό" : $"{minutes} λεπτά";
+            return L.En ? $"{minutes / 60} h {minutes % 60} min" : $"{minutes / 60} ώ. {minutes % 60} λ.";
         }
 
         // reports/route_yyyyMMdd_HHmm.json plus a .txt with the same summary lines. Returns the
@@ -593,7 +610,7 @@ namespace QuestMarkerApp.UI
                 File.WriteAllText(json, Json(completed, finishedAt));
 
                 var txt = new StringBuilder();
-                txt.Append("Επιθεώρηση · ").Append(alignment != null ? alignment.ProjectName : "Project")
+                txt.Append(L.T("Επιθεώρηση · ", "Inspection · ")).Append(alignment != null ? alignment.ProjectName : "Project")
                    .Append(" · ").AppendLine(routeTitle ?? "");
                 txt.AppendLine(heading);
                 foreach (string line in lines) txt.AppendLine(line);
@@ -604,7 +621,7 @@ namespace QuestMarkerApp.UI
                     if (s.VisitedAt.HasValue)
                         txt.Append("  ").Append(s.VisitedAt.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
                            .Append("  ").Append(StateName(s.StateAtVisit));
-                    else if (s.Skipped) txt.Append("  παραλείφθηκε");
+                    else if (s.Skipped) txt.Append(L.T("  παραλείφθηκε", "  skipped"));
                     txt.AppendLine();
                 }
                 File.WriteAllText(stem + ".txt", txt.ToString());
@@ -620,7 +637,7 @@ namespace QuestMarkerApp.UI
         }
 
         private static string StateName(string state) =>
-            state == "alarm" ? "Συναγερμός" : state == "alert" ? "Προειδοποίηση" : "Κανονικό";
+            state == "alarm" ? L.T("Συναγερμός", "Alarm") : state == "alert" ? L.T("Προειδοποίηση", "Alert") : L.T("Κανονικό", "Reference");
 
         // Hand-built: JsonUtility cannot write a null for an unvisited stop.
         private string Json(bool completed, DateTime finishedAt)

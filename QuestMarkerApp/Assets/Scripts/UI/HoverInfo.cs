@@ -122,11 +122,11 @@ namespace QuestMarkerApp.UI
 
             switch ((p.alertState ?? "none").ToLowerInvariant())
             {
-                case "alarm": stateDot.color = Brand.Danger; tagState.text = "Συναγερμός"; break;
-                case "alert": stateDot.color = Brand.Warning; tagState.text = "Προειδοποίηση"; break;
-                case "reference": stateDot.color = Brand.Control; tagState.text = "Αναφορά"; break;
-                case "none": stateDot.color = Brand.Primary; tagState.text = "Κανονικό"; break;
-                default: stateDot.color = Brand.FgFaint; tagState.text = "Άγνωστο"; break;
+                case "alarm": stateDot.color = Brand.Danger; tagState.text = L.T("Συναγερμός", "Alarm"); break;
+                case "alert": stateDot.color = Brand.Warning; tagState.text = L.T("Προειδοποίηση", "Alert"); break;
+                case "reference": stateDot.color = Brand.Control; tagState.text = L.T("Αναφορά", "Reference"); break;
+                case "none": stateDot.color = Brand.Primary; tagState.text = L.T("Κανονικό", "Normal"); break;
+                default: stateDot.color = Brand.FgFaint; tagState.text = L.T("Άγνωστο", "Unknown"); break;
             }
             tagState.text += "  ·  " + SensorCard.FormatDate(p.latestDate);
 
@@ -135,10 +135,12 @@ namespace QuestMarkerApp.UI
             if (SensorHistory.TryDisplacementAt(p.sensorId, DateTime.MaxValue, out SensorHistory.Sample s))
             {
                 double mm = Math.Sqrt((s.Dx ?? 0) * (s.Dx ?? 0) + (s.Dy ?? 0) * (s.Dy ?? 0) + (s.Dz ?? 0) * (s.Dz ?? 0));
-                extra = $"Μετακίνηση <b>{mm:F1} mm</b>  ·  dz {(s.Dz ?? 0):+0.0;-0.0;0.0} mm";
+                extra = L.En
+                    ? $"Displacement <b>{mm:F1} mm</b>  ·  dz {(s.Dz ?? 0):+0.0;-0.0;0.0} mm"
+                    : $"Μετακίνηση <b>{mm:F1} mm</b>  ·  dz {(s.Dz ?? 0):+0.0;-0.0;0.0} mm";
             }
-            if (p.approx) extra = (extra.Length > 0 ? extra + "  ·  " : "") + "θέση κατά προσέγγιση";
-            tagExtra.text = extra.Length > 0 ? extra : "Trigger: πλήρης καρτέλα";
+            if (p.approx) extra = (extra.Length > 0 ? extra + "  ·  " : "") + L.T("θέση κατά προσέγγιση", "approximate position");
+            tagExtra.text = extra.Length > 0 ? extra : L.T("Trigger: πλήρης καρτέλα", "Trigger: full card");
         }
 
         // The tag floats at arm's length (TagDistance) on the line of sight to the sensor, just

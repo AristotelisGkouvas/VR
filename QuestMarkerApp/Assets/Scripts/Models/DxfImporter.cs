@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using UnityEngine;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.Models
 {
@@ -19,7 +20,9 @@ namespace QuestMarkerApp.Models
     public static class DxfImporter
     {
         private const string BinarySentinel = "AutoCAD Binary DXF";
-        private const string BinaryMessage = "Binary DXF δεν υποστηρίζεται — αποθήκευσε ως ASCII DXF";
+        // Read on the import worker thread: L is cached on the main thread at startup (L.Init).
+        private static string BinaryMessage => L.T("Binary DXF δεν υποστηρίζεται — αποθήκευσε ως ASCII DXF",
+            "Binary DXF is not supported — save as ASCII DXF");
         private const int MaxInsertDepth = 8;
         private const int MaxInsertCopies = 10000;
         private const int CircleSegments = 32;
@@ -540,14 +543,16 @@ namespace QuestMarkerApp.Models
                 string unitName; double factor;
                 switch (units)
                 {
-                    case 1: unitName = "ίντσες"; factor = 0.0254; break;
-                    case 2: unitName = "πόδια"; factor = 0.3048; break;
-                    case 4: unitName = "χιλιοστά"; factor = 0.001; break;
-                    case 5: unitName = "εκατοστά"; factor = 0.01; break;
+                    case 1: unitName = L.T("ίντσες", "inches"); factor = 0.0254; break;
+                    case 2: unitName = L.T("πόδια", "feet"); factor = 0.3048; break;
+                    case 4: unitName = L.T("χιλιοστά", "millimetres"); factor = 0.001; break;
+                    case 5: unitName = L.T("εκατοστά", "centimetres"); factor = 0.01; break;
                     default: return;
                 }
                 scale = factor;
-                model.Warnings.Add($"Μονάδες από $INSUNITS: {unitName} ({units}) — εφαρμόστηκε κλίμακα {factor.ToString(CultureInfo.InvariantCulture)}");
+                string scaleText = factor.ToString(CultureInfo.InvariantCulture);
+                model.Warnings.Add(L.T($"Μονάδες από $INSUNITS: {unitName} ({units}) — εφαρμόστηκε κλίμακα {scaleText}",
+                    $"Units from $INSUNITS: {unitName} ({units}) — scale {scaleText} applied"));
             }
 
             // -------------------------------------------------------------- reading
@@ -1097,19 +1102,25 @@ namespace QuestMarkerApp.Models
                 {
                     var types = new List<string>(skipped.Keys);
                     types.Sort(StringComparer.Ordinal);
-                    for (int i = 0; i < types.Count; i++) model.Warnings.Add($"{types[i]}: {skipped[types[i]]} παραλείφθηκαν");
+                    for (int i = 0; i < types.Count; i++)
+                        model.Warnings.Add(L.T($"{types[i]}: {skipped[types[i]]} παραλείφθηκαν", $"{types[i]}: {skipped[types[i]]} skipped"));
                 }
-                if (splineCount > 0) model.Warnings.Add($"SPLINE: {splineCount} προσεγγίστηκαν από το πολύγωνο των σημείων ελέγχου");
+                if (splineCount > 0) model.Warnings.Add(L.T($"SPLINE: {splineCount} προσεγγίστηκαν από το πολύγωνο των σημείων ελέγχου",
+                    $"SPLINE: {splineCount} approximated by their control polygon"));
                 if (missingBlocks.Count > 0)
                 {
                     int total = 0;
                     foreach (var kv in missingBlocks) total += kv.Value;
-                    model.Warnings.Add($"INSERT: {total} αναφορές σε άγνωστα μπλοκ παραλείφθηκαν ({missingBlocks.Count} ονόματα)");
+                    model.Warnings.Add(L.T($"INSERT: {total} αναφορές σε άγνωστα μπλοκ παραλείφθηκαν ({missingBlocks.Count} ονόματα)",
+                        $"INSERT: {total} reference{(total == 1 ? "" : "s")} to unknown blocks skipped ({missingBlocks.Count} name{(missingBlocks.Count == 1 ? "" : "s")})"));
                 }
-                if (depthSkips > 0) model.Warnings.Add($"INSERT: {depthSkips} παραλείφθηκαν (βάθος φωλιάσματος πάνω από {MaxInsertDepth}, κυκλική αναφορά ή πίνακας πάνω από {MaxInsertCopies} αντιγράφων)");
-                if (degenerateFaces > 0) model.Warnings.Add($"{degenerateFaces} εκφυλισμένες όψεις παραλείφθηκαν");
-                if (removed > 0) model.Warnings.Add($"{removed} επίπεδα χωρίς γεωμετρία παραλείφθηκαν");
-                if (model.Groups.Count == 0) model.Warnings.Add("Δεν βρέθηκε γεωμετρία στο DXF");
+                if (depthSkips > 0) model.Warnings.Add(L.T($"INSERT: {depthSkips} παραλείφθηκαν (βάθος φωλιάσματος πάνω από {MaxInsertDepth}, κυκλική αναφορά ή πίνακας πάνω από {MaxInsertCopies} αντιγράφων)",
+                    $"INSERT: {depthSkips} skipped (nesting deeper than {MaxInsertDepth}, circular reference or array over {MaxInsertCopies} copies)"));
+                if (degenerateFaces > 0) model.Warnings.Add(L.T($"{degenerateFaces} εκφυλισμένες όψεις παραλείφθηκαν",
+                    $"{degenerateFaces} degenerate face{(degenerateFaces == 1 ? "" : "s")} skipped"));
+                if (removed > 0) model.Warnings.Add(L.T($"{removed} επίπεδα χωρίς γεωμετρία παραλείφθηκαν",
+                    $"{removed} layer{(removed == 1 ? "" : "s")} without geometry skipped"));
+                if (model.Groups.Count == 0) model.Warnings.Add(L.T("Δεν βρέθηκε γεωμετρία στο DXF", "No geometry found in the DXF"));
             }
         }
 

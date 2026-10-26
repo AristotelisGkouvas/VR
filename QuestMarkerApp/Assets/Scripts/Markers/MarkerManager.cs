@@ -45,6 +45,18 @@ namespace QuestMarkerApp.Markers
         private Marker highlightedMarker;
 
         public int ActiveMarkerCount => activeMarkers.Count;
+
+        /// <summary>The count the PC is told about: practice sensors are left out, as in <see cref="ToCoordinatesJson(bool)"/>.</summary>
+        public int ReportedMarkerCount => CountMarkers(!Core.PracticeProject.IsActive);
+
+        private int CountMarkers(bool includeProject)
+        {
+            if (includeProject) return activeMarkers.Count;
+            int n = 0;
+            foreach (var kvp in activeMarkers)
+                if (!IsProjectMarker(kvp.Key)) n++;
+            return n;
+        }
         public int MaxMarkers => maxMarkers;
 
         /// <summary>Raise the marker cap for a bulk load (e.g. a whole project area); never lowers it.</summary>
@@ -489,9 +501,11 @@ namespace QuestMarkerApp.Markers
         /// user's edits, and restoring them would resurrect a project that was since reset.</param>
         public string ToCoordinatesJson(bool includeProject)
         {
+            // Practice sensors are made up: never hand them to the PC as if they were the site's.
+            if (Core.PracticeProject.IsActive) includeProject = false;
             var sb = new StringBuilder(256 + activeMarkers.Count * 128);
             sb.Append("{\"status\":\"ready\",\"markerCount\":");
-            sb.Append(activeMarkers.Count);
+            sb.Append(CountMarkers(includeProject));
             sb.Append(",\"maxMarkers\":");
             sb.Append(maxMarkers);
             sb.Append(",\"coordinates\":[");
