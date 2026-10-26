@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -93,8 +92,6 @@ namespace QuestMarkerApp.Models
                     case Reason.NoModel: return L.T("Χωρίς μοντέλο", "No model");
                     case Reason.Far: return L.T("Μοντέλο και αισθητήρες μακριά", "Model and sensors far apart");
                     default:
-                        if (frameEpsg != 0)
-                            return L.En ? $"{dots.Count} of {total} · lat/lon" : $"{dots.Count} από {total} · lat/lon";
                         return dots.Count < total
                             ? L.T($"{dots.Count} από {total}", $"{dots.Count} of {total}")
                             : L.T($"{dots.Count} αισθητήρες", dots.Count == 1 ? "1 sensor" : $"{dots.Count} sensors");
@@ -188,94 +185,40 @@ namespace QuestMarkerApp.Models
             EnsureContainer(overlay.Root);
             Bounds near = overlay.ModelBounds;
             near.Expand(FarMargin * 2f); // Expand grows the full size: 50 m each side
-            // Terraweb sensors go by their lat/lon/elevation, projected into the grid the model
-            // is in (its CRS is not sent with it: the candidate that lands most sensors on the
-            // model wins). Their x/y may be a surveyor's local grid that no model shares.
-            // Sensors without lat/lon (PC projects) keep their grid position.
-            int bestEpsg = 0, bestCount = CountNear(m, near, 0);
-            ProjectPoint first = null;
-            foreach (ProjectPoint p in project.Points) if (p != null && p.hasGeo) { first = p; break; }
-            if (first != null)
-                foreach (int epsg in GeoProjection.Candidates(first.lat, first.lon))
-                {
-                    int count = CountNear(m, near, epsg);
-                    if (count > bestCount) { bestCount = count; bestEpsg = epsg; }
-                }
-            frameEpsg = bestEpsg;
-            if (bestCount == 0 && first != null)
-            {
-                // Field diagnosis: where the first sensor lands in each frame against the model.
-                foreach (int epsg in new[] { 0 }.Concat(GeoProjection.Candidates(first.lat, first.lon)))
-                    if (TryLocal(first, m, epsg, out Vector3 at))
-                        Debug.Log($"[ModelSensors] {first.id} via {(epsg == 0 ? "grid" : "EPSG:" + epsg)} at {at} " +
-                                  $"(lat {first.lat:F6} lon {first.lon:F6} alt {first.alt:F1}); model bounds {overlay.ModelBounds}");
-            }
-            var placedPoints = new List<(ProjectPoint p, Vector3 local)>();
+            // The sensors' own x/y/z, in the same grid as the model's vertices: nothing is
+            // guessed. A typed height offset (menu) covers a model in another height datum.
+            heightOffset = ManualOffset ?? 0f;
             foreach (ProjectPoint p in project.Points)
-                if (p != null && TryLocal(p, m, bestEpsg, out Vector3 local) && InsideXZ(near, local))
-                    placedPoints.Add((p, local));
-            // The heights may be a local datum too (Konitsa: 21 m against 447 m in ΕΓΣΑ87): one
-            // offset puts them on the model, measured against its surface under the sensors.
-            heightOffset = HeightOffset(m, placedPoints);
-            foreach (var (p, local) in placedPoints) AddDot(p, local + Vector3.up * heightOffset);
+                if (p != null && TryLocal(p, m, heightOffset, out Vector3 local) && near.Contains(local))
+                    AddDot(p, local);
             // None near the model: another site, or another CRS. Say so rather than draw dots
             // in empty space kilometres off the table.
             reason = dots.Count == 0 ? Reason.Far : Reason.Ok;
             appliedScale = -1f;
-            Debug.Log($"[ModelSensors] {dots.Count} of {total} sensors on '{overlay.LoadedName}' " +
-                      (frameEpsg != 0 ? $"(lat/lon → EPSG:{frameEpsg})" : "(project grid)") +
+            Debug.Log($"[ModelSensors] {dots.Count} of {total} sensors on '{overlay.LoadedName}'" +
                       (heightOffset != 0f ? $", heights shifted {heightOffset:F1} m" : ""));
         }
 
         private static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
 
-        // Grid of the last build: 0 = the project's own e/n/h, else the EPSG the lat/lon went to.
-        private int frameEpsg;
-
-        // Model-local position of a sensor: from lat/lon projected to epsg, or from e/n/h (epsg 0).
-        private static bool TryLocal(ProjectPoint p, ModelData m, int epsg, out Vector3 local)
+        // Model-local position of a sensor: its e/n/h less the model's origin, plus the offset.
+        private static bool TryLocal(ProjectPoint p, ModelData m, float offset, out Vector3 local)
         {
             local = default;
-            double e, n, h;
-            if (epsg != 0)
-            {
-                if (!p.hasGeo || !GeoProjection.TryProject(epsg, p.lat, p.lon, out e, out n)) return false;
-                h = p.alt;
-            }
-            else
-            {
-                e = p.e; n = p.n; h = p.h;
-            }
-            if (!IsFinite(e) || !IsFinite(n) || !IsFinite(h)) return false;
+            if (!IsFinite(p.e) || !IsFinite(p.n) || !IsFinite(p.h)) return false;
             // Double maths first: E/N are millions of metres, past float precision.
-            local = new Vector3((float)(e - m.OriginE), (float)(h - m.OriginH), (float)(n - m.OriginN));
+            local = new Vector3((float)(p.e - m.OriginE), (float)(p.h + offset - m.OriginH), (float)(p.n - m.OriginN));
             return true;
         }
 
-        // Horizontal only: the height datum may differ, HeightOffset deals with that.
-        private int CountNear(ModelData m, Bounds near, int epsg)
-        {
-            int count = 0;
-            foreach (ProjectPoint p in project.Points)
-                if (p != null && TryLocal(p, m, epsg, out Vector3 local) && InsideXZ(near, local)) count++;
-            return count;
-        }
-
-        private static bool InsideXZ(Bounds b, Vector3 v) =>
-            v.x >= b.min.x && v.x <= b.max.x && v.z >= b.min.z && v.z <= b.max.z;
-
-        /// <summary>Vertical shift applied in the last build (0 when the heights already matched).</summary>
+        /// <summary>Vertical shift applied in the last build (0 unless typed in the menu).</summary>
         private float heightOffset;
-        private const float SurfaceRadius = 1.5f;
-        private const float HeightTolerance = 15f;
 
-        // Median of (highest model vertex within SurfaceRadius horizontally − sensor height):
-        // prisms sit on the structure's surface. Applied only when the sensors are clearly off
-        // the model (> HeightTolerance), so a matching datum is left untouched.
         /// <summary>
         /// The height difference typed in the menu for this project (sensor heights + offset =
-        /// model heights), or null for the automatic estimate. The datum gap is a fact of the
-        /// project (Konitsa: Terraweb z + 426 m = ΕΓΣΑ87), known better by the user than guessed.
+        /// model heights), or null for none. Only for a model in another height datum than the
+        /// sensors' (Konitsa's ΕΓΣΑ87 model: Terraweb z + 426 m); a model in the same local
+        /// system as the sensors needs none.
         /// </summary>
         public float? ManualOffset
         {
@@ -300,36 +243,6 @@ namespace QuestMarkerApp.Models
 
         private string OffsetKey() =>
             project != null && project.HasProject ? "model.hoffset." + project.ProjectName : null;
-
-        private float HeightOffset(ModelData m, List<(ProjectPoint p, Vector3 local)> points)
-        {
-            float? manual = ManualOffset;
-            if (manual.HasValue) return manual.Value;
-            return EstimateOffset(m, points);
-        }
-
-        private static float EstimateOffset(ModelData m, List<(ProjectPoint p, Vector3 local)> points)
-        {
-            if (points.Count == 0) return 0f;
-            var top = new float[points.Count];
-            for (int i = 0; i < top.Length; i++) top[i] = float.NegativeInfinity;
-            float r2 = SurfaceRadius * SurfaceRadius;
-            foreach (ModelGroup g in m.Groups)
-                foreach (Vector3 v in g.Vertices)
-                    for (int i = 0; i < points.Count; i++)
-                    {
-                        Vector3 s = points[i].local;
-                        float dx = v.x - s.x, dz = v.z - s.z;
-                        if (dx * dx + dz * dz <= r2 && v.y > top[i]) top[i] = v.y;
-                    }
-            var diffs = new List<float>();
-            for (int i = 0; i < top.Length; i++)
-                if (!float.IsNegativeInfinity(top[i])) diffs.Add(top[i] - points[i].local.y);
-            if (diffs.Count == 0) return 0f;
-            diffs.Sort();
-            float median = diffs[diffs.Count / 2];
-            return Mathf.Abs(median) > HeightTolerance ? median : 0f;
-        }
 
         private void EnsureContainer(Transform root)
         {

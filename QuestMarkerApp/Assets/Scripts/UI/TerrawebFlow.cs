@@ -364,10 +364,10 @@ namespace QuestMarkerApp.UI
             if (n == 0)
             {
                 panel.ShowMessage(Eyebrow, scope, L.T("Κανένας αισθητήρας με θέση", "No sensor with a position"),
-                    L.T($"{sensors.Count} αισθητήρες, κανένας με τρισδιάστατη θέση (γεωγραφικό μήκος/πλάτος και υψόμετρο).",
+                    L.T($"{sensors.Count} αισθητήρες, κανένας με θέση x/y/z (μέτρηση ή συντεταγμένες αισθητήρα).",
                         sensors.Count == 1
-                            ? "1 sensor, without a 3D position (longitude/latitude and elevation)."
-                            : $"{sensors.Count} sensors, none with a 3D position (longitude/latitude and elevation)."),
+                            ? "1 sensor, without an x/y/z position (measured or the sensor's own)."
+                            : $"{sensors.Count} sensors, none with an x/y/z position (measured or the sensor's own)."),
                     false, LoadAreas);
                 return;
             }
@@ -381,7 +381,7 @@ namespace QuestMarkerApp.UI
             panel.Close();
             alignment.OpenIfNeeded(); // a reload of an aligned project leaves the panel shut
             if (skipped > 0)
-                Debug.Log($"[Terraweb] {scope}: {n} sensors loaded, {skipped} without a 3D point skipped");
+                Debug.Log($"[Terraweb] {scope}: {n} sensors loaded, {skipped} without x/y/z skipped");
         }
 
         private Action<string> Fail(Action back) =>

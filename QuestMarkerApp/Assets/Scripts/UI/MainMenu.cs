@@ -830,21 +830,22 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
-                // Sensor heights in another datum than the model's (Konitsa: Terraweb z + 426 m
-                // = ΕΓΣΑ87). Empty entry: back to the automatic estimate from the model's surface.
+                // Only for a model in another height datum than the sensors' x/y/z (Konitsa's
+                // ΕΓΣΑ87 model: Terraweb z + 426 m). Empty entry: none.
                 Label = L.T("Υψομετρική διαφορά", "Height offset"),
                 Value = () =>
                 {
                     if (modelSensors == null) return "—";
-                    string v = modelSensors.AppliedOffset.ToString("+0.0;-0.0;0", System.Globalization.CultureInfo.InvariantCulture) + " m";
-                    return modelSensors.ManualOffset.HasValue ? v : L.T("Αυτόματα · ", "Auto · ") + v;
+                    float? v = modelSensors.ManualOffset;
+                    return v.HasValue ? v.Value.ToString("+0.0;-0.0;0", System.Globalization.CultureInfo.InvariantCulture) + " m"
+                        : L.T("Καμία", "None");
                 },
                 Enabled = () => modelSensors != null && project != null && project.HasProject && !project.IsPractice,
                 Run = () =>
                 {
                     float? cur = modelSensors.ManualOffset;
                     string initial = cur.HasValue ? cur.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) : "";
-                    VrKeyboard.Shared.Open(L.T("Διαφορά υψομέτρου (m), κενό: αυτόματα", "Height offset (m), empty: auto"), initial, false,
+                    VrKeyboard.Shared.Open(L.T("Διαφορά υψομέτρου (m), κενό: καμία", "Height offset (m), empty: none"), initial, false,
                         text =>
                         {
                             text = (text ?? "").Trim().Replace(',', '.');
