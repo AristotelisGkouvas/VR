@@ -108,7 +108,11 @@ namespace QuestMarkerApp.Core
                         alertState = (string)s["current_alert_state"] ?? "none",
                         latestDate = (string)s["latest_date"],
                         notes = (string)s["notes"],
-                        inactive = !active
+                        inactive = !active,
+                        hasGeo = true,
+                        lat = lat,
+                        lon = lon,
+                        alt = h
                     };
                     // Added together so survey[i] always belongs to points[i].
                     survey.Add(sx.HasValue && sy.HasValue ? (sx.Value, sy.Value) : ((double, double)?)null);

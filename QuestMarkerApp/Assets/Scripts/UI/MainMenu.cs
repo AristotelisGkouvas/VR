@@ -830,6 +830,35 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                // Sensor heights in another datum than the model's (Konitsa: Terraweb z + 426 m
+                // = ΕΓΣΑ87). Empty entry: back to the automatic estimate from the model's surface.
+                Label = L.T("Υψομετρική διαφορά", "Height offset"),
+                Value = () =>
+                {
+                    if (modelSensors == null) return "—";
+                    string v = modelSensors.AppliedOffset.ToString("+0.0;-0.0;0", System.Globalization.CultureInfo.InvariantCulture) + " m";
+                    return modelSensors.ManualOffset.HasValue ? v : L.T("Αυτόματα · ", "Auto · ") + v;
+                },
+                Enabled = () => modelSensors != null && project != null && project.HasProject && !project.IsPractice,
+                Run = () =>
+                {
+                    float? cur = modelSensors.ManualOffset;
+                    string initial = cur.HasValue ? cur.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) : "";
+                    VrKeyboard.Shared.Open(L.T("Διαφορά υψομέτρου (m), κενό: αυτόματα", "Height offset (m), empty: auto"), initial, false,
+                        text =>
+                        {
+                            text = (text ?? "").Trim().Replace(',', '.');
+                            if (text.Length == 0) modelSensors.ManualOffset = null;
+                            else if (float.TryParse(text, System.Globalization.NumberStyles.Float,
+                                         System.Globalization.CultureInfo.InvariantCulture, out float f)
+                                     && !float.IsNaN(f) && !float.IsInfinity(f))
+                                modelSensors.ManualOffset = f;
+                            else Feedback.Play(Feedback.Sound.Warn);
+                        }, null);
+                }
+            });
+            y = Row(y, new Item
+            {
                 Label = L.T("Ακμές", "Edges"),
                 Value = () => model != null && model.ShowEdges ? L.T("Εμφάνιση", "Shown") : L.T("Απόκρυψη", "Hidden"),
                 Enabled = () => model != null && model.IsLoaded,

@@ -36,6 +36,14 @@ namespace QuestMarkerApp.API
         /// measured position: good to metres, not centimetres.
         /// </summary>
         public bool approx;
+        /// <summary>
+        /// The backend's WGS84 point and elevation (sensor_geometry), kept beside e/n/h, which
+        /// may be a surveyor's local grid: the model preview places sensors by these when the
+        /// model is in a national or UTM grid. Map-picked, so good to metres. Absent (false)
+        /// for projects that did not come from Terraweb.
+        /// </summary>
+        public bool hasGeo;
+        public double lat, lon, alt;
     }
 
     /// <summary>Body of POST /api/project.</summary>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -12,8 +13,7 @@ namespace QuestMarkerApp.Models
 {
     /// <summary>
     /// The project's sensors on the tabletop miniature and the life-size copy: a small dot per
-    /// sensor, coloured by alert state, with a thin stem down to the model's lowest point so
-    /// heights read. The dots hang under the model root at their project-local position, so
+    /// sensor, coloured by alert state. The dots hang under the model root at their project-local position, so
     /// moving, turning and zooming the model carries them for free; only their size is undone
     /// against the root's scale, to stay readable. Aim at a dot for its name, pull the trigger
     /// for the sensor card. Hidden on the site placement, where the real markers stand.
@@ -23,7 +23,7 @@ namespace QuestMarkerApp.Models
     {
         private const string EnabledKey = "model.sensors";
         /// <summary>World size of a dot at 1:1 and on the smallest miniature, metres.</summary>
-        private const float DotMax = 0.06f, DotMin = 0.012f;
+        private const float DotMax = 0.1f, DotMin = 0.025f;
         /// <summary>Sensors beyond the model's extent by more than this are not drawn (metres, model scale).</summary>
         private const float FarMargin = 50f;
         /// <summary>Aim tolerance around the ray: an angle, or a distance near the hand.</summary>
@@ -61,8 +61,6 @@ namespace QuestMarkerApp.Models
         private MarkerManager markers;
         private SensorCard card;
         private Transform container;
-        private Mesh stemMesh;
-        private static Material stemMaterial;
         private readonly List<Dot> dots = new List<Dot>();
 
         // What the dots were built from; any change rebuilds them.
@@ -95,6 +93,8 @@ namespace QuestMarkerApp.Models
                     case Reason.NoModel: return L.T("Χωρίς μοντέλο", "No model");
                     case Reason.Far: return L.T("Μοντέλο και αισθητήρες μακριά", "Model and sensors far apart");
                     default:
+                        if (frameEpsg != 0)
+                            return L.En ? $"{dots.Count} of {total} · lat/lon" : $"{dots.Count} από {total} · lat/lon";
                         return dots.Count < total
                             ? L.T($"{dots.Count} από {total}", $"{dots.Count} of {total}")
                             : L.T($"{dots.Count} αισθητήρες", dots.Count == 1 ? "1 sensor" : $"{dots.Count} sensors");
@@ -118,7 +118,6 @@ namespace QuestMarkerApp.Models
         private void OnDestroy()
         {
             if (overlay != null) overlay.OnChanged -= MarkDirty;
-            if (stemMesh != null) Destroy(stemMesh);
             if (container != null) Destroy(container.gameObject);
         }
 
@@ -189,39 +188,154 @@ namespace QuestMarkerApp.Models
             EnsureContainer(overlay.Root);
             Bounds near = overlay.ModelBounds;
             near.Expand(FarMargin * 2f); // Expand grows the full size: 50 m each side
-            foreach (ProjectPoint p in project.Points)
+            // Terraweb sensors go by their lat/lon/elevation, projected into the grid the model
+            // is in (its CRS is not sent with it: the candidate that lands most sensors on the
+            // model wins). Their x/y may be a surveyor's local grid that no model shares.
+            // Sensors without lat/lon (PC projects) keep their grid position.
+            int bestEpsg = 0, bestCount = CountNear(m, near, 0);
+            ProjectPoint first = null;
+            foreach (ProjectPoint p in project.Points) if (p != null && p.hasGeo) { first = p; break; }
+            if (first != null)
+                foreach (int epsg in GeoProjection.Candidates(first.lat, first.lon))
+                {
+                    int count = CountNear(m, near, epsg);
+                    if (count > bestCount) { bestCount = count; bestEpsg = epsg; }
+                }
+            frameEpsg = bestEpsg;
+            if (bestCount == 0 && first != null)
             {
-                if (p == null || !IsFinite(p.e) || !IsFinite(p.n) || !IsFinite(p.h)) continue;
-                // Double maths first: E/N are millions of metres, past float precision.
-                var local = new Vector3((float)(p.e - m.OriginE), (float)(p.h - m.OriginH), (float)(p.n - m.OriginN));
-                if (!near.Contains(local)) continue;
-                AddDot(p, local);
+                // Field diagnosis: where the first sensor lands in each frame against the model.
+                foreach (int epsg in new[] { 0 }.Concat(GeoProjection.Candidates(first.lat, first.lon)))
+                    if (TryLocal(first, m, epsg, out Vector3 at))
+                        Debug.Log($"[ModelSensors] {first.id} via {(epsg == 0 ? "grid" : "EPSG:" + epsg)} at {at} " +
+                                  $"(lat {first.lat:F6} lon {first.lon:F6} alt {first.alt:F1}); model bounds {overlay.ModelBounds}");
             }
+            var placedPoints = new List<(ProjectPoint p, Vector3 local)>();
+            foreach (ProjectPoint p in project.Points)
+                if (p != null && TryLocal(p, m, bestEpsg, out Vector3 local) && InsideXZ(near, local))
+                    placedPoints.Add((p, local));
+            // The heights may be a local datum too (Konitsa: 21 m against 447 m in ΕΓΣΑ87): one
+            // offset puts them on the model, measured against its surface under the sensors.
+            heightOffset = HeightOffset(m, placedPoints);
+            foreach (var (p, local) in placedPoints) AddDot(p, local + Vector3.up * heightOffset);
             // None near the model: another site, or another CRS. Say so rather than draw dots
             // in empty space kilometres off the table.
             reason = dots.Count == 0 ? Reason.Far : Reason.Ok;
-            BuildStems();
             appliedScale = -1f;
-            Debug.Log($"[ModelSensors] {dots.Count} of {total} sensors on '{overlay.LoadedName}'");
+            Debug.Log($"[ModelSensors] {dots.Count} of {total} sensors on '{overlay.LoadedName}' " +
+                      (frameEpsg != 0 ? $"(lat/lon → EPSG:{frameEpsg})" : "(project grid)") +
+                      (heightOffset != 0f ? $", heights shifted {heightOffset:F1} m" : ""));
         }
 
         private static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
+
+        // Grid of the last build: 0 = the project's own e/n/h, else the EPSG the lat/lon went to.
+        private int frameEpsg;
+
+        // Model-local position of a sensor: from lat/lon projected to epsg, or from e/n/h (epsg 0).
+        private static bool TryLocal(ProjectPoint p, ModelData m, int epsg, out Vector3 local)
+        {
+            local = default;
+            double e, n, h;
+            if (epsg != 0)
+            {
+                if (!p.hasGeo || !GeoProjection.TryProject(epsg, p.lat, p.lon, out e, out n)) return false;
+                h = p.alt;
+            }
+            else
+            {
+                e = p.e; n = p.n; h = p.h;
+            }
+            if (!IsFinite(e) || !IsFinite(n) || !IsFinite(h)) return false;
+            // Double maths first: E/N are millions of metres, past float precision.
+            local = new Vector3((float)(e - m.OriginE), (float)(h - m.OriginH), (float)(n - m.OriginN));
+            return true;
+        }
+
+        // Horizontal only: the height datum may differ, HeightOffset deals with that.
+        private int CountNear(ModelData m, Bounds near, int epsg)
+        {
+            int count = 0;
+            foreach (ProjectPoint p in project.Points)
+                if (p != null && TryLocal(p, m, epsg, out Vector3 local) && InsideXZ(near, local)) count++;
+            return count;
+        }
+
+        private static bool InsideXZ(Bounds b, Vector3 v) =>
+            v.x >= b.min.x && v.x <= b.max.x && v.z >= b.min.z && v.z <= b.max.z;
+
+        /// <summary>Vertical shift applied in the last build (0 when the heights already matched).</summary>
+        private float heightOffset;
+        private const float SurfaceRadius = 1.5f;
+        private const float HeightTolerance = 15f;
+
+        // Median of (highest model vertex within SurfaceRadius horizontally − sensor height):
+        // prisms sit on the structure's surface. Applied only when the sensors are clearly off
+        // the model (> HeightTolerance), so a matching datum is left untouched.
+        /// <summary>
+        /// The height difference typed in the menu for this project (sensor heights + offset =
+        /// model heights), or null for the automatic estimate. The datum gap is a fact of the
+        /// project (Konitsa: Terraweb z + 426 m = ΕΓΣΑ87), known better by the user than guessed.
+        /// </summary>
+        public float? ManualOffset
+        {
+            get
+            {
+                string key = OffsetKey();
+                return key != null && PlayerPrefs.HasKey(key) ? PlayerPrefs.GetFloat(key) : (float?)null;
+            }
+            set
+            {
+                string key = OffsetKey();
+                if (key == null) return;
+                if (value.HasValue) PlayerPrefs.SetFloat(key, value.Value);
+                else PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.Save();
+                dirty = true;
+            }
+        }
+
+        /// <summary>The offset in use after the last build, metres.</summary>
+        public float AppliedOffset => heightOffset;
+
+        private string OffsetKey() =>
+            project != null && project.HasProject ? "model.hoffset." + project.ProjectName : null;
+
+        private float HeightOffset(ModelData m, List<(ProjectPoint p, Vector3 local)> points)
+        {
+            float? manual = ManualOffset;
+            if (manual.HasValue) return manual.Value;
+            return EstimateOffset(m, points);
+        }
+
+        private static float EstimateOffset(ModelData m, List<(ProjectPoint p, Vector3 local)> points)
+        {
+            if (points.Count == 0) return 0f;
+            var top = new float[points.Count];
+            for (int i = 0; i < top.Length; i++) top[i] = float.NegativeInfinity;
+            float r2 = SurfaceRadius * SurfaceRadius;
+            foreach (ModelGroup g in m.Groups)
+                foreach (Vector3 v in g.Vertices)
+                    for (int i = 0; i < points.Count; i++)
+                    {
+                        Vector3 s = points[i].local;
+                        float dx = v.x - s.x, dz = v.z - s.z;
+                        if (dx * dx + dz * dz <= r2 && v.y > top[i]) top[i] = v.y;
+                    }
+            var diffs = new List<float>();
+            for (int i = 0; i < top.Length; i++)
+                if (!float.IsNegativeInfinity(top[i])) diffs.Add(top[i] - points[i].local.y);
+            if (diffs.Count == 0) return 0f;
+            diffs.Sort();
+            float median = diffs[diffs.Count / 2];
+            return Mathf.Abs(median) > HeightTolerance ? median : 0f;
+        }
 
         private void EnsureContainer(Transform root)
         {
             if (container == null)
             {
                 container = new GameObject("ModelSensors").transform;
-                var stems = new GameObject("Stems");
-                stems.transform.SetParent(container, false);
-                stemMesh = new Mesh { name = "Sensor stems" };
-                stems.AddComponent<MeshFilter>().sharedMesh = stemMesh;
-                var r = stems.AddComponent<MeshRenderer>();
-                r.sharedMaterial = StemMaterial();
-                r.shadowCastingMode = ShadowCastingMode.Off;
-                r.receiveShadows = false;
-                r.lightProbeUsage = LightProbeUsage.Off;
-                r.reflectionProbeUsage = ReflectionProbeUsage.Off;
             }
             if (container.parent != root) container.SetParent(root, false);
             container.localPosition = Vector3.zero;
@@ -234,7 +348,6 @@ namespace QuestMarkerApp.Models
             SetAimed(null);
             foreach (Dot d in dots) if (d.T != null) Destroy(d.T.gameObject);
             dots.Clear();
-            if (stemMesh != null) stemMesh.Clear();
         }
 
         // Halo and disc like a real marker's icon, on the same shared sprite material, so the
@@ -268,43 +381,6 @@ namespace QuestMarkerApp.Models
             return r;
         }
 
-        // One line mesh for every stem, in model metres down to the model's lowest point: a
-        // single draw call, and it scales with the root like the model does.
-        private void BuildStems()
-        {
-            if (stemMesh == null) return;
-            stemMesh.Clear();
-            float ground = overlay.ModelBounds.min.y;
-            var verts = new List<Vector3>(dots.Count * 2);
-            var colors = new List<Color>(dots.Count * 2);
-            var indices = new List<int>(dots.Count * 2);
-            foreach (Dot d in dots)
-            {
-                if (d.Local.y - ground < 0.05f) continue; // on the ground already
-                Color c = StateColor(d.State);
-                indices.Add(verts.Count);
-                verts.Add(d.Local);
-                colors.Add(c.WithAlpha(0.75f));
-                indices.Add(verts.Count);
-                verts.Add(new Vector3(d.Local.x, ground, d.Local.z));
-                colors.Add(c.WithAlpha(0.15f));
-            }
-            stemMesh.indexFormat = verts.Count <= ushort.MaxValue ? IndexFormat.UInt16 : IndexFormat.UInt32;
-            stemMesh.SetVertices(verts);
-            stemMesh.SetColors(colors);
-            stemMesh.SetIndices(indices, MeshTopology.Lines, 0, true);
-        }
-
-        private static Material StemMaterial()
-        {
-            if (stemMaterial != null) return stemMaterial;
-            Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
-            stemMaterial = new Material(shader) { name = "SensorStems" };
-            // After the model's fills, like its edges, so a stem shows through a see-through wall.
-            stemMaterial.renderQueue = (int)RenderQueue.Transparent + 1;
-            return stemMaterial;
-        }
-
         /// <summary>The marker ring colours: alarm red, alert amber, reference yellow, normal green.</summary>
         private static Color StateColor(string state)
         {
@@ -322,20 +398,17 @@ namespace QuestMarkerApp.Models
         private void Recolour()
         {
             nextRecolour = Time.unscaledTime + RecolourInterval;
-            bool changed = false;
             foreach (Dot d in dots)
             {
                 string s = d.Point.alertState;
                 if (s == d.State) continue;
                 d.State = s;
                 d.Disc.color = StateColor(s);
-                changed = true;
             }
-            if (changed) BuildStems();
         }
 
-        // Constant world size, whatever the zoom: 6 cm at 1:1 (a real marker's scale), shrinking
-        // with the model down to 1.2 cm, where a miniature's dots would otherwise vanish.
+        // Constant world size, whatever the zoom: 10 cm at 1:1, shrinking
+        // with the model down to 2.5 cm, where a miniature's dots would otherwise vanish.
         private void ApplyScale(float rootScale)
         {
             if (Mathf.Approximately(rootScale, appliedScale)) return;
