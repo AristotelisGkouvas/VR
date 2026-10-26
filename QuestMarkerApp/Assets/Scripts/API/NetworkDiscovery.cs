@@ -26,7 +26,11 @@ namespace QuestMarkerApp.API
         private UdpClient udp;
         private Thread thread;
         private volatile bool running;
-        private byte[] payload;
+        private volatile byte[] payload;
+        // Signalled by StopBeacon: wakes the beacon thread at once instead of after its sleep.
+        // Each start gets its own event, so a thread from a previous start can never keep
+        // running alongside a new one after a quick stop/start (app pause/resume).
+        private ManualResetEvent stopSignal;
 
         public void Configure(int httpPort, string name = null)
         {
@@ -50,7 +54,7 @@ namespace QuestMarkerApp.API
         private void RebuildPayload()
         {
             string json =
-                "{\"service\":\"" + serviceName + "\"," +
+                "{\"service\":\"" + Escape(serviceName) + "\"," +
                 "\"port\":" + apiPort + "," +
                 "\"name\":\"" + Escape(deviceName) + "\"," +
                 "\"version\":\"1.2.0\"}";
@@ -65,13 +69,18 @@ namespace QuestMarkerApp.API
             {
                 udp = new UdpClient();
                 udp.EnableBroadcast = true;
-                thread = new Thread(BeaconLoop) { IsBackground = true, Name = "QuestMarkerDiscovery" };
+                stopSignal = new ManualResetEvent(false);
+                UdpClient client = udp;
+                ManualResetEvent stop = stopSignal;
+                thread = new Thread(() => BeaconLoop(client, stop)) { IsBackground = true, Name = "QuestMarkerDiscovery" };
                 thread.Start();
                 Debug.Log($"[Discovery] UDP beacon on port {discoveryPort} advertising API {apiPort}");
             }
             catch (Exception e)
             {
                 running = false;
+                try { udp?.Close(); } catch { /* ignore */ }
+                udp = null;
                 Debug.LogWarning($"[Discovery] Failed to start: {e.Message}");
             }
         }
@@ -79,30 +88,43 @@ namespace QuestMarkerApp.API
         public void StopBeacon()
         {
             running = false;
+            try { stopSignal?.Set(); } catch { /* ignore */ }
+            try { thread?.Join(500); } catch { /* ignore */ }
             try { udp?.Close(); } catch { /* ignore */ }
             udp = null;
-            try { thread?.Join(500); } catch { /* ignore */ }
             thread = null;
+            stopSignal = null; // not disposed: a thread that missed the join may still wait on it
         }
 
-        private void BeaconLoop()
+        private void OnApplicationPause(bool paused)
+        {
+            // Standalone use (no LocalAPIServer driving it): stay quiet while asleep.
+            if (paused) StopBeacon();
+            else if (enableBeacon) StartBeacon();
+        }
+
+        private void BeaconLoop(UdpClient client, ManualResetEvent stop)
         {
             var endpoint = new IPEndPoint(IPAddress.Broadcast, discoveryPort);
-            while (running)
+            // The interval is read once per start; Configure() changes only the payload.
+            int sleepMs = Math.Max(500, (int)(broadcastInterval * 1000));
+            do
             {
                 try
                 {
-                    if (payload != null && udp != null)
-                        udp.Send(payload, payload.Length, endpoint);
+                    byte[] data = payload;
+                    if (data != null)
+                        client.Send(data, data.Length, endpoint);
+                }
+                catch (ObjectDisposedException)
+                {
+                    return; // closed by StopBeacon
                 }
                 catch
                 {
                     // ignore transient network errors
                 }
-
-                int sleepMs = Mathf.Max(500, (int)(broadcastInterval * 1000));
-                Thread.Sleep(sleepMs);
-            }
+            } while (!stop.WaitOne(sleepMs));
         }
 
         private static string Escape(string s) => JsonText.Escape(s);

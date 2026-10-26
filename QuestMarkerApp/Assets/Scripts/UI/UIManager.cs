@@ -40,6 +40,7 @@ namespace QuestMarkerApp.UI
 
         private Transform headTransform;
         private bool showUI = true;
+        private bool suppressed;
         private float nextRefresh;
 
         private void Start()
@@ -50,6 +51,14 @@ namespace QuestMarkerApp.UI
             }
 
             FindReferences();
+            // Suppress() can run before Start (MarkerAppController's init order): the canvas
+            // created just above then stayed up for good, floating at the world origin, since a
+            // suppressed Update never touches it again.
+            if (suppressed)
+            {
+                if (mainCanvas != null) mainCanvas.gameObject.SetActive(false);
+                return;
+            }
             SubscribeToEvents();
             UpdateUI();
             SetupInstructions();
@@ -57,6 +66,9 @@ namespace QuestMarkerApp.UI
 
         private void Update()
         {
+            // Suppressed for good by MarkerAppController: no canvas follow, no input polling.
+            if (suppressed) return;
+
             if (followHead && headTransform != null && mainCanvas != null)
             {
                 UpdateCanvasPosition();
@@ -85,17 +97,17 @@ namespace QuestMarkerApp.UI
         {
             if (localServer == null)
             {
-                localServer = FindObjectOfType<LocalAPIServer>();
+                localServer = FindAnyObjectByType<LocalAPIServer>();
             }
 
             if (markerManager == null)
             {
-                markerManager = FindObjectOfType<MarkerManager>();
+                markerManager = FindAnyObjectByType<MarkerManager>();
             }
 
             if (calibrationSystem == null)
             {
-                calibrationSystem = FindObjectOfType<CoordinateCalibration>();
+                calibrationSystem = FindAnyObjectByType<CoordinateCalibration>();
             }
 
             if (mainCanvas == null)
@@ -213,6 +225,8 @@ namespace QuestMarkerApp.UI
 
         private void UpdateCanvasPosition()
         {
+            if (suppressed && mainCanvas != null && mainCanvas.gameObject.activeSelf)
+                mainCanvas.gameObject.SetActive(false);
             Vector3 targetPosition = headTransform.position + headTransform.forward * uiDistance;
             targetPosition.y = headTransform.position.y;
 
@@ -278,18 +292,25 @@ namespace QuestMarkerApp.UI
             {
                 instructionsText.text =
                     "<b>Οδηγίες Χρήσης:</b>\n\n" +
-                    "• POST /api/coordinates — markers\n" +
-                    "• GET /api/coordinates — λίστα markers\n" +
+                    "• POST /api/coordinates — σημεία\n" +
+                    "• GET /api/coordinates — λίστα σημείων\n" +
                     "• DELETE /api/coordinates/{id} — διαγραφή\n" +
-                    "• A: Επαναβαθμονόμηση σημείου αναφοράς\n" +
-                    "• B: Καθαρισμός markers\n" +
-                    "• X: Έναρξη calibration\n" +
-                    "• Thumbstick: Εμφάνιση/Απόκρυψη UI";
+                    "• X: Μενού\n" +
+                    "• Σκανδάλη: Επιλογή αισθητήρα";
             }
+        }
+
+        /// <summary>Hide this HUD for good; the main menu now carries its status.</summary>
+        public void Suppress()
+        {
+            suppressed = true;
+            showUI = false;
+            if (mainCanvas != null) mainCanvas.gameObject.SetActive(false);
         }
 
         private void ToggleUI()
         {
+            if (suppressed) return;
             showUI = !showUI;
             if (mainCanvas != null)
             {

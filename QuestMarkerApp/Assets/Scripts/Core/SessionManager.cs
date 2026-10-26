@@ -52,7 +52,7 @@ namespace QuestMarkerApp.Core
         private void Awake()
         {
             if (markerManager == null)
-                markerManager = FindObjectOfType<MarkerManager>();
+                markerManager = FindAnyObjectByType<MarkerManager>();
 
             sessionId = Guid.NewGuid().ToString("N");
             createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -128,8 +128,9 @@ namespace QuestMarkerApp.Core
             try
             {
                 // Only restore into an empty scene — never clobber markers that
-                // something else (server push, editor tools) already placed.
-                if (markerManager == null || markerManager.ActiveMarkerCount > 0) return;
+                // something else (server push, editor tools) already placed. Project markers
+                // don't count: ProjectAlignment restores them itself and they are not saved here.
+                if (markerManager == null || ManualMarkerCount() > 0) return;
                 if (!File.Exists(AutoSavePath)) return;
 
                 if (LoadFromJson(File.ReadAllText(AutoSavePath, Encoding.UTF8)))
@@ -145,7 +146,8 @@ namespace QuestMarkerApp.Core
         public void PushHistory()
         {
             if (markerManager == null) return;
-            string snap = markerManager.ToCoordinatesJson();
+            // Project sensors left out: ProjectAlignment owns them, and the restore below spares them.
+            string snap = markerManager.ToCoordinatesJson(false);
             // Skip no-op snapshots so periodic full-state pushes don't flood the history.
             if (undoStack.Count > 0 && undoStack.Peek() == snap) return;
             undoStack.Push(snap);
@@ -249,9 +251,11 @@ namespace QuestMarkerApp.Core
             {
                 if (string.IsNullOrEmpty(absolutePath))
                 {
-                    string file = csv
-                        ? $"session_{sessionName}_{sessionId.Substring(0, 8)}.csv"
-                        : $"session_{sessionName}_{sessionId.Substring(0, 8)}.json";
+                    // Name and id may come from an imported session over the API: keep them to
+                    // one safe file name (no "../", no separators) and tolerate short ids.
+                    string idPart = string.IsNullOrEmpty(sessionId) ? "session"
+                        : sessionId.Length > 8 ? sessionId.Substring(0, 8) : sessionId;
+                    string file = SafeFileName($"session_{sessionName}_{idPart}") + (csv ? ".csv" : ".json");
                     absolutePath = Path.Combine(Application.persistentDataPath, file);
                 }
 
@@ -362,7 +366,13 @@ namespace QuestMarkerApp.Core
             createdAt = session.createdAt > 0 ? session.createdAt : createdAt;
             crs = session.crs ?? "local";
             epsg = session.epsg;
-            gpsOrigin = session.gpsOrigin;
+            // JsonUtility always instantiates nested classes, so a session without an origin
+            // comes back as (0, 0): GPS markers would then be placed thousands of km away
+            // instead of being reported as missing an origin.
+            gpsOrigin = session.gpsOrigin != null
+                        && (session.gpsOrigin.latitude != 0 || session.gpsOrigin.longitude != 0)
+                ? session.gpsOrigin
+                : null;
 
             markerManager.ProcessCoordinates(new CoordinateResponse
             {
@@ -385,12 +395,25 @@ namespace QuestMarkerApp.Core
                 markerManager.ClearAllMarkers();
         }
 
+        /// <summary>Markers this session owns: everything except ProjectAlignment's "prj:" markers.</summary>
+        private int ManualMarkerCount()
+        {
+            if (markerManager == null) return 0;
+            int n = 0;
+            foreach (var kvp in markerManager.ActiveMarkers)
+                if (!kvp.Key.StartsWith(ProjectAlignment.MarkerPrefix)) n++;
+            return n;
+        }
+
         private CoordinateData[] CollectMarkers()
         {
             if (markerManager == null) return Array.Empty<CoordinateData>();
             var list = new List<CoordinateData>();
             foreach (var kvp in markerManager.ActiveMarkers)
             {
+                // Project markers belong to ProjectAlignment, which saves and re-renders them
+                // itself; restoring them here too left ghosts or wiped manual markers.
+                if (kvp.Key.StartsWith(ProjectAlignment.MarkerPrefix)) continue;
                 if (kvp.Value?.Data != null)
                     list.Add(kvp.Value.Data.Clone());
             }
@@ -398,6 +421,15 @@ namespace QuestMarkerApp.Core
         }
 
         private static string F(float v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+        private static string SafeFileName(string name)
+        {
+            var sb = new StringBuilder(name.Length);
+            char[] invalid = Path.GetInvalidFileNameChars();
+            foreach (char c in name)
+                sb.Append(c == '/' || c == '\\' || c == ':' || c == '.' || Array.IndexOf(invalid, c) >= 0 ? '_' : c);
+            return sb.ToString();
+        }
 
         private static string EscapeCsv(string s)
         {
@@ -447,10 +479,21 @@ namespace QuestMarkerApp.Core
             int start = json.IndexOf('[', idx);
             if (start < 0) return "[]";
             int depth = 0;
+            bool inString = false;
             for (int i = start; i < json.Length; i++)
             {
-                if (json[i] == '[') depth++;
-                else if (json[i] == ']')
+                char c = json[i];
+                // Brackets inside labels / notes ("Κ5 [old]") must not count: a stray ']' cut
+                // the snapshot short and the undo step was lost to a parse error.
+                if (inString)
+                {
+                    if (c == '\\') i++;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') inString = true;
+                else if (c == '[') depth++;
+                else if (c == ']')
                 {
                     depth--;
                     if (depth == 0)

@@ -46,11 +46,11 @@ namespace QuestMarkerApp.Editor
             GUI.enabled = Application.isPlaying;
             if (GUILayout.Button("Add Marker"))
             {
-                var ctrl = Object.FindObjectOfType<MarkerAppController>();
+                var ctrl = Object.FindAnyObjectByType<MarkerAppController>();
                 if (ctrl != null)
                 {
                     // Use API path for full pipeline
-                    var mm = Object.FindObjectOfType<MarkerManager>();
+                    var mm = Object.FindAnyObjectByType<MarkerManager>();
                     mm?.ProcessCoordinates(new CoordinateResponse
                     {
                         coordinates = new[]
@@ -69,11 +69,11 @@ namespace QuestMarkerApp.Editor
 
             if (GUILayout.Button("Spawn Demo Set"))
             {
-                var mobile = Object.FindObjectOfType<Mobile.MobilePreviewController>();
+                var mobile = Object.FindAnyObjectByType<Mobile.MobilePreviewController>();
                 if (mobile != null) mobile.SpawnDemoMarkers();
                 else
                 {
-                    var mm = Object.FindObjectOfType<MarkerManager>();
+                    var mm = Object.FindAnyObjectByType<MarkerManager>();
                     mm?.ProcessCoordinates(new CoordinateResponse
                     {
                         clearExisting = true,
@@ -89,21 +89,21 @@ namespace QuestMarkerApp.Editor
             }
 
             if (GUILayout.Button("Clear Markers"))
-                Object.FindObjectOfType<MarkerAppController>()?.ClearAllMarkers();
+                Object.FindAnyObjectByType<MarkerAppController>()?.ClearAllMarkers();
 
             if (GUILayout.Button("Undo"))
-                Object.FindObjectOfType<MarkerAppController>()?.Undo();
+                Object.FindAnyObjectByType<MarkerAppController>()?.Undo();
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Calibration", EditorStyles.boldLabel);
             if (GUILayout.Button("Start Calibration Mode"))
-                Object.FindObjectOfType<MarkerAppController>()?.StartCalibrationMode();
+                Object.FindAnyObjectByType<MarkerAppController>()?.StartCalibrationMode();
             if (GUILayout.Button("Quick Calibrate Origin (0,0,0)"))
-                Object.FindObjectOfType<CoordinateCalibration>()?.QuickCalibrate(Vector3.zero, 0f);
+                Object.FindAnyObjectByType<CoordinateCalibration>()?.QuickCalibrate(Vector3.zero, 0f);
             if (GUILayout.Button("Reset Calibration"))
-                Object.FindObjectOfType<CoordinateCalibration>()?.ResetCalibration();
+                Object.FindAnyObjectByType<CoordinateCalibration>()?.ResetCalibration();
 
-            var cal = Object.FindObjectOfType<CoordinateCalibration>();
+            var cal = Object.FindAnyObjectByType<CoordinateCalibration>();
             if (cal != null)
             {
                 EditorGUILayout.HelpBox(
@@ -115,13 +115,13 @@ namespace QuestMarkerApp.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Session", EditorStyles.boldLabel);
             if (GUILayout.Button("Save Session JSON"))
-                Object.FindObjectOfType<SessionManager>()?.SaveToFile();
+                Object.FindAnyObjectByType<SessionManager>()?.SaveToFile();
             if (GUILayout.Button("Save Session CSV"))
-                Object.FindObjectOfType<SessionManager>()?.SaveToFile(csv: true);
+                Object.FindAnyObjectByType<SessionManager>()?.SaveToFile(csv: true);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Server", EditorStyles.boldLabel);
-            var server = Object.FindObjectOfType<LocalAPIServer>();
+            var server = Object.FindAnyObjectByType<LocalAPIServer>();
             if (server != null)
             {
                 EditorGUILayout.LabelField("Running", server.IsRunning.ToString());

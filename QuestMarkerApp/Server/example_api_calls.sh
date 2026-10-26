@@ -1,10 +1,17 @@
 #!/bin/bash
 # Example curl commands for Quest Marker App
-# Usage: ./example_api_calls.sh [QUEST_IP] [QUEST_PORT]
+# Usage: ./example_api_calls.sh [QUEST_IP] [QUEST_PORT] [QUEST_KEY]
+# QUEST_KEY is the key shown in the headset's main menu (or set the QUEST_KEY env var).
+# Every endpoint except /api/health answers 401 without it.
 
 QUEST_IP="${1:-192.168.1.100}"
 QUEST_PORT="${2:-8080}"
+QUEST_KEY="${3:-${QUEST_KEY:-}}"
 BASE_URL="http://${QUEST_IP}:${QUEST_PORT}"
+AUTH=(-H "X-Api-Key: ${QUEST_KEY}")
+if [ -z "${QUEST_KEY}" ]; then
+  echo "Warning: no QUEST_KEY given - everything but /api/health will answer 401." >&2
+fi
 
 echo "Quest Marker App - API Examples"
 echo "================================"
@@ -18,12 +25,12 @@ echo ""
 
 # 2. Status
 echo "2. Full status..."
-curl -s "${BASE_URL}/api/status" | python3 -m json.tool 2>/dev/null || echo "(status endpoint may be unavailable)"
+curl -s "${AUTH[@]}" "${BASE_URL}/api/status" | python3 -m json.tool 2>/dev/null || echo "(status endpoint may be unavailable)"
 echo ""
 
 # 3. Single coordinate
 echo "3. Sending single coordinate..."
-curl -s -X POST "${BASE_URL}/api/coordinates" \
+curl -s "${AUTH[@]}" -X POST "${BASE_URL}/api/coordinates" \
   -H "Content-Type: application/json" \
   -d '{
     "coordinates": [
@@ -43,7 +50,7 @@ echo ""
 
 # 4. Multiple coordinates
 echo "4. Sending multiple coordinates..."
-curl -s -X POST "${BASE_URL}/api/coordinates" \
+curl -s "${AUTH[@]}" -X POST "${BASE_URL}/api/coordinates" \
   -H "Content-Type: application/json" \
   -d '{
     "coordinates": [
@@ -58,22 +65,22 @@ echo ""
 
 # 5. List markers
 echo "5. GET current markers..."
-curl -s "${BASE_URL}/api/coordinates" | python3 -m json.tool
+curl -s "${AUTH[@]}" "${BASE_URL}/api/coordinates" | python3 -m json.tool
 echo ""
 
 # 6. Delete one marker
 echo "6. DELETE marker 'a'..."
-curl -s -X DELETE "${BASE_URL}/api/coordinates/a" | python3 -m json.tool
+curl -s "${AUTH[@]}" -X DELETE "${BASE_URL}/api/coordinates/a" | python3 -m json.tool
 echo ""
 
 # 7. Calibration status
 echo "7. Calibration status..."
-curl -s "${BASE_URL}/api/calibrate/status" | python3 -m json.tool
+curl -s "${AUTH[@]}" "${BASE_URL}/api/calibrate/status" | python3 -m json.tool
 echo ""
 
 # 8. Typed markers + layer
 echo "8. Pin + zone markers..."
-curl -s -X POST "${BASE_URL}/api/coordinates" \
+curl -s "${AUTH[@]}" -X POST "${BASE_URL}/api/coordinates" \
   -H "Content-Type: application/json" \
   -d '{
     "coordinates": [
@@ -86,22 +93,22 @@ echo ""
 
 # 9. Logs
 echo "9. Request logs..."
-curl -s "${BASE_URL}/api/logs" | python3 -m json.tool 2>/dev/null | head -40
+curl -s "${AUTH[@]}" "${BASE_URL}/api/logs" | python3 -m json.tool 2>/dev/null | head -40
 echo ""
 
 # 10. Session export
 echo "10. Session export..."
-curl -s "${BASE_URL}/api/session" | python3 -m json.tool 2>/dev/null | head -40
+curl -s "${AUTH[@]}" "${BASE_URL}/api/session" | python3 -m json.tool 2>/dev/null | head -40
 echo ""
 
 echo "Other useful commands:"
-echo "  curl -X POST ${BASE_URL}/api/clear"
-echo "  curl -X POST ${BASE_URL}/api/undo"
-echo "  curl -X POST ${BASE_URL}/api/calibrate/start"
-echo "  curl -X POST ${BASE_URL}/api/calibrate/reset"
-echo "  curl -X POST ${BASE_URL}/api/calibrate -H 'Content-Type: application/json' \\"
+echo "  curl -H 'X-Api-Key: ${QUEST_KEY}' -X POST ${BASE_URL}/api/clear"
+echo "  curl -H 'X-Api-Key: ${QUEST_KEY}' -X POST ${BASE_URL}/api/undo"
+echo "  curl -H 'X-Api-Key: ${QUEST_KEY}' -X POST ${BASE_URL}/api/calibrate/start"
+echo "  curl -H 'X-Api-Key: ${QUEST_KEY}' -X POST ${BASE_URL}/api/calibrate/reset"
+echo "  curl -H 'X-Api-Key: ${QUEST_KEY}' -X POST ${BASE_URL}/api/calibrate -H 'Content-Type: application/json' \\"
 echo "       -d '{\"realX\":0,\"realY\":0,\"realZ\":0,\"quickCalibrate\":true}'"
-echo "  curl -X POST ${BASE_URL}/api/layer -H 'Content-Type: application/json' -d '{\"layer\":\"hazards\"}'"
+echo "  curl -H 'X-Api-Key: ${QUEST_KEY}' -X POST ${BASE_URL}/api/layer -H 'Content-Type: application/json' -d '{\"layer\":\"hazards\"}'"
 echo "  python coordinate_server.py --discover"
 echo ""
 echo "Done!"

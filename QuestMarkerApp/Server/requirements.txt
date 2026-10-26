@@ -1,3 +1,5 @@
 flask>=2.3.0
 flask-cors>=4.0.0
 requests>=2.31.0
+# Optional: only needed to convert IFC files with send_model.py (OBJ/DXF need nothing extra)
+# ifcopenshell>=0.7.0

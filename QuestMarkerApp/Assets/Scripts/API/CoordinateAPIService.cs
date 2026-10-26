@@ -66,6 +66,8 @@ namespace QuestMarkerApp.API
         {
             if (isPolling) return;
 
+            // Started before Start() ran (e.g. by the controller): 0 would poll every frame.
+            if (currentPollingInterval <= 0f) currentPollingInterval = Mathf.Max(0.1f, pollingInterval);
             isPolling = true;
             pollingCoroutine = StartCoroutine(PollCoordinates());
 
@@ -110,7 +112,7 @@ namespace QuestMarkerApp.API
             while (isPolling)
             {
                 yield return StartCoroutine(FetchCoordinatesRequest(null));
-                yield return new WaitForSeconds(currentPollingInterval);
+                yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, currentPollingInterval));
             }
         }
 
@@ -158,6 +160,7 @@ namespace QuestMarkerApp.API
                     {
                         string json = request.downloadHandler.text;
                         CoordinateResponse response = JsonUtility.FromJson<CoordinateResponse>(json);
+                        if (response == null) throw new FormatException("empty or null JSON");
 
                         if (logRequests)
                             Debug.Log($"[CoordinateAPI] Received {response.coordinates?.Length ?? 0} coordinates");
@@ -233,9 +236,11 @@ namespace QuestMarkerApp.API
         /// </summary>
         public void Configure(string url, string endpoint = null, float? interval = null)
         {
-            serverUrl = url;
+            if (!string.IsNullOrEmpty(url)) serverUrl = url.Trim().TrimEnd('/');
             if (endpoint != null) apiEndpoint = endpoint;
-            if (interval.HasValue) pollingInterval = interval.Value;
+            if (interval.HasValue && interval.Value > 0f) pollingInterval = interval.Value;
+            currentPollingInterval = pollingInterval;
+            consecutiveErrors = 0;
 
             // Restart polling with new configuration
             if (isPolling)

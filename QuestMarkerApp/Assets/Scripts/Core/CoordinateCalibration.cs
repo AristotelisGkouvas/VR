@@ -27,6 +27,11 @@ namespace QuestMarkerApp.Core
         [SerializeField] private GameObject calibrationMarkerPrefab;
         [SerializeField] private float laserLength = 10f;
 
+        [Header("Frame")]
+        [Tooltip("Markers are placed relative to MarkerManager's reference point, so captured points " +
+                 "are stored in that frame too. Found automatically when empty.")]
+        [SerializeField] private Markers.MarkerManager markerManager;
+
         [Header("Debug")]
         [SerializeField] private bool showDebugInfo = true;
 
@@ -41,6 +46,7 @@ namespace QuestMarkerApp.Core
         private CalibrationData currentCalibration;
         private readonly List<CalibrationPoint> calibrationPoints = new List<CalibrationPoint>();
         private float lastResidualRms;
+        private float lastScaleRatio = 1f;
         private string currentStepMessage = "Idle";
 
         public bool IsCalibrated => currentCalibration != null && currentCalibration.isValid;
@@ -48,6 +54,8 @@ namespace QuestMarkerApp.Core
         public CalibrationData CurrentCalibration => currentCalibration;
         public int CapturedPointCount => calibrationPoints.Count;
         public float LastResidualRms => lastResidualRms;
+        /// <summary>Quest/real XZ distance ratio of the last multi-point fit — a sanity check, never applied.</summary>
+        public float LastScaleRatio => lastScaleRatio;
         public string CurrentStepMessage => currentStepMessage;
         public int PointsWithRealCoords
         {
@@ -62,10 +70,58 @@ namespace QuestMarkerApp.Core
             }
         }
 
+#if !MOBILE_PREVIEW
+        private OVRCameraRig cachedRig;
+#endif
+
+        // RealToQuest feeds MarkerManager, which applies referencePoint.TransformPoint on top:
+        // the fit must therefore map real coords into the reference frame, not world space
+        // (world-space captures put every calibrated marker off by the anchor's pose).
+        private Transform ReferenceFrame => markerManager != null ? markerManager.ReferencePoint : null;
+
+        private Vector3 WorldToFrame(Vector3 world)
+        {
+            Transform frame = ReferenceFrame;
+            return frame != null ? frame.InverseTransformPoint(world) : world;
+        }
+
+        /// <summary>Minimum horizontal spread (Σ squared offsets from the centroid, m²) to solve a heading.</summary>
+        private const double MinSpread = 0.25 * 0.25;
+
+        /// <summary>
+        /// Real coordinates travel as float: a projected E/N (EGSA87 ~4 200 000, UTM up to
+        /// 10 000 000) keeps only 0.25–1 m. This calibration is for local metres; survey grids
+        /// belong in /api/project, which keeps them in double around an origin.
+        /// </summary>
+        private static void WarnIfLarge(Vector3 real)
+        {
+            const float limit = 20000f; // float ulp at 20 km is 2 mm
+            if (Mathf.Abs(real.x) > limit || Mathf.Abs(real.y) > limit || Mathf.Abs(real.z) > limit)
+                Debug.LogWarning($"[Calibration] Real coordinate {real} is beyond ±{limit} m: float precision is lost " +
+                                 "(cm to m). Subtract a site origin first, or load the points as a project (/api/project).");
+        }
+
         private void Start()
         {
+            if (markerManager == null) markerManager = FindAnyObjectByType<Markers.MarkerManager>();
+            // Captured points are in the reference frame; points from before a frame change
+            // would be mixed with ones after it in one fit.
+            if (markerManager != null) markerManager.OnReferencePointChanged += OnReferenceFrameChanged;
             SetupLaserPointer();
             LoadSavedCalibration();
+        }
+
+        private void OnDestroy()
+        {
+            if (markerManager != null) markerManager.OnReferencePointChanged -= OnReferenceFrameChanged;
+        }
+
+        private void OnReferenceFrameChanged(Transform _)
+        {
+            if (!isCalibrating || calibrationPoints.Count == 0) return;
+            calibrationPoints.Clear();
+            Debug.LogWarning("[Calibration] Reference point changed during calibration — captured points discarded");
+            SetStep($"Reference point changed — start again: Step 1/{minimumCalibrationPoints}");
         }
 
         private void Update()
@@ -75,7 +131,7 @@ namespace QuestMarkerApp.Core
                 UpdateLaserPointer();
 
 #if !MOBILE_PREVIEW
-                if (OVRInput.GetDown(calibrateButton, OVRInput.Controller.RTouch))
+                if (!UI.UiState.InputBlocked && OVRInput.GetDown(calibrateButton, UI.Hands.Dominant))
                 {
                     CaptureCalibrationPoint();
                 }
@@ -91,6 +147,7 @@ namespace QuestMarkerApp.Core
             isCalibrating = true;
             calibrationPoints.Clear();
             lastResidualRms = 0f;
+            lastScaleRatio = 1f;
 
             if (laserPointer != null)
             {
@@ -142,6 +199,7 @@ namespace QuestMarkerApp.Core
                 return;
             }
 
+            WarnIfLarge(realWorldCoords);
             var lastPoint = calibrationPoints[calibrationPoints.Count - 1];
             lastPoint.realWorldPosition = realWorldCoords;
             lastPoint.coordinateSystem = system;
@@ -165,7 +223,8 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>
-        /// Add a calibration point with both positions known
+        /// Add a calibration point with both positions known. <paramref name="questPosition"/>
+        /// must be in the marker reference frame (see ReferenceFrame), not world space.
         /// </summary>
         public void AddCalibrationPoint(Vector3 questPosition, Vector3 realWorldPosition, CoordinateSystem system = CoordinateSystem.Local)
         {
@@ -175,6 +234,7 @@ namespace QuestMarkerApp.Core
                 return;
             }
 
+            WarnIfLarge(realWorldPosition);
             CalibrationPoint point = new CalibrationPoint
             {
                 questPosition = questPosition,
@@ -205,10 +265,26 @@ namespace QuestMarkerApp.Core
                 return;
             }
 
+            // RealToQuest(p) = R*p + originOffset, so the origin lands on the controller only
+            // when the offset is taken after rotating it. Pose and heading are taken in the
+            // marker reference frame (see ReferenceFrame).
+            // Real +Z (North) is laid along the controller's pointing direction, then the real
+            // frame is turned by a further rotationYDegrees about Y (as documented in the README):
+            // R = Euler(controllerYaw + rotationY). The previous "rotationY − controllerYaw" had the
+            // controller term mirrored: turning the controller 90° right swung the site 90° left.
+            Transform frame = ReferenceFrame;
+            Quaternion inFrame = frame != null ? Quaternion.Inverse(frame.rotation) * controller.rotation : controller.rotation;
+            // Heading from the forward vector on the floor plane; eulerAngles.y is unreliable when
+            // the controller points nearly straight down at the spot, so fall back to its up vector.
+            Vector3 fwd = inFrame * Vector3.forward;
+            if (fwd.x * fwd.x + fwd.z * fwd.z < 0.01f) fwd = inFrame * Vector3.up;
+            float controllerYaw = Mathf.Atan2(fwd.x, fwd.z) * Mathf.Rad2Deg;
+            Quaternion rotation = Quaternion.Euler(0, controllerYaw + rotationYDegrees, 0);
+            WarnIfLarge(realWorldOrigin);
             currentCalibration = new CalibrationData
             {
-                originOffset = controller.position - realWorldOrigin,
-                rotationOffset = Quaternion.Euler(0, rotationYDegrees - controller.eulerAngles.y, 0),
+                originOffset = WorldToFrame(controller.position) - rotation * realWorldOrigin,
+                rotationOffset = rotation,
                 scale = Vector3.one,
                 isValid = true,
                 calibrationTimeUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -279,19 +355,21 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>
-        /// Equirectangular approximation: good for room/site scale (&lt; ~5 km).
-        /// X = East (m), Y = Up (m), Z = North (m).
+        /// WGS84 lat/lon (degrees, ellipsoidal height) → local metres around the origin:
+        /// X = East, Y = Up, Z = North on the tangent plane at the origin (exact ECEF → ENU, the
+        /// same as TerrawebImport / terraweb_bridge.py). Valid anywhere: either hemisphere, high
+        /// latitudes, across the ±180° meridian. The headset's world is flat, so Y includes the
+        /// Earth-curvature drop (8 cm at 1 km). Heights must be ellipsoidal like the origin's;
+        /// survey (orthometric) heights differ by the geoid undulation, a constant offset per site.
         /// </summary>
         public static Vector3 GpsToLocalMeters(double latitude, double longitude, double altitude, GPSReferenceOrigin origin)
         {
-            const double metersPerDegLat = 111320.0;
-            double latRad = origin.latitude * (Math.PI / 180.0);
-            double metersPerDegLon = metersPerDegLat * Math.Cos(latRad);
-
-            float x = (float)((longitude - origin.longitude) * metersPerDegLon);
-            float y = (float)(altitude - origin.altitude);
-            float z = (float)((latitude - origin.latitude) * metersPerDegLat);
-            return new Vector3(x, y, z);
+            // The old equirectangular version used a spherical 111 320 m/deg: 0.29 % too long
+            // north-south at 38° N (2.9 m per km), 0.13 % too short east-west, and a point across
+            // the ±180° meridian landed ~40 000 km away.
+            TerrawebImport.Enu(latitude, longitude, altitude, origin.latitude, origin.longitude, origin.altitude,
+                out double east, out double north, out double up);
+            return new Vector3((float)east, (float)up, (float)north);
         }
 
         /// <summary>
@@ -344,7 +422,7 @@ namespace QuestMarkerApp.Core
 
             CalibrationPoint point = new CalibrationPoint
             {
-                questPosition = pointPosition,
+                questPosition = WorldToFrame(pointPosition),
                 hasRealCoordinates = false,
                 timestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
@@ -398,28 +476,39 @@ namespace QuestMarkerApp.Core
                 questCentroid /= validPoints.Count;
                 realCentroid /= validPoints.Count;
 
-                Vector3 questDir = (validPoints[1].questPosition - validPoints[0].questPosition);
-                Vector3 realDir = (validPoints[1].realWorldPosition - validPoints[0].realWorldPosition);
-
-                questDir.y = 0;
-                realDir.y = 0;
-
-                if (questDir.sqrMagnitude > 0.0001f && realDir.sqrMagnitude > 0.0001f)
+                // Least-squares yaw over all points on the XZ plane (same derivation as
+                // ProjectAlignment.Solve). Unity's Euler(0,θ,0) maps
+                // (x,z) → (x cosθ + z sinθ, −x sinθ + z cosθ).
+                double sCos = 0, sSin = 0, realSpread = 0, questSpread = 0;
+                foreach (var p in validPoints)
                 {
-                    float angle = Vector3.SignedAngle(realDir.normalized, questDir.normalized, Vector3.up);
+                    float px = p.realWorldPosition.x - realCentroid.x, pz = p.realWorldPosition.z - realCentroid.z;
+                    float mx = p.questPosition.x - questCentroid.x, mz = p.questPosition.z - questCentroid.z;
+                    sCos += mx * px + mz * pz;
+                    sSin += mx * pz - mz * px;
+                    realSpread += px * px + pz * pz;
+                    questSpread += mx * mx + mz * mz;
+                }
 
-                    // Optional scale from inter-point distance ratio (XZ plane)
-                    float questDist = questDir.magnitude;
-                    float realDist = realDir.magnitude;
-                    float uniformScale = (useAveraging && realDist > 0.01f)
-                        ? questDist / realDist
-                        : 1f;
+                // Same guard as ProjectAlignment: two points closer than ~35 cm (sum of squared
+                // offsets < 0.25²) leave the heading to noise — 1 cm of tip error over 1.4 cm
+                // (the old 0.0001 m² limit) is a ±35° swing.
+                if (realSpread >= MinSpread && questSpread >= MinSpread)
+                {
+                    float angle = (float)(Math.Atan2(sSin, sCos) * 180.0 / Math.PI);
+                    Quaternion rotation = Quaternion.Euler(0, angle, 0);
+
+                    // XZ distance ratio as a sanity check only: a mismatch shows up in the
+                    // residual rather than being absorbed into the transform (never scale Y).
+                    lastScaleRatio = (float)Math.Sqrt(questSpread / realSpread);
+                    if (Mathf.Abs(lastScaleRatio - 1f) > 0.02f)
+                        Debug.LogWarning($"[Calibration] Quest/real XZ scale ratio {lastScaleRatio:F4} differs from 1 — check the real coordinates");
 
                     currentCalibration = new CalibrationData
                     {
-                        originOffset = questCentroid - Quaternion.Euler(0, angle, 0) * (realCentroid * uniformScale),
-                        rotationOffset = Quaternion.Euler(0, angle, 0),
-                        scale = Vector3.one * uniformScale,
+                        originOffset = questCentroid - rotation * realCentroid,
+                        rotationOffset = rotation,
+                        scale = Vector3.one,
                         isValid = true,
                         calibrationTimeUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                         pointsUsed = validPoints.Count
@@ -428,7 +517,8 @@ namespace QuestMarkerApp.Core
                 }
                 else
                 {
-                    Debug.LogWarning("[Calibration] Points are too close or collinear on XZ plane — cannot compute rotation");
+                    Debug.LogWarning("[Calibration] Points are too close together on the XZ plane — cannot compute rotation");
+                    SetStep("Points too close together (< ~0.35 m) — capture points further apart");
                     return;
                 }
             }
@@ -441,7 +531,7 @@ namespace QuestMarkerApp.Core
                 StopCalibration();
                 SetStep($"Calibrated OK — residual RMS {lastResidualRms:F3} m ({validPoints.Count} pts)");
                 OnCalibrationComplete?.Invoke(currentCalibration);
-                Debug.Log($"[Calibration] Complete with {validPoints.Count} points, residual RMS={lastResidualRms:F4}m");
+                Debug.Log($"[Calibration] Complete with {validPoints.Count} points, residual RMS={lastResidualRms:F4}m, XZ scale ratio {lastScaleRatio:F4}");
             }
         }
 
@@ -468,10 +558,11 @@ namespace QuestMarkerApp.Core
                 return rightController;
 
 #if !MOBILE_PREVIEW
-            var ovrRig = FindObjectOfType<OVRCameraRig>();
-            if (ovrRig != null)
+            // Called every frame while calibrating: a scene search per frame is a Quest hitch.
+            if (cachedRig == null) cachedRig = FindAnyObjectByType<OVRCameraRig>();
+            if (cachedRig != null)
             {
-                return ovrRig.rightHandAnchor;
+                return UI.Hands.DominantAnchor(cachedRig);
             }
 #endif
 
@@ -489,7 +580,9 @@ namespace QuestMarkerApp.Core
                 laserPointer.startWidth = 0.005f;
                 laserPointer.endWidth = 0.002f;
                 laserPointer.positionCount = 2;
-                laserPointer.material = new Material(Shader.Find("Sprites/Default"));
+                // new Material(null) throws, which would abort Start before the saved calibration loads.
+                Shader laserShader = Shader.Find("Sprites/Default");
+                if (laserShader != null) laserPointer.material = new Material(laserShader);
                 laserPointer.startColor = Color.green;
                 laserPointer.endColor = Color.yellow;
                 laserPointer.enabled = false;
@@ -518,6 +611,7 @@ namespace QuestMarkerApp.Core
             if (currentCalibration == null) return;
 
             currentCalibration.SyncQuaternionFields();
+            currentCalibration.frameVersion = CalibrationData.ReferenceFrameVersion;
             string json = JsonUtility.ToJson(currentCalibration);
             PlayerPrefs.SetString("CalibrationData", json);
             PlayerPrefs.Save();
@@ -531,6 +625,20 @@ namespace QuestMarkerApp.Core
             {
                 string json = PlayerPrefs.GetString("CalibrationData");
                 currentCalibration = JsonUtility.FromJson<CalibrationData>(json);
+
+                // Saves without frameVersion were fitted in world space; RealToQuest is now read
+                // in the reference-anchor frame, so applying one would shift every calibrated
+                // marker by the anchor's pose. Drop it and ask for a new calibration instead.
+                if (currentCalibration != null && currentCalibration.frameVersion < CalibrationData.ReferenceFrameVersion)
+                {
+                    Debug.LogWarning("[Calibration] Saved calibration predates anchor-relative calibration (world space) — " +
+                                     "discarded; calibrate again");
+                    currentCalibration = null;
+                    PlayerPrefs.DeleteKey("CalibrationData");
+                    PlayerPrefs.Save();
+                    SetStep("Saved calibration was from an older version — please calibrate again");
+                    return;
+                }
 
                 // Migrate pre-1.2 saves where the rotation was a serialized Quaternion
                 // ("rotationOffset") instead of rotX..rotW component fields.
@@ -608,6 +716,14 @@ namespace QuestMarkerApp.Core
         public long calibrationTimeUnixMs;
         public int pointsUsed;
         public float residualRmsMeters;
+
+        /// <summary>Saves carrying this value map real coords into the reference-anchor frame.</summary>
+        public const int ReferenceFrameVersion = 2;
+        /// <summary>
+        /// Frame of originOffset/rotation: 0 (absent in old saves) = world space, which is no
+        /// longer valid; <see cref="ReferenceFrameVersion"/> = MarkerManager reference anchor.
+        /// </summary>
+        public int frameVersion;
 
         // Quaternion components for JsonUtility persistence
         public float rotX, rotY, rotZ, rotW = 1f;

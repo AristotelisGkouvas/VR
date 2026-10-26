@@ -20,7 +20,7 @@ namespace QuestMarkerApp.UI
         private void Start()
         {
             if (calibration == null)
-                calibration = FindObjectOfType<CoordinateCalibration>();
+                calibration = FindAnyObjectByType<CoordinateCalibration>();
 
             if (calibration != null)
             {
@@ -57,8 +57,11 @@ namespace QuestMarkerApp.UI
         }
         private void OnReset() => step = "Calibration reset";
 
+        // IMGUI never reaches the VR eye buffers, so on device this is pure per-frame cost
+        // (string allocations, GUI.skin writes). Editor / phone preview only.
         private void OnGUI()
         {
+#if UNITY_EDITOR || MOBILE_PREVIEW
             if (!useOnGUI) return;
             if (onlyWhenCalibrating && !calibrating && string.IsNullOrEmpty(step)) return;
 
@@ -80,6 +83,7 @@ namespace QuestMarkerApp.UI
                 "Quick: POST /api/calibrate {realX,realY,realZ,quickCalibrate:true}";
 
             GUI.Box(new Rect(x, y, w, 140f), box);
+#endif
         }
     }
 }

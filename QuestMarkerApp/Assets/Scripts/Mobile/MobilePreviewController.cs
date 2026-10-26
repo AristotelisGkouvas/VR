@@ -31,11 +31,11 @@ namespace QuestMarkerApp.Mobile
 
         private void Start()
         {
-            if (markerManager == null) markerManager = FindObjectOfType<MarkerManager>();
-            if (appController == null) appController = FindObjectOfType<MarkerAppController>();
-            if (anchorManager == null) anchorManager = FindObjectOfType<SpatialAnchorManager>();
-            if (cameraController == null) cameraController = FindObjectOfType<MobileCameraController>();
-            localServer = FindObjectOfType<LocalAPIServer>();
+            if (markerManager == null) markerManager = FindAnyObjectByType<MarkerManager>();
+            if (appController == null) appController = FindAnyObjectByType<MarkerAppController>();
+            if (anchorManager == null) anchorManager = FindAnyObjectByType<SpatialAnchorManager>();
+            if (cameraController == null) cameraController = FindAnyObjectByType<MobileCameraController>();
+            localServer = FindAnyObjectByType<LocalAPIServer>();
             if (localServer != null)
             {
                 var urls = localServer.GetServerUrls();

@@ -9,7 +9,9 @@ namespace QuestMarkerApp.API
         Sphere = 0,
         Pin = 1,
         Arrow = 2,
-        Zone = 3
+        Zone = 3,
+        /// <summary>Camera-facing brand-kit sensor icon (Resources/SensorIcons/&lt;icon&gt;).</summary>
+        Icon = 4
     }
 
     /// <summary>
@@ -27,8 +29,10 @@ namespace QuestMarkerApp.API
         public float scale = 0.1f;
         public long timestamp;
 
-        /// <summary>"sphere" | "pin" | "arrow" | "zone"</summary>
+        /// <summary>"sphere" | "pin" | "arrow" | "zone" | "icon"</summary>
         public string markerType = "sphere";
+        /// <summary>Icon name for markerType "icon", e.g. "piezometer" (Resources/SensorIcons).</summary>
+        public string icon;
 
         /// <summary>Radius for zone markers (meters).</summary>
         public float radius;
@@ -69,6 +73,7 @@ namespace QuestMarkerApp.API
                 case "pin": return MarkerType.Pin;
                 case "arrow": return MarkerType.Arrow;
                 case "zone": return MarkerType.Zone;
+                case "icon": return MarkerType.Icon;
                 default: return MarkerType.Sphere;
             }
         }
@@ -148,6 +153,7 @@ namespace QuestMarkerApp.API
                 scale = scale,
                 timestamp = timestamp,
                 markerType = markerType,
+                icon = icon,
                 radius = radius,
                 crs = crs,
                 epsg = epsg,

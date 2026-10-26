@@ -46,8 +46,21 @@ namespace QuestMarkerApp.Markers
 
         public int ActiveMarkerCount => activeMarkers.Count;
         public int MaxMarkers => maxMarkers;
+
+        /// <summary>Raise the marker cap for a bulk load (e.g. a whole project area); never lowers it.</summary>
+        public void EnsureCapacity(int count)
+        {
+            if (count > maxMarkers) maxMarkers = count;
+        }
         public IReadOnlyDictionary<string, Marker> ActiveMarkers => activeMarkers;
         public Transform ReferencePoint => referencePoint;
+
+        /// <summary>Show or hide every marker at once without touching the layer filter.</summary>
+        public bool MarkersVisible
+        {
+            get => markersContainer == null || markersContainer.gameObject.activeSelf;
+            set { if (markersContainer != null) markersContainer.gameObject.SetActive(value); }
+        }
         public string VisibleLayerFilter
         {
             get => visibleLayerFilter;
@@ -96,7 +109,16 @@ namespace QuestMarkerApp.Markers
 
             if (response.clearExisting)
             {
-                ClearAllMarkers();
+                // Project sensors belong to ProjectAlignment, which re-renders them itself: a
+                // PC batch, a session replay or an undo restore must not wipe them.
+                if (!HasProjectMarkers()) ClearAllMarkers();
+                else
+                {
+                    var toClear = new List<string>();
+                    foreach (var kvp in activeMarkers)
+                        if (!IsProjectMarker(kvp.Key)) toClear.Add(kvp.Key);
+                    foreach (string id in toClear) RemoveMarker(id);
+                }
             }
 
             if (response.coordinates == null) return;
@@ -141,7 +163,8 @@ namespace QuestMarkerApp.Markers
                 List<string> toRemove = null;
                 foreach (var kvp in activeMarkers)
                 {
-                    if (!receivedIds.Contains(kvp.Key))
+                    // A full-state sync from the PC only covers the PC's own markers.
+                    if (!receivedIds.Contains(kvp.Key) && !IsProjectMarker(kvp.Key))
                     {
                         if (toRemove == null) toRemove = new List<string>();
                         toRemove.Add(kvp.Key);
@@ -195,7 +218,6 @@ namespace QuestMarkerApp.Markers
             activeMarkers[id] = marker;
             OnMarkerCreated?.Invoke(marker);
 
-            Debug.Log($"[MarkerManager] Created marker '{id}' at {worldPosition}");
             return marker;
         }
 
@@ -209,7 +231,9 @@ namespace QuestMarkerApp.Markers
             if (referencePoint != null)
             {
                 Vector3 worldPosition = referencePoint.TransformPoint(data.ToVector3());
-                marker.MoveTo(worldPosition, animationDuration);
+                // A re-render that leaves a marker where it is must not start 200 tweens.
+                if ((worldPosition - marker.transform.position).sqrMagnitude > 1e-6f)
+                    marker.MoveTo(worldPosition, marker.gameObject.activeInHierarchy ? animationDuration : 0f);
             }
 
             if (data.scale > 0)
@@ -234,9 +258,23 @@ namespace QuestMarkerApp.Markers
         /// <summary>
         /// Remove a marker by ID
         /// </summary>
+        /// <summary>Id prefix of the sensors ProjectAlignment renders (same as ProjectAlignment.MarkerPrefix).</summary>
+        public const string ProjectMarkerPrefix = "prj:";
+
+        public static bool IsProjectMarker(string id) =>
+            id != null && id.StartsWith(ProjectMarkerPrefix, StringComparison.Ordinal);
+
+        private bool HasProjectMarkers()
+        {
+            foreach (var kvp in activeMarkers)
+                if (IsProjectMarker(kvp.Key)) return true;
+            return false;
+        }
+
         public bool RemoveMarker(string id)
         {
-            if (!activeMarkers.TryGetValue(id, out Marker marker))
+            // Dictionary lookups throw on a null key (DELETE with an empty id, a stale UI row).
+            if (id == null || !activeMarkers.TryGetValue(id, out Marker marker))
                 return false;
 
             OnMarkerRemoved?.Invoke(marker);
@@ -278,8 +316,11 @@ namespace QuestMarkerApp.Markers
             {
                 Marker marker = kvp.Value;
                 Vector3 worldPosition = referencePoint.TransformPoint(marker.LocalCoordinates);
-                marker.transform.position = worldPosition;
+                // Snap, and cancel any tween still heading for the old frame (a restored
+                // spatial anchor used to leave every sensor offset by its pose).
+                marker.MoveTo(worldPosition, 0f);
             }
+            OnReferencePointChanged?.Invoke(referencePoint);
         }
 
         /// <summary>
@@ -324,7 +365,69 @@ namespace QuestMarkerApp.Markers
         }
 
         /// <summary>Ray-highlight closest marker along a ray (controller pointing).</summary>
-        public Marker HighlightAlongRay(Ray ray, float maxDistance = 30f, float maxRadius = 0.35f)
+        [Header("Labels")]
+        [Tooltip("Only this many nearest markers show a label at once.")]
+        [SerializeField] private int maxLabels = 40;
+
+        private readonly List<(float dist, Marker marker)> byDistance = new List<(float, Marker)>();
+        private float nextLabelPass;
+
+        // One loop drives every marker (see Marker.Tick); label slots go to the nearest few,
+        // re-ranked 5x a second rather than every frame.
+        private void Update()
+        {
+            Camera cam = Camera.main;
+            if (cam == null || activeMarkers.Count == 0) return;
+            Vector3 eye = cam.transform.position;
+            bool rank = Time.unscaledTime >= nextLabelPass;
+            if (rank)
+            {
+                nextLabelPass = Time.unscaledTime + 0.2f;
+                byDistance.Clear();
+            }
+
+            foreach (Marker m in activeMarkers.Values)
+            {
+                if (m == null || !m.gameObject.activeInHierarchy) continue;
+                float d = Vector3.Distance(eye, m.transform.position);
+                if (rank) byDistance.Add((d, m));
+                m.Tick(cam, d);
+            }
+
+            if (!rank) return;
+            byDistance.Sort((a, b) => a.dist.CompareTo(b.dist));
+            for (int i = 0; i < byDistance.Count; i++)
+                byDistance[i].marker.LabelSlot = i < maxLabels;
+        }
+
+        private Vector3 lastReferencePosition;
+        private Quaternion lastReferenceRotation;
+
+        // A spatial anchor's transform is corrected by the system (relocalisation, recenter):
+        // markers were placed once from it, so move them along whenever it shifts.
+        private void LateUpdate()
+        {
+            if (referencePoint == null || referencePoint == markersContainer) return;
+            if ((referencePoint.position - lastReferencePosition).sqrMagnitude < 1e-6f
+                && Quaternion.Angle(referencePoint.rotation, lastReferenceRotation) < 0.05f) return;
+            lastReferencePosition = referencePoint.position;
+            lastReferenceRotation = referencePoint.rotation;
+            // MoveTo(…, 0) rather than a plain assignment: it also stops a move tween still
+            // running toward a target computed in the old frame, which would drag the marker back.
+            foreach (Marker marker in activeMarkers.Values)
+                if (marker != null) marker.MoveTo(referencePoint.TransformPoint(marker.LocalCoordinates), 0f);
+        }
+
+        /// <summary>The marker the controller ray currently points at, if any.</summary>
+        public Marker Highlighted => highlightedMarker;
+
+        /// <summary>The frame every marker's local coordinates are relative to was swapped.</summary>
+        public event System.Action<Transform> OnReferencePointChanged;
+
+        // Angular pick: icon markers keep a constant on-screen size, so a far one must be as
+        // easy to hit as a near one. maxRadius still sets the floor for close-up markers.
+        public Marker HighlightAlongRay(Ray ray, float maxDistance = 200f, float maxRadius = 0.35f,
+            float maxAngleRad = 0.035f)
         {
             Marker best = null;
             float bestScore = float.MaxValue;
@@ -338,8 +441,8 @@ namespace QuestMarkerApp.Markers
                 if (proj < 0 || proj > maxDistance) continue;
                 Vector3 closest = ray.origin + ray.direction * proj;
                 float lateral = Vector3.Distance(closest, m.transform.position);
-                if (lateral > maxRadius) continue;
-                float score = proj + lateral * 2f;
+                if (lateral > Mathf.Max(maxRadius, proj * maxAngleRad)) continue;
+                float score = lateral / Mathf.Max(proj, 0.1f);
                 if (score < bestScore)
                 {
                     bestScore = score;
@@ -380,7 +483,11 @@ namespace QuestMarkerApp.Markers
         /// Build a JSON payload of currently active markers (for GET /api/coordinates).
         /// Manual builder — avoids JsonUtility array wrapper limitations.
         /// </summary>
-        public string ToCoordinatesJson()
+        public string ToCoordinatesJson() => ToCoordinatesJson(true);
+
+        /// <param name="includeProject">False for undo snapshots: project sensors are not the
+        /// user's edits, and restoring them would resurrect a project that was since reset.</param>
+        public string ToCoordinatesJson(bool includeProject)
         {
             var sb = new StringBuilder(256 + activeMarkers.Count * 128);
             sb.Append("{\"status\":\"ready\",\"markerCount\":");
@@ -394,6 +501,7 @@ namespace QuestMarkerApp.Markers
             {
                 Marker m = kvp.Value;
                 if (m == null) continue;
+                if (!includeProject && IsProjectMarker(kvp.Key)) continue;
                 CoordinateData d = m.Data;
                 if (d == null) continue;
 
@@ -475,6 +583,7 @@ namespace QuestMarkerApp.Markers
         {
             if (marker == null) return;
 
+            if (highlightedMarker == marker) SetHighlighted(null);
             if (useObjectPooling)
             {
                 marker.gameObject.SetActive(false);
@@ -530,17 +639,6 @@ namespace QuestMarkerApp.Markers
 
             Collider sphereCollider = sphere.GetComponent<Collider>();
             if (sphereCollider != null) Destroy(sphereCollider);
-
-            GameObject indicator = new GameObject("Indicator");
-            indicator.transform.SetParent(markerObj.transform);
-
-            LineRenderer line = indicator.AddComponent<LineRenderer>();
-            line.positionCount = 2;
-            line.SetPosition(0, Vector3.zero);
-            line.SetPosition(1, Vector3.down * 0.5f);
-            line.startWidth = 0.02f;
-            line.endWidth = 0.01f;
-            line.material = new Material(Shader.Find("Sprites/Default"));
 
             return markerObj;
         }

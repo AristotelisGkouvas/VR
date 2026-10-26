@@ -47,13 +47,15 @@ namespace QuestMarkerApp.Editor
         public static void ConfigureQuestAndroid()
         {
             EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
+            // Meta Quest: minimum API 32, Meta Store target API 34.
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel32;
+            PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevel34;
             PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.bundleVersion = "1.2.0";
-            Debug.Log("[QuestMarkerApp] Android/Quest build settings applied (min API 29, IL2CPP, ARM64)");
+            Debug.Log("[QuestMarkerApp] Android/Quest build settings applied (min API 32, target API 34, IL2CPP, ARM64)");
             EditorUtility.DisplayDialog("Build Settings",
-                "Applied:\n• Platform Android\n• Min API 29\n• IL2CPP + ARM64\n• Version 1.2.0\n\n" +
+                "Applied:\n• Platform Android\n• Min API 32\n• Target API 34\n• IL2CPP + ARM64\n• Version 1.2.0\n\n" +
                 "Still set XR Plug-in Management → Oculus and texture ASTC manually.",
                 "OK");
         }
@@ -193,19 +195,13 @@ namespace QuestMarkerApp.Editor
         // ---------------------------------------------------------------------
 
         private const string MOBILE_DEFINE = "MOBILE_PREVIEW";
-        private const string AR_DEFINE = "AR_FOUNDATION";
+
 
         [MenuItem("Quest Marker App/Mobile Preview/1. Enable MOBILE_PREVIEW Define")]
         public static void EnableMobileDefine() => SetDefine(MOBILE_DEFINE, true, "MOBILE_PREVIEW");
 
         [MenuItem("Quest Marker App/Mobile Preview/Disable MOBILE_PREVIEW Define (back to Quest)")]
         public static void DisableMobileDefine() => SetDefine(MOBILE_DEFINE, false, "MOBILE_PREVIEW");
-
-        [MenuItem("Quest Marker App/Mobile Preview/Enable AR_FOUNDATION Define")]
-        public static void EnableArDefine() => SetDefine(AR_DEFINE, true, "AR_FOUNDATION");
-
-        [MenuItem("Quest Marker App/Mobile Preview/Disable AR_FOUNDATION Define")]
-        public static void DisableArDefine() => SetDefine(AR_DEFINE, false, "AR_FOUNDATION");
 
         private static void SetDefine(string define, bool enable, string label)
         {
@@ -235,7 +231,7 @@ namespace QuestMarkerApp.Editor
         public static void SetupMobilePreviewScene()
         {
             // Directional light (αν δεν υπάρχει ήδη φως στη σκηνή)
-            if (Object.FindObjectOfType<Light>() == null)
+            if (Object.FindAnyObjectByType<Light>() == null)
             {
                 GameObject lightObj = new GameObject("Directional Light");
                 Light light = lightObj.AddComponent<Light>();
@@ -245,7 +241,7 @@ namespace QuestMarkerApp.Editor
             }
 
             // Ground grid για αίσθηση κλίμακας (1 κελί = 1 μέτρο)
-            if (Object.FindObjectOfType<Mobile.GroundGrid>() == null)
+            if (Object.FindAnyObjectByType<Mobile.GroundGrid>() == null)
             {
                 GameObject groundObj = new GameObject("GroundGrid");
                 groundObj.transform.position = Vector3.zero;

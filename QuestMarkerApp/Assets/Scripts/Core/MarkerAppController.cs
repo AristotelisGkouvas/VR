@@ -1,6 +1,9 @@
+using System;
 using UnityEngine;
 using QuestMarkerApp.API;
 using QuestMarkerApp.Markers;
+using QuestMarkerApp.Models;
+using QuestMarkerApp.UI;
 
 namespace QuestMarkerApp.Core
 {
@@ -16,25 +19,31 @@ namespace QuestMarkerApp.Core
         [SerializeField] private SpatialAnchorManager spatialAnchorManager;
         [SerializeField] private CoordinateCalibration calibrationSystem;
         [SerializeField] private SessionManager sessionManager;
+        [SerializeField] private ProjectAlignment projectAlignment;
 
         [Header("Configuration")]
         [SerializeField] private bool useLocalServer = true;
         [SerializeField] private bool useRemotePolling = false;
         [SerializeField] private bool useWebSocketPush = false;
         [SerializeField] private string remoteServerUrl = "http://192.168.1.100:5000";
+        [Tooltip("The PC bridge's --api-key (what its clients must send). Empty: no key is sent.")]
+        [SerializeField] private string remoteApiKey = "";
         [SerializeField] private bool highlightWithControllerRay = true;
 
-#if !MOBILE_PREVIEW
-        [Header("Input")]
-        [SerializeField] private OVRInput.Button calibrationButton = OVRInput.Button.One;
-        [SerializeField] private OVRInput.Button clearMarkersButton = OVRInput.Button.Two;
-        [SerializeField] private OVRInput.Button startCalibrationButton = OVRInput.Button.Three;
-        [SerializeField] private OVRInput.Button undoButton = OVRInput.Button.Four;
-#endif
 
         private bool isInitialized;
         private bool useRealCoordinates;
         private WebSocketPushClient wsClient;
+        private MainMenu mainMenu;
+        private TerrawebClient terraweb;
+        private FlowPanel flowPanel;
+        private SensorCard sensorCard;
+        private SensorNavigator navigator;
+        private InspectionRoute route;
+        private Action<string> onModelReceived, onModelDeleted;
+        // Live pushes arrive several times a second; one undo step covers each burst.
+        private const float BatchHistoryInterval = 2f;
+        private float lastBatchHistoryTime = float.NegativeInfinity;
 #if !MOBILE_PREVIEW
         private OVRCameraRig cachedCameraRig;
 #endif
@@ -58,6 +67,10 @@ namespace QuestMarkerApp.Core
 
         private void Update()
         {
+            // A project replaces the legacy calibration flow; never leave its laser running.
+            if (calibrationSystem != null && calibrationSystem.IsCalibrating && projectAlignment != null
+                && projectAlignment.HasProject)
+                calibrationSystem.StopCalibration();
             HandleInput();
             UpdateHighlightRay();
         }
@@ -71,40 +84,52 @@ namespace QuestMarkerApp.Core
         {
             if (apiService == null)
             {
-                apiService = FindObjectOfType<CoordinateAPIService>();
-                if (apiService == null && (useRemotePolling || useWebSocketPush))
+                apiService = FindAnyObjectByType<CoordinateAPIService>();
+                if (apiService == null && useRemotePolling)
                     apiService = gameObject.AddComponent<CoordinateAPIService>();
+            }
+            // Push mode has its own client; a polling service left running would deliver every
+            // batch a second time. Disabled before its Start, it never auto-starts polling.
+            if (apiService != null && !useRemotePolling)
+            {
+                apiService.StopPolling();
+                apiService.enabled = false;
             }
 
             if (localServer == null)
             {
-                localServer = FindObjectOfType<LocalAPIServer>();
+                localServer = FindAnyObjectByType<LocalAPIServer>();
                 if (localServer == null && useLocalServer)
                     localServer = gameObject.AddComponent<LocalAPIServer>();
             }
 
             if (markerManager == null)
             {
-                markerManager = FindObjectOfType<MarkerManager>() ?? gameObject.AddComponent<MarkerManager>();
+                markerManager = FindAnyObjectByType<MarkerManager>() ?? gameObject.AddComponent<MarkerManager>();
             }
 
             if (spatialAnchorManager == null)
             {
-                spatialAnchorManager = FindObjectOfType<SpatialAnchorManager>() ?? gameObject.AddComponent<SpatialAnchorManager>();
+                spatialAnchorManager = FindAnyObjectByType<SpatialAnchorManager>() ?? gameObject.AddComponent<SpatialAnchorManager>();
             }
 
             if (calibrationSystem == null)
             {
-                calibrationSystem = FindObjectOfType<CoordinateCalibration>() ?? gameObject.AddComponent<CoordinateCalibration>();
+                calibrationSystem = FindAnyObjectByType<CoordinateCalibration>() ?? gameObject.AddComponent<CoordinateCalibration>();
             }
 
             if (sessionManager == null)
             {
-                sessionManager = FindObjectOfType<SessionManager>() ?? gameObject.AddComponent<SessionManager>();
+                sessionManager = FindAnyObjectByType<SessionManager>() ?? gameObject.AddComponent<SessionManager>();
+            }
+
+            if (projectAlignment == null)
+            {
+                projectAlignment = FindAnyObjectByType<ProjectAlignment>() ?? gameObject.AddComponent<ProjectAlignment>();
             }
 
             if (localServer != null)
-                localServer.BindComponents(markerManager, calibrationSystem, sessionManager, spatialAnchorManager);
+                localServer.BindComponents(markerManager, calibrationSystem, sessionManager, spatialAnchorManager, projectAlignment);
         }
 
         private void Initialize()
@@ -128,6 +153,8 @@ namespace QuestMarkerApp.Core
                 localServer.OnSessionImportJson += OnSessionImportJson;
                 localServer.OnSessionExportRequested += OnSessionExportRequested;
                 localServer.OnGpsOriginSet += OnGpsOriginSet;
+                localServer.OnProjectReceived += OnProjectReceived;
+                localServer.OnProjectResetRequested += OnProjectResetRequested;
             }
 
             if (useRemotePolling && apiService != null)
@@ -141,7 +168,8 @@ namespace QuestMarkerApp.Core
             {
                 wsClient = GetComponent<WebSocketPushClient>() ?? gameObject.AddComponent<WebSocketPushClient>();
                 wsClient.OnCoordinatesReceived += OnCoordinatesReceived;
-                wsClient.Connect(remoteServerUrl);
+                // Never the headset's own key: that would hand it to whatever URL is configured here.
+                wsClient.Connect(remoteServerUrl, remoteApiKey);
             }
 
             if (markerManager != null)
@@ -157,8 +185,133 @@ namespace QuestMarkerApp.Core
                     useRealCoordinates = true;
             }
 
+            Child<VrPointer>("VrPointer");
+            Child<BoundaryControl>("BoundaryControl");
+            Child<DisplayPerformance>("DisplayPerformance");
+            terraweb = gameObject.GetComponent<TerrawebClient>() ?? gameObject.AddComponent<TerrawebClient>();
+            flowPanel = Child<FlowPanel>("FlowPanel");
+            var flow = Child<TerrawebFlow>("TerrawebFlow");
+            flow.Init(terraweb, flowPanel, projectAlignment, markerManager);
+            navigator = Child<SensorNavigator>("SensorNavigator");
+            navigator.Init(markerManager);
+            var displacementView = Child<DisplacementView>("DisplacementView");
+            displacementView.Init(projectAlignment, markerManager);
+            Child<HoverInfo>("HoverInfo").Init(projectAlignment, markerManager);
+            sensorCard = Child<SensorCard>("SensorCard");
+            sensorCard.Init(terraweb, () => projectAlignment != null ? projectAlignment.TerrawebProjectId : 0);
+            sensorCard.OnNavigateRequested += (id, point) => navigator.Navigate(id, point);
+            // Field tools the menu offers: 30-day ribbons by the icons, polled alert changes,
+            // an ordered inspection walk. The menu finds them by type.
+            Child<HistoryRibbons>("HistoryRibbons").Init(projectAlignment, markerManager);
+            Child<LiveAlerts>("LiveAlerts").Init(terraweb, projectAlignment);
+            route = Child<InspectionRoute>("InspectionRoute");
+            route.Init(projectAlignment, markerManager, flowPanel);
+
+            // Design model (OBJ / DXF, IFC converted to OBJ on the PC) laid over the structure
+            // through the same alignment as the sensors. A file sent from the PC loads at once;
+            // the last one shown comes back on launch.
+            ModelOverlay.Importers["dxf"] = (path, options, progress, cancel) => DxfImporter.Load(path, options, progress);
+            var model = Child<ModelOverlay>("ModelOverlay");
+            model.Init(projectAlignment, markerManager);
+            if (localServer != null)
+            {
+                // Kept so Cleanup can unsubscribe: the server may outlive this controller.
+                onModelReceived = path =>
+                {
+                    if (model == null) return;
+                    string full = System.IO.Path.GetFullPath(path);
+                    ModelStore.ModelInfo info = ModelStore.List().Find(m =>
+                        string.Equals(System.IO.Path.GetFullPath(m.Path), full, StringComparison.OrdinalIgnoreCase));
+                    if (info == null) return;
+                    model.Load(info);
+                    Feedback.Play(Feedback.Sound.Ping);
+                };
+                onModelDeleted = name =>
+                {
+                    if (model == null) return;
+                    if (model.LoadedName != null && string.Equals(model.LoadedName, name, StringComparison.OrdinalIgnoreCase))
+                        model.Unload();
+                };
+                localServer.OnModelReceived += onModelReceived;
+                localServer.OnModelDeleted += onModelDeleted;
+            }
+            ModelStore.ModelInfo last = ModelStore.Find(ModelStore.LastLoadedName);
+            if (last != null) model.Load(last);
+
+            mainMenu = Child<MainMenu>("MainMenu");
+            mainMenu.Init(this, projectAlignment, markerManager, localServer, terraweb, flow, navigator);
+            // Voice: "βρες Κ5", "δείξε συναγερμούς", "διαδρομή επιθεώρησης"... (typed until the
+            // Wit.ai engine is installed; see VoiceRecognizers.cs).
+            var voice = Child<VoiceCommands>("VoiceCommands");
+            voice.Init(this, projectAlignment, markerManager, navigator, displacementView, mainMenu, flowPanel);
+            voice.OnRouteRequested = arg =>
+            {
+                // "Stop" words never get here: VoiceCommands handles them, route included.
+                string a = arg ?? "";
+                if (InspectionRoute.IsActive) route.Skip();
+                else if (a.Contains("συναγερμ") || a.Contains("alarm")) route.StartAlerts();
+                else route.StartAll();
+            };
+            var hintsGo = new GameObject("ControllerHints");
+            hintsGo.transform.SetParent(transform, false);
+            hintsGo.AddComponent<ControllerHints>().Init(projectAlignment);
+            // The main menu carries the server/marker status the old floating HUD showed.
+            FindAnyObjectByType<UIManager>()?.Suppress();
+
             isInitialized = true;
             Debug.Log("[MarkerApp] Initialization complete (v1.2)");
+            StartCoroutine(OpenMenuWhenEmpty());
+        }
+
+        // An empty room on launch gave a first-time user nothing to go on: show the menu
+        // (after tracking settles, so it lands in front of the user) unless a project is up.
+        private System.Collections.IEnumerator OpenMenuWhenEmpty()
+        {
+            yield return new WaitForSeconds(1.5f);
+            if ((projectAlignment == null || !projectAlignment.HasProject) && !UiState.AnyModal)
+                mainMenu?.Open(userInitiated: false); // keeps the first-run controller labels showing
+        }
+
+        private T Child<T>(string name) where T : Component
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            return go.AddComponent<T>();
+        }
+
+        /// <summary>Pick a sensor of the aligned project, nearest first, and navigate to it.</summary>
+        public void OpenSensorPicker()
+        {
+            if (projectAlignment == null || !projectAlignment.HasProject || flowPanel == null) return;
+            Camera cam = Camera.main;
+            Vector3 here = cam != null ? cam.transform.position : Vector3.zero;
+
+            var entries = new System.Collections.Generic.List<(float dist, FlowItem item)>();
+            foreach (ProjectPoint p in projectAlignment.Points)
+            {
+                string markerId = ProjectAlignment.MarkerPrefix + p.id;
+                if (!markerManager.ActiveMarkers.TryGetValue(markerId, out Marker m) || m == null) continue;
+                Vector3 d = m.transform.position - here;
+                float dist = new Vector2(d.x, d.z).magnitude;
+                entries.Add((dist, new FlowItem
+                {
+                    Label = string.IsNullOrEmpty(p.label) ? p.id : p.label,
+                    Sub = string.IsNullOrEmpty(p.typeLabel) ? $"H {p.h:F2}" : $"{p.typeLabel} · H {p.h:F2}",
+                    Value = dist < 10f ? $"{dist:F1} m" : $"{dist:F0} m",
+                    Icon = string.IsNullOrEmpty(p.icon) ? "sensor-point" : p.icon,
+                    Color = ColorUtility.TryParseHtmlString(p.color ?? "", out Color c) ? c : Brand.Primary,
+                    Tag = (markerId, p)
+                }));
+            }
+            entries.Sort((a, b) => a.dist.CompareTo(b.dist));
+            var items = entries.ConvertAll(e => e.item);
+
+            flowPanel.ShowList("Πλοήγηση", "Διάλεξε αισθητήρα", items, item =>
+            {
+                var (markerId, point) = ((string, ProjectPoint))item.Tag;
+                flowPanel.Close();
+                navigator.Navigate(markerId, point);
+            }, flowPanel.Close);
         }
 
         private void Cleanup()
@@ -182,6 +335,10 @@ namespace QuestMarkerApp.Core
                 localServer.OnSessionImportJson -= OnSessionImportJson;
                 localServer.OnSessionExportRequested -= OnSessionExportRequested;
                 localServer.OnGpsOriginSet -= OnGpsOriginSet;
+                localServer.OnProjectReceived -= OnProjectReceived;
+                localServer.OnProjectResetRequested -= OnProjectResetRequested;
+                if (onModelReceived != null) localServer.OnModelReceived -= onModelReceived;
+                if (onModelDeleted != null) localServer.OnModelDeleted -= onModelDeleted;
             }
 
             if (apiService != null)
@@ -206,16 +363,88 @@ namespace QuestMarkerApp.Core
         private void HandleInput()
         {
 #if MOBILE_PREVIEW
+            if (Input.GetKeyDown(KeyCode.M)) mainMenu?.Toggle();
+            if (UiState.InputBlocked) return;
             if (Input.GetKeyDown(KeyCode.C)) ClearAllMarkers();
             if (Input.GetKeyDown(KeyCode.R)) CalibrateReferencePoint();
             if (Input.GetKeyDown(KeyCode.X)) StartCalibrationMode();
             if (Input.GetKeyDown(KeyCode.Z)) Undo();
             if (Input.GetKeyDown(KeyCode.S)) SaveSession();
 #else
-            if (OVRInput.GetDown(calibrationButton)) CalibrateReferencePoint();
-            if (OVRInput.GetDown(clearMarkersButton)) ClearAllMarkers();
-            if (OVRInput.GetDown(startCalibrationButton)) StartCalibrationMode();
-            if (OVRInput.GetDown(undoButton)) Undo();
+            // The Menu button sits on the left controller only. With it pocketed, a click of
+            // the remaining controller's stick opens the menu instead.
+            bool menuPressed = OVRInput.GetDown(OVRInput.Button.Start)
+                || (!OVRInput.IsControllerConnected(OVRInput.Controller.LTouch)
+                    && OVRInput.GetDown(OVRInput.Button.PrimaryThumbstick, OVRInput.Controller.RTouch));
+            if (menuPressed)
+            {
+                Feedback.Play(Feedback.Sound.Tick);
+                // Menu always gets you out: close whatever floats in front, else end a running
+                // inspection route (its hint reads "Μενού: διακοπή"), else toggle the menu.
+                if (VrKeyboard.IsOpen) VrKeyboard.CancelOpen();
+                else if (FlowPanel.IsOpen) flowPanel.Close();
+                else if (SensorCard.IsOpen) sensorCard.Close();
+                // Only when the route is on top: with navigation or the time machine over it the
+                // hint reads plain "Μενού" (ControllerHints), and B ends those first.
+                else if (route != null && UiState.Context(projectAlignment) == "route") route.Stop();
+                else mainMenu?.Toggle();
+                return;
+            }
+            // With only a card open, aiming at another sensor and pulling the trigger switches
+            // the card to it (the pointer has first claim if the ray is on the card itself).
+            if (SensorCard.IsOpen && !MainMenu.IsOpen && !FlowPanel.IsOpen && !VrKeyboard.IsOpen
+                && !VrPointer.ConsumedThisFrame && Hands.TriggerDown())
+            {
+                Marker other = markerManager != null ? markerManager.Highlighted : null;
+                if (other != null && other.MarkerId != sensorCard.MarkerId
+                    && projectAlignment.TryGetPoint(other.MarkerId, out ProjectPoint otherPoint))
+                {
+                    Feedback.Play(Feedback.Sound.Click);
+                    sensorCard.Open(otherPoint, other.MarkerId, other.transform);
+                }
+            }
+
+            if (UiState.InputBlocked) return;
+
+            if (Hands.OffHandPrimaryDown())
+            {
+                // X opens the main menu. The alignment panel opens by itself while the project
+                // still needs aligning and otherwise only from the menu; X just closes it
+                // (ProjectAlignment handles X while it is open). The legacy laser calibration
+                // stays reachable only via POST /api/calibrate/start.
+                Feedback.Play(Feedback.Sound.Tick);
+                if (projectAlignment != null && projectAlignment.IsModeActive) projectAlignment.SetMode(false);
+                else mainMenu?.Open();
+                return;
+            }
+
+            // While aligning, B belongs to the project panel and A would move the
+            // reference anchor out from under the placed control points.
+            if (projectAlignment != null && projectAlignment.IsModeActive) return;
+
+            // Aim at a sensor and pull the trigger for its card.
+            if (projectAlignment != null && projectAlignment.HasProject
+                && !VrPointer.ConsumedThisFrame && Hands.TriggerDown())
+            {
+                Marker aimed = markerManager != null ? markerManager.Highlighted : null;
+                if (aimed != null && projectAlignment.TryGetPoint(aimed.MarkerId, out ProjectPoint point))
+                {
+                    Feedback.Play(Feedback.Sound.Click);
+                    Feedback.Buzz(Hands.Dominant, 0.35f, 0.04f);
+                    sensorCard.Open(point, aimed.MarkerId, aimed.transform);
+                }
+            }
+
+            // With a project loaded the raw shortcuts are too easy to hit by accident — A
+            // would move the origin under an alignment, B wipe every sensor. The menu has them.
+            if (projectAlignment != null && projectAlignment.HasProject) return;
+
+            // Role-based like the controller hints: with the left hand dominant the labels
+            // swap sides, and these must swap with them (B used to clear everything while the
+            // badge on it read "Αναίρεση").
+            if (Hands.DominantPrimaryDown()) CalibrateReferencePoint();
+            if (Hands.DominantSecondaryDown()) ClearAllMarkers();
+            if (Hands.OffHandSecondaryDown()) Undo();
 #endif
         }
 
@@ -223,11 +452,15 @@ namespace QuestMarkerApp.Core
         {
             if (!highlightWithControllerRay || markerManager == null) return;
             if (calibrationSystem != null && calibrationSystem.IsCalibrating) return;
+            // Clear rather than freeze the highlight, or a later trigger opens a stale card.
+            if (projectAlignment != null && projectAlignment.IsModeActive) { markerManager.ClearHighlight(); return; }
+            bool cardOnly = SensorCard.IsOpen && !MainMenu.IsOpen && !FlowPanel.IsOpen && !VrKeyboard.IsOpen;
+            if (UiState.AnyModal && !cardOnly) { markerManager.ClearHighlight(); return; }
 
             Transform controller = null;
 #if !MOBILE_PREVIEW
-            if (cachedCameraRig == null) cachedCameraRig = FindObjectOfType<OVRCameraRig>();
-            if (cachedCameraRig != null) controller = cachedCameraRig.rightHandAnchor;
+            if (cachedCameraRig == null) cachedCameraRig = FindAnyObjectByType<OVRCameraRig>();
+            if (cachedCameraRig != null && Hands.DominantConnected) controller = Hands.DominantAnchor(cachedCameraRig);
 #endif
             if (controller == null && Camera.main != null)
                 controller = Camera.main.transform;
@@ -311,7 +544,13 @@ namespace QuestMarkerApp.Core
         {
             if (markerManager == null || response == null) return;
 
-            sessionManager?.PushHistory();
+            // A clear or a full-state sync always gets its own undo step, burst or not.
+            if (response.clearExisting || response.removeMissing
+                || Time.unscaledTime - lastBatchHistoryTime >= BatchHistoryInterval)
+            {
+                sessionManager?.PushHistory();
+                lastBatchHistoryTime = Time.unscaledTime;
+            }
 
             if (response.coordinates != null)
             {
@@ -379,6 +618,15 @@ namespace QuestMarkerApp.Core
             Debug.Log($"[MarkerApp] GPS origin set: {origin.latitude}, {origin.longitude}");
         }
 
+        private void OnProjectReceived(ProjectRequest project)
+        {
+            if (projectAlignment == null) return;
+            projectAlignment.SetProject(project);
+            projectAlignment.OpenIfNeeded();
+        }
+
+        private void OnProjectResetRequested() => projectAlignment?.ResetPlacements();
+
         private void OnCalibrationComplete(CalibrationData data)
         {
             useRealCoordinates = true;
@@ -386,7 +634,7 @@ namespace QuestMarkerApp.Core
         }
 
         private void OnServerError(string error) => Debug.LogWarning($"[MarkerApp] Server error: {error}");
-        private void OnMarkerCreated(Marker marker) => Debug.Log($"[MarkerApp] Marker: {marker.MarkerId}");
+        private void OnMarkerCreated(Marker marker) { } // per-marker logging stalled bulk loads (stack traces on)
         private void OnMarkersCleared() => Debug.Log("[MarkerApp] Markers cleared");
     }
 }
