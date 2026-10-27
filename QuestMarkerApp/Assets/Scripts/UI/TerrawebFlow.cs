@@ -61,6 +61,29 @@ namespace QuestMarkerApp.UI
                 : L.En ? $"{(int)ago.TotalDays} days ago" : $"πριν {(int)ago.TotalDays} ημέρες";
         }
 
+        /// <summary>When the loaded data was fetched (UTC); MinValue before the first load.</summary>
+        public DateTime LastLoaded => lastLoaded;
+
+        // The session a background refresh runs in: no panel, no alignment prompt, and a
+        // failure only logs. Any other flow step bumps the session, which ends it.
+        private int quietSession = -1;
+
+        /// <summary>A background refresh (RefreshQuietly) is in flight.</summary>
+        public bool IsRefreshing => quietSession == session;
+
+        /// <summary>
+        /// Re-fetch the loaded project's sensors without any panel, e.g. so the model's sensor
+        /// dots follow Terraweb. Does nothing unless a reload makes sense or one is running.
+        /// </summary>
+        public void RefreshQuietly()
+        {
+            if (IsRefreshing || !CanReload || FlowPanel.IsOpen) return;
+            session++;
+            quietSession = session;
+            Debug.Log("[Terraweb] Refreshing sensor positions in the background");
+            LoadSensors(lastAreaId, lastAreaName);
+        }
+
         /// <summary>Reload the same project and area from the main menu.</summary>
         public void Reload()
         {
@@ -139,8 +162,11 @@ namespace QuestMarkerApp.UI
         }
 
         // Loading pages: B cancels (closes, which invalidates the session).
-        private void Busy(string title, string heading, string text = "") =>
+        private void Busy(string title, string heading, string text = "")
+        {
+            if (IsRefreshing) return;
             panel.ShowMessage(Eyebrow, title, heading, text, true, panel.Close);
+        }
 
         // ------------------------------------------------------------------
         //  Login
@@ -268,6 +294,7 @@ namespace QuestMarkerApp.UI
             // JSON) — downloading that only to refuse it froze the headset.
             StartCoroutine(client.GetSensorCount(areaId, Live<int>(count =>
             {
+                if (count > MaxSensors && IsRefreshing) { quietSession = -1; return; }
                 if (count > MaxSensors)
                 {
                     panel.ShowMessage(Eyebrow, scope, L.T($"Πολλοί αισθητήρες ({count})", $"Too many sensors ({count})"),
@@ -361,6 +388,9 @@ namespace QuestMarkerApp.UI
             ProjectRequest project = TerrawebImport.ToProject(scope, sensors, false, out int skipped);
             project.terrawebProjectId = selectedProjectId;
             int n = project.points.Length;
+            bool quiet = IsRefreshing;
+            quietSession = -1;
+            if (n == 0 && quiet) return; // keep what is there
             if (n == 0)
             {
                 panel.ShowMessage(Eyebrow, scope, L.T("Κανένας αισθητήρας με θέση", "No sensor with a position"),
@@ -378,8 +408,11 @@ namespace QuestMarkerApp.UI
             markers.ClearAllMarkers();
             alignment.SetProject(project);
             RememberLoaded(areaId, areaName);
-            panel.Close();
-            alignment.OpenIfNeeded(); // a reload of an aligned project leaves the panel shut
+            if (!quiet)
+            {
+                panel.Close();
+                alignment.OpenIfNeeded(); // a reload of an aligned project leaves the panel shut
+            }
             if (skipped > 0)
                 Debug.Log($"[Terraweb] {scope}: {n} sensors loaded, {skipped} without x/y/z skipped");
         }
@@ -387,6 +420,12 @@ namespace QuestMarkerApp.UI
         private Action<string> Fail(Action back) =>
             Live<string>(error =>
             {
+                if (IsRefreshing)
+                {
+                    quietSession = -1;
+                    Debug.LogWarning("[Terraweb] Background refresh failed: " + error);
+                    return;
+                }
                 if (!client.IsLoggedIn) { ShowLogin(L.T("η σύνδεση έληξε", "session expired")); return; }
                 panel.ShowMessage(Eyebrow, L.T("Σφάλμα", "Error"), L.T("Κάτι πήγε στραβά", "Something went wrong"), error, false, back);
             });

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -22,7 +23,12 @@ namespace QuestMarkerApp.Models
     {
         private const string EnabledKey = "model.sensors";
         /// <summary>World size of a dot at 1:1 and on the smallest miniature, metres.</summary>
-        private const float DotMax = 0.1f, DotMin = 0.025f;
+        private const float DotMax = 0.2f, DotMin = 0.025f;
+        /// <summary>
+        /// At 1:1 far dots grow with distance so they keep this angular size (radians, ~1.7°):
+        /// a 20 cm dot 40 m away along the bridge would be a speck.
+        /// </summary>
+        private const float DotAngular = 0.03f;
         /// <summary>Sensors beyond the model's extent by more than this are not drawn (metres, model scale).</summary>
         private const float FarMargin = 50f;
         /// <summary>Aim tolerance around the ray: an angle, or a distance near the hand.</summary>
@@ -41,7 +47,32 @@ namespace QuestMarkerApp.Models
                 enabledCache = value;
                 PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0);
                 PlayerPrefs.Save();
+                if (value) refreshNow = true; // switched on: fetch the positions at once
             }
+        }
+
+        /// <summary>While the dots show, Terraweb's positions are fetched again after this long.</summary>
+        private const double RefreshMinutes = 10;
+        /// <summary>Between background attempts, so a failing network is not hammered.</summary>
+        private const float RetrySeconds = 60f;
+        private static bool refreshNow = true; // once per run, and on switching the dots on
+        private float nextRefreshTry;
+        private TerrawebFlow flow;
+
+        // The dots follow Terraweb by themselves: while they show on the preview, the loaded
+        // project is fetched again in the background (no panel, the alignment kept) on first
+        // sight, when switched on, and every RefreshMinutes after that.
+        private void AutoRefresh()
+        {
+            if (Time.unscaledTime < nextRefreshTry) return;
+            if (flow == null) flow = FindAnyObjectByType<TerrawebFlow>();
+            if (flow == null || !flow.CanReload || flow.IsRefreshing) return;
+            if (project == null || project.IsPractice || project.IsModeActive) return;
+            bool stale = (DateTime.UtcNow - flow.LastLoaded).TotalMinutes >= RefreshMinutes;
+            if (!refreshNow && !stale) return;
+            refreshNow = false;
+            nextRefreshTry = Time.unscaledTime + RetrySeconds;
+            flow.RefreshQuietly();
         }
 
         private enum Reason { Off, NoProject, Practice, NoModel, Far, Ok }
@@ -84,6 +115,7 @@ namespace QuestMarkerApp.Models
         {
             get
             {
+                if (Enabled && flow != null && flow.IsRefreshing) return L.T("Ενημέρωση από Terraweb…", "Updating from Terraweb…");
                 switch (reason)
                 {
                     case Reason.Off: return L.T("Απόκρυψη", "Hidden");
@@ -125,6 +157,10 @@ namespace QuestMarkerApp.Models
             if (dirty) Rebuild();
 
             Transform root = overlay.Root;
+            // Fetched even with no dot yet: the positions may be what is missing.
+            if (Enabled && root != null && root.gameObject.activeInHierarchy
+                && overlay.CurrentPlacement != ModelOverlay.Placement.Project)
+                AutoRefresh();
             bool show = container != null && dots.Count > 0 && root != null && root.gameObject.activeInHierarchy
                         && overlay.CurrentPlacement != ModelOverlay.Placement.Project;
             if (container != null && container.gameObject.activeSelf != show) container.gameObject.SetActive(show);
@@ -135,14 +171,18 @@ namespace QuestMarkerApp.Models
                 return;
             }
 
-            ApplyScale(root.lossyScale.x);
+            float rootScale = Mathf.Max(root.lossyScale.x, 1e-6f);
+            ApplyScale(rootScale);
             if (Time.unscaledTime >= nextRecolour) Recolour();
             Vector3 eye = cam.transform.position;
             Vector3 up = cam.transform.up;
+            float baseWorld = dotLocal * rootScale;
             foreach (Dot d in dots)
             {
                 Vector3 away = d.T.position - eye;
                 if (away.sqrMagnitude > 1e-8f) d.T.rotation = Quaternion.LookRotation(away, up);
+                float world = Mathf.Max(baseWorld, away.magnitude * DotAngular);
+                d.T.localScale = Vector3.one * (world / rootScale) * (d == aimed ? 1.4f : 1f);
             }
 #if !MOBILE_PREVIEW
             Aim(cam);
@@ -320,7 +360,7 @@ namespace QuestMarkerApp.Models
             }
         }
 
-        // Constant world size, whatever the zoom: 10 cm at 1:1, shrinking
+        // Base world size, whatever the zoom: 20 cm at 1:1 (more far away, see DotAngular), shrinking
         // with the model down to 2.5 cm, where a miniature's dots would otherwise vanish.
         private void ApplyScale(float rootScale)
         {
