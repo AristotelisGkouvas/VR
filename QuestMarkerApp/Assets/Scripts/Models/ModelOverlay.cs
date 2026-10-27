@@ -158,6 +158,9 @@ namespace QuestMarkerApp.Models
         /// <summary>True while a tabletop or life-size preview is on show (ControllerHints labels the grips).</summary>
         public static bool PreviewShown { get; private set; }
 
+        /// <summary>True while the life-size copy is on show: BoundaryControl blacks out passthrough and brings the Guardian back.</summary>
+        public static bool LifeSizeShown { get; private set; }
+
         /// <summary>Two-handed zoom may shrink the tabletop to this fraction of its default size.</summary>
         private const float MinTabletopZoom = 0.2f;
         /// <summary>Hold time of the scale readout after the last change, seconds.</summary>
@@ -318,11 +321,13 @@ namespace QuestMarkerApp.Models
             bool show = model != null && !loading && Enabled;
             bool walk = false;
             bool preview = false;
+            bool lifeSize = false;
             if (show)
             {
                 Placement p = CurrentPlacement;
                 if (placed != p) Place(p);
                 preview = p != Placement.Project;
+                lifeSize = p == Placement.LifeSize;
 #if !MOBILE_PREVIEW
                 if (preview) Grab();
                 else EndGrab();
@@ -333,6 +338,7 @@ namespace QuestMarkerApp.Models
             }
             WalkActive = walk;
             PreviewShown = preview;
+            LifeSizeShown = lifeSize;
             if (root.gameObject.activeSelf != show) root.gameObject.SetActive(show);
             if (scaleTag != null && scaleTag.gameObject.activeSelf
                 && (!preview || Time.unscaledTime - scaleShownAt > ScaleReadoutHold))
@@ -345,6 +351,7 @@ namespace QuestMarkerApp.Models
         {
             WalkActive = false;
             PreviewShown = false;
+            LifeSizeShown = false;
             if (!loading) return;
             bool partial = building;
             CancelPending();

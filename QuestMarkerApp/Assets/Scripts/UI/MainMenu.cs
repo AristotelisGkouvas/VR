@@ -734,7 +734,8 @@ namespace QuestMarkerApp.UI
             y = Row(y, new Item
             {
                 Label = L.T("Όριο ασφαλείας (boundary)", "Safety boundary"),
-                Value = () => BoundaryControl.Suppress
+                Value = () => ModelOverlay.LifeSizeShown ? L.T("Ενεργό στο 1:1", "On at 1:1")
+                    : BoundaryControl.Suppress
                     ? (BoundaryControl.IsSuppressed ? L.T("Ανενεργό", "Off") : L.T("Ανενεργό · αναμονή", "Off · waiting"))
                     : L.T("Ενεργό", "On"),
                 Destructive = true, // turning the safety boundary off/on should never be a stray click

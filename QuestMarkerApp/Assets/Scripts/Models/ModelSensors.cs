@@ -12,8 +12,8 @@ using QuestMarkerApp.UI;
 namespace QuestMarkerApp.Models
 {
     /// <summary>
-    /// The project's sensors on the tabletop miniature and the life-size copy: a small dot per
-    /// sensor, coloured by alert state. The dots hang under the model root at their project-local position, so
+    /// The project's sensors on the tabletop miniature and the life-size copy, drawn like the
+    /// alignment's icons: type glyph on the family colour, alert ring, name underneath. The dots hang under the model root at their project-local position, so
     /// moving, turning and zooming the model carries them for free; only their size is undone
     /// against the root's scale, to stay readable. Aim at a dot for its name, pull the trigger
     /// for the sensor card. Hidden on the site placement, where the real markers stand.
@@ -35,6 +35,10 @@ namespace QuestMarkerApp.Models
         private const float AimDegrees = 1.5f, AimMinMetres = 0.02f;
         private const float RecolourInterval = 1f;
         private const float TagW = 320f, TagH = 70f, TagScale = 0.0008f, TagDistance = 0.9f;
+        /// <summary>Names show within this distance of the eye: at 1:1 like a real marker, on the table at arm's length.</summary>
+        private const float LabelLifeSize = 40f, LabelTabletop = 1.5f;
+        /// <summary>A project point with no colour of its own: the alignment's point colour.</summary>
+        private static readonly Color DefaultColor = new Color32(0x00, 0xE5, 0xFF, 0xFF);
 
         private static bool? enabledCache;
 
@@ -82,7 +86,8 @@ namespace QuestMarkerApp.Models
             public ProjectPoint Point;
             public Vector3 Local;
             public Transform T;
-            public SpriteRenderer Disc;
+            public SpriteRenderer Ring;
+            public TextMeshPro Label;
             public string State;
         }
 
@@ -177,12 +182,27 @@ namespace QuestMarkerApp.Models
             Vector3 eye = cam.transform.position;
             Vector3 up = cam.transform.up;
             float baseWorld = dotLocal * rootScale;
+            float labelReach = overlay.CurrentPlacement == ModelOverlay.Placement.LifeSize ? LabelLifeSize : LabelTabletop;
+            float pulseAlarm = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 6f));
+            float pulseAlert = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 3f));
             foreach (Dot d in dots)
             {
                 Vector3 away = d.T.position - eye;
                 if (away.sqrMagnitude > 1e-8f) d.T.rotation = Quaternion.LookRotation(away, up);
-                float world = Mathf.Max(baseWorld, away.magnitude * DotAngular);
+                float dist = away.magnitude;
+                float world = Mathf.Max(baseWorld, dist * DotAngular);
                 d.T.localScale = Vector3.one * (world / rootScale) * (d == aimed ? 1.4f : 1f);
+                // Alarm and alert pulse in a ring, as on the real markers.
+                if (d.Ring.enabled)
+                {
+                    float r = (d.State == "alarm" ? pulseAlarm : pulseAlert) * ringBase;
+                    d.Ring.transform.localScale = new Vector3(r, r, 1f);
+                }
+                if (d.Label != null)
+                {
+                    bool label = Marker.LabelsVisible && dist <= labelReach && d != aimed;
+                    if (d.Label.gameObject.activeSelf != label) d.Label.gameObject.SetActive(label);
+                }
             }
 #if !MOBILE_PREVIEW
             Aim(cam);
@@ -303,20 +323,72 @@ namespace QuestMarkerApp.Models
             dots.Clear();
         }
 
-        // Halo and disc like a real marker's icon, on the same shared sprite material, so the
-        // dots batch; the colour rides in the sprite's vertex colour.
+        // The alignment's icon piece for piece (Marker.CreateIconVisual): alert ring, paper halo,
+        // the sensor family's disc, the white type glyph, and the name underneath. All on the
+        // shared sprite materials, so the dots batch; the colour rides in the vertex colour.
         private void AddDot(ProjectPoint p, Vector3 local)
         {
-            var go = new GameObject(string.IsNullOrEmpty(p.label) ? p.id : p.label);
+            string name = string.IsNullOrEmpty(p.label) ? p.id : p.label;
+            var go = new GameObject(name);
             go.transform.SetParent(container, false);
             go.transform.localPosition = local;
             Sprite disc = Brand.DiscSprite;
-            Piece(go.transform, "Halo", disc, Brand.MapHalo.WithAlpha(0.9f), 1f, 0.02f, 1);
-            SpriteRenderer r = Piece(go.transform, "Disc", disc, StateColor(p.alertState), 0.74f, 0.01f, 2);
-            dots.Add(new Dot { Point = p, Local = local, T = go.transform, Disc = r, State = p.alertState });
+            SpriteRenderer ring = Piece(go.transform, "AlertRing", disc, Brand.Danger, 1.35f, 0.03f, 0, false);
+            ringBase = ring.transform.localScale.x / 1.35f;
+            Piece(go.transform, "Halo", disc, Brand.MapHalo.WithAlpha(0.85f), 1f, 0.02f, 1);
+            Piece(go.transform, "Disc", disc, FamilyColor(p), 0.84f, 0.01f, 2);
+            Sprite glyph = Brand.IconSprite(p.icon);
+            if (glyph != null) Piece(go.transform, "Glyph", glyph, Color.white, 0.56f, 0f, 3);
+            var dot = new Dot { Point = p, Local = local, T = go.transform, Ring = ring, Label = AddLabel(go.transform, name) };
+            SetState(dot, p.alertState);
+            dots.Add(dot);
         }
 
-        private static SpriteRenderer Piece(Transform parent, string name, Sprite sprite, Color color, float size, float depth, int order)
+        /// <summary>The ring sprite's unit scale (its sprite width undone), from the last dot built.</summary>
+        private float ringBase = 1f;
+
+        private static Color FamilyColor(ProjectPoint p) =>
+            !string.IsNullOrEmpty(p.color) && ColorUtility.TryParseHtmlString(p.color, out Color c) ? c : DefaultColor;
+
+        // Under the icon in dot units, so it grows with the dot: white on the shared outlined
+        // label material, as on the real markers.
+        private static TextMeshPro AddLabel(Transform parent, string text)
+        {
+            var go = new GameObject("Label");
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.down * 0.6f;
+            go.transform.localScale = Vector3.one * 0.1f;
+            var t = go.AddComponent<TextMeshPro>();
+            Brand.Style(t, true);
+            if (t.font == null || t.fontSharedMaterial == null)
+            {
+                Destroy(go);
+                return null;
+            }
+            t.rectTransform.pivot = new Vector2(0.5f, 1f);
+            t.rectTransform.sizeDelta = new Vector2(40f, 6f);
+            t.alignment = TextAlignmentOptions.Top;
+            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.fontSize = 36;
+            t.color = Color.white;
+            t.text = text;
+            t.sortingOrder = 6;
+            Material shared = Brand.LabelMaterial;
+            if (shared != null) t.fontSharedMaterial = shared;
+            go.SetActive(false);
+            return t;
+        }
+
+        private static void SetState(Dot d, string state)
+        {
+            d.State = (state ?? "none").ToLowerInvariant();
+            bool alarm = d.State == "alarm", alert = d.State == "alert";
+            d.Ring.enabled = alarm || alert;
+            d.Ring.color = alarm ? Brand.Danger : Brand.Warning;
+        }
+
+        private static SpriteRenderer Piece(Transform parent, string name, Sprite sprite, Color color, float size, float depth, int order,
+            bool writesDepth = true)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -327,7 +399,7 @@ namespace QuestMarkerApp.Models
             var r = go.AddComponent<SpriteRenderer>();
             r.sprite = sprite;
             r.color = color;
-            r.sharedMaterial = Brand.MarkerSpriteMaterial;
+            r.sharedMaterial = writesDepth ? Brand.MarkerSpriteMaterial : Brand.MarkerSpriteFadeMaterial;
             r.sortingOrder = order;
             r.shadowCastingMode = ShadowCastingMode.Off;
             r.receiveShadows = false;
@@ -353,10 +425,8 @@ namespace QuestMarkerApp.Models
             nextRecolour = Time.unscaledTime + RecolourInterval;
             foreach (Dot d in dots)
             {
-                string s = d.Point.alertState;
-                if (s == d.State) continue;
-                d.State = s;
-                d.Disc.color = StateColor(s);
+                string s = (d.Point.alertState ?? "none").ToLowerInvariant();
+                if (s != d.State) SetState(d, s);
             }
         }
 
@@ -434,6 +504,7 @@ namespace QuestMarkerApp.Models
                 return;
             }
             d.T.localScale = Vector3.one * dotLocal * 1.4f;
+            if (d.Label != null) d.Label.gameObject.SetActive(false); // the hover tag names it
 #if !MOBILE_PREVIEW
             Feedback.Buzz(Hands.Dominant, 0.12f, 0.02f, 0.9f); // a faint "snap", as on a real marker
 #endif
