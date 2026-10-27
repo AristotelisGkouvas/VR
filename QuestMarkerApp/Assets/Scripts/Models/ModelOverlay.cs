@@ -158,7 +158,11 @@ namespace QuestMarkerApp.Models
         /// <summary>True while a tabletop or life-size preview is on show (ControllerHints labels the grips).</summary>
         public static bool PreviewShown { get; private set; }
 
-        /// <summary>True while the life-size copy is on show: BoundaryControl blacks out passthrough and brings the Guardian back.</summary>
+        /// <summary>
+        /// True while the life-size copy is on show outside the alignment: BoundaryControl blacks
+        /// out passthrough and brings the Guardian back. Aligning, the room stays in view and the
+        /// boundary off, to walk between points metres apart.
+        /// </summary>
         public static bool LifeSizeShown { get; private set; }
 
         /// <summary>Two-handed zoom may shrink the tabletop to this fraction of its default size.</summary>
@@ -258,13 +262,20 @@ namespace QuestMarkerApp.Models
             }
         }
 
+        private bool Aligning => alignment != null && alignment.IsModeActive;
+
         /// <summary>True when the alignment can put this model on the real site.</summary>
         public bool CanPlaceInProject =>
             model != null && model.Georeferenced && alignment != null && alignment.IsAligned;
 
-        /// <summary>Where the model goes: on the site when aligned (Auto), else the chosen preview.</summary>
+        /// <summary>
+        /// Where the model goes: on the site when aligned (Auto), else the chosen preview. While
+        /// aligning it is always 1:1: on the site once solved, else the life-size copy, which
+        /// stays put as the user walks between the points (the sticks do not move it then).
+        /// </summary>
         public Placement CurrentPlacement =>
-            View == ViewMode.Tabletop ? Placement.Tabletop
+            Aligning ? (CanPlaceInProject ? Placement.Project : Placement.LifeSize)
+            : View == ViewMode.Tabletop ? Placement.Tabletop
             : View == ViewMode.LifeSize ? Placement.LifeSize
             : CanPlaceInProject ? Placement.Project : Placement.Tabletop;
 
@@ -327,7 +338,7 @@ namespace QuestMarkerApp.Models
                 Placement p = CurrentPlacement;
                 if (placed != p) Place(p);
                 preview = p != Placement.Project;
-                lifeSize = p == Placement.LifeSize;
+                lifeSize = p == Placement.LifeSize && !Aligning;
 #if !MOBILE_PREVIEW
                 if (preview) Grab();
                 else EndGrab();
