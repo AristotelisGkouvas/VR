@@ -79,6 +79,23 @@ namespace QuestMarkerApp.Markers
             set { visibleLayerFilter = value; ApplyLayerVisibility(); }
         }
 
+        private bool hideProjectLayer;
+
+        /// <summary>
+        /// Hides the aligned project's sensors on the site (layer "project") while the model is
+        /// previewed on the table or at 1:1: the sensors then show on the model instead.
+        /// </summary>
+        public bool HideProjectLayer
+        {
+            get => hideProjectLayer;
+            set
+            {
+                if (hideProjectLayer == value) return;
+                hideProjectLayer = value;
+                ApplyLayerVisibility();
+            }
+        }
+
         private void Awake()
         {
             if (markersContainer == null)
@@ -478,6 +495,7 @@ namespace QuestMarkerApp.Markers
 
         private bool IsLayerVisible(string layer)
         {
+            if (hideProjectLayer && string.Equals(layer, "project", StringComparison.OrdinalIgnoreCase)) return false;
             if (string.IsNullOrEmpty(visibleLayerFilter)) return true;
             return string.Equals(visibleLayerFilter, layer ?? "default", StringComparison.OrdinalIgnoreCase);
         }

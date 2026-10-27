@@ -2,24 +2,29 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using TMPro;
-using Unity.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using QuestMarkerApp.API;
 using QuestMarkerApp.Core;
 using QuestMarkerApp.Markers;
+using QuestMarkerApp.Models;
 
 namespace QuestMarkerApp.UI
 {
     /// <summary>
-    /// How the ground moved, in the room: every survey point grows an arrow along its measured
-    /// displacement (dx/dy/dz from the zero reading), exaggerated ×20…×1000 so millimetres
-    /// read at arm's length, coloured green → amber → red by size, with the faint path it took
-    /// behind it. A time bar replays the whole record: the stick scrubs, A plays it as a film.
+    /// How the ground moved: every survey point grows one arrow along its measured displacement
+    /// (dx/dy/dz from the zero reading) at the chosen date, exaggerated ×20…×5000 so millimetres
+    /// read at arm's length, coloured green → amber → red by size. A time bar replays the whole
+    /// record: the stick scrubs, A plays it as a film. On the aligned site the arrows stand on
+    /// the real markers; while the model is previewed (table or 1:1) on its sensor dots, so no
+    /// alignment is needed. No path of past readings: its zigzag of survey noise read as a
+    /// tangle of extra lines around the one arrow that matters.
     /// </summary>
     public class DisplacementView : MonoBehaviour
     {
-        private static readonly float[] Scales = { 20f, 50f, 100f, 200f, 500f, 1000f };
+        private static readonly float[] Scales = { 20f, 50f, 100f, 200f, 500f, 1000f, 2000f, 5000f };
+        /// <summary>On a miniature, opening picks the first scale that draws RedAtMm about this long (metres).</summary>
+        private const float TabletopArrow = 0.1f;
         /// <summary>Displacement (mm) drawn fully red; half of it is amber.</summary>
         private const float RedAtMm = 20f;
         private const float PlaySeconds = 10f;   // whole record, start to end
@@ -36,6 +41,8 @@ namespace QuestMarkerApp.UI
         // Opening places the time bar in front at once; afterwards it trails the head smoothly.
         private bool hudSnap;
         private MarkerManager markers;
+        private ModelSensors modelSensors;
+        private ModelOverlay modelOverlay;
         private readonly List<Item> items = new List<Item>();
         private Material lineMaterial;
         private Mesh headMesh;
@@ -62,6 +69,8 @@ namespace QuestMarkerApp.UI
         private int cacheVersion;                     // alignment version + yaws folded in; items key on it
         private int lastAlignmentVersion = -1, lastCacheVersion = -1;
         private float lastGridYaw = float.NaN, lastSolvedYaw = float.NaN;
+        private bool lastOnModel;
+        private Matrix4x4 lastModelFrame;
         private DateTime lastAt = DateTime.MinValue;
         private float lastScale = float.NaN;
         private Vector3 lastCamPos;
@@ -70,18 +79,14 @@ namespace QuestMarkerApp.UI
 
         private class Item
         {
-            public string MarkerId, SensorId;
+            public string MarkerId, PointId, SensorId;
             public IReadOnlyList<SensorHistory.Sample> Series;
             public Transform Root, Head;
-            public LineRenderer Shaft, Trail;
+            public LineRenderer Shaft;
             public Material HeadMaterial;
             public TextMeshPro Label;
 
-            // Cached world trail (one slot per sample; TrailCount are in use), pushed with one
-            // SetPositions call. Allocated once, sized to Series.Count.
-            public NativeArray<Vector3> TrailBuf;
-            public int TrailCount;
-            // Key of the cached arrow + trail: recomputed only when one of these moves.
+            // Key of the cached arrow: recomputed only when one of these moves.
             public bool HasCache;
             public int CachedIndex = -1;              // last sample index with Date <= at (-1: before first)
             public float CachedScale;
@@ -119,8 +124,20 @@ namespace QuestMarkerApp.UI
         private void OnAlignmentChanged()
         {
             alignmentVersion++;
-            if (IsActive && !project.IsAligned) Close();
+            if (IsActive && !CanDraw) Close();
         }
+
+        /// <summary>The model preview shows the sensor dots: the arrows go there.</summary>
+        private bool OnModel
+        {
+            get
+            {
+                if (modelSensors == null) modelSensors = FindAnyObjectByType<ModelSensors>();
+                return modelSensors != null && modelSensors.Showing;
+            }
+        }
+
+        private bool CanDraw => project != null && project.HasProject && (OnModel || project.IsAligned);
 
         // The HUD hint names A / B after the dominant hand.
         private void RefreshHint()
@@ -137,7 +154,8 @@ namespace QuestMarkerApp.UI
             if (project == null || !project.HasProject) return L.T("Φόρτωσε έργο από Terraweb", "Load a project from Terraweb");
             if (!SensorHistory.HasDisplacements || SensorHistory.ProjectId != project.TerrawebProjectId)
                 return L.T("Χωρίς ιστορικό · φόρτωσε ξανά το έργο", "No history · reload the project");
-            if (!project.IsAligned) return L.T("Μετά την ευθυγράμμιση", "Align first");
+            if (!OnModel && !project.IsAligned)
+                return L.T("Άνοιξε το μοντέλο ή κάνε ευθυγράμμιση", "Open the model or align first");
             return null;
         }
 
@@ -160,6 +178,7 @@ namespace QuestMarkerApp.UI
                 foreach (var s in series) if (s.HasDisplacement) { any = true; break; }
                 if (!any) continue;
                 Item item = CreateItem(ProjectAlignment.MarkerPrefix + p.id, series);
+                item.PointId = p.id;
                 item.SensorId = p.sensorId;
                 items.Add(item);
             }
@@ -174,6 +193,7 @@ namespace QuestMarkerApp.UI
             hudProgressShown = -1f;
             hudPlayingShown = null;
             framePrimed = false;
+            if (OnModel) scaleIndex = ModelScaleIndex();
             // Opening plays the whole record once: the site moving from day one to today.
             progress = 0f;
             playing = true;
@@ -190,7 +210,6 @@ namespace QuestMarkerApp.UI
             {
                 if (it.HeadMaterial != null) Destroy(it.HeadMaterial);
                 if (it.Root != null) Destroy(it.Root.gameObject);
-                if (it.TrailBuf.IsCreated) it.TrailBuf.Dispose();
             }
             items.Clear();
             if (hud != null) hud.gameObject.SetActive(false);
@@ -210,9 +229,20 @@ namespace QuestMarkerApp.UI
             L.Changed -= OnLanguageChanged;
             if (project != null) project.OnAlignmentChanged -= OnAlignmentChanged;
             IsActive = false;
-            foreach (Item it in items)
-                if (it.TrailBuf.IsCreated) it.TrailBuf.Dispose();
             items.Clear();
+        }
+
+        // A miniature is ~1/100 of the site: ×100 would draw 20 mm as 2 cm. The first scale that
+        // makes it about TabletopArrow; at 1:1 that is the low end, as on the site.
+        private int ModelScaleIndex()
+        {
+            if (modelOverlay == null) modelOverlay = FindAnyObjectByType<ModelOverlay>();
+            Transform root = modelOverlay != null ? modelOverlay.Root : null;
+            float rootScale = root != null ? Mathf.Max(root.lossyScale.x, 1e-6f) : 1f;
+            float want = TabletopArrow / (RedAtMm * 0.001f * rootScale);
+            for (int i = 0; i < Scales.Length; i++)
+                if (Scales[i] >= want) return i;
+            return Scales.Length - 1;
         }
 
         // ------------------------------------------------------------------
@@ -222,7 +252,7 @@ namespace QuestMarkerApp.UI
         private void Update()
         {
             if (!IsActive) return;
-            if (project == null || !project.HasProject || !project.IsAligned) { Close(); return; }
+            if (!CanDraw) { Close(); return; }
 #if !MOBILE_PREVIEW
             if (!UiState.InputBlocked && !project.IsModeActive) HandleInput();
 #endif
@@ -249,12 +279,19 @@ namespace QuestMarkerApp.UI
             float scale = Scales[scaleIndex];
 
             // Alignment key: the change event plus the yaws Draw's maths reads from the project.
+            // On the model: where it stands, turns and how far it is zoomed.
             float gridYaw = project.GridYawDeg, solvedYaw = project.YawDeg;
-            if (alignmentVersion != lastAlignmentVersion || gridYaw != lastGridYaw || solvedYaw != lastSolvedYaw)
+            bool onModel = OnModel;
+            Transform frame = onModel ? modelSensors.Container : null;
+            Matrix4x4 modelFrame = frame != null ? frame.localToWorldMatrix : Matrix4x4.identity;
+            if (alignmentVersion != lastAlignmentVersion || gridYaw != lastGridYaw || solvedYaw != lastSolvedYaw
+                || onModel != lastOnModel || modelFrame != lastModelFrame)
             {
                 lastAlignmentVersion = alignmentVersion;
                 lastGridYaw = gridYaw;
                 lastSolvedYaw = solvedYaw;
+                lastOnModel = onModel;
+                lastModelFrame = modelFrame;
                 cacheVersion++;
             }
 
@@ -267,7 +304,7 @@ namespace QuestMarkerApp.UI
             {
                 double yaw = gridYaw * Math.PI / 180.0;
                 double cosYaw = Math.Cos(yaw), sinYaw = Math.Sin(yaw);
-                foreach (Item it in items) Draw(it, at, scale, cosYaw, sinYaw, camPos);
+                foreach (Item it in items) Draw(it, at, scale, cosYaw, sinYaw, camPos, frame);
                 lastAt = at;
                 lastScale = scale;
                 lastCacheVersion = cacheVersion;
@@ -320,13 +357,17 @@ namespace QuestMarkerApp.UI
 #endif
 
         // Survey-grid millimetres → a world vector, exaggerated. Yaw's cos/sin are hoisted per frame.
-        private bool ToWorld(in SensorHistory.Sample s, float scale, double cosYaw, double sinYaw, out Vector3 world)
+        // On the model the project frame is the model's own (x East, y Up, z North), zoom included.
+        private bool ToWorld(in SensorHistory.Sample s, float scale, double cosYaw, double sinYaw, Transform modelFrame,
+            out Vector3 world)
         {
             double dx = s.Dx ?? 0, dy = s.Dy ?? 0, dz = s.Dz ?? 0;
             double e = dx * cosYaw - dy * sinYaw;
             double n = dx * sinYaw + dy * cosYaw;
             var v = new Vector3((float)e, (float)dz, (float)n) * (0.001f * scale);
-            return project.TryWorldVector(v, out world);
+            if (modelFrame == null) return project.TryWorldVector(v, out world);
+            world = modelFrame.TransformVector(v);
+            return true;
         }
 
         // Last sample index with Date <= at (-1 before the first). O(1) while the index is unchanged
@@ -355,18 +396,21 @@ namespace QuestMarkerApp.UI
             go.SetActive(on);
         }
 
-        private void Draw(Item it, DateTime at, float scale, double cosYaw, double sinYaw, Vector3 camPos)
+        private void Draw(Item it, DateTime at, float scale, double cosYaw, double sinYaw, Vector3 camPos, Transform modelFrame)
         {
-            if (!markers.ActiveMarkers.TryGetValue(it.MarkerId, out Marker m) || m == null || !m.gameObject.activeInHierarchy)
+            Transform anchor = null;
+            if (modelFrame != null) anchor = modelSensors.DotOf(it.PointId);
+            else if (markers.ActiveMarkers.TryGetValue(it.MarkerId, out Marker m) && m != null) anchor = m.transform;
+            if (anchor == null || !anchor.gameObject.activeInHierarchy)
             {
                 SetOn(it.Root.gameObject, ref it.RootOn, false);
                 return;
             }
 
-            Vector3 basePos = m.transform.position;
+            Vector3 basePos = anchor.position;
             int index = IndexAt(it, at);
 
-            // Arrow + trail are a pure function of (sample index, scale, base position, alignment):
+            // The arrow is a pure function of (sample index, scale, base position, alignment):
             // the reading in force does not change between two sample dates, so a paused or
             // slowly advancing clock costs nothing here.
             bool sameFrame = it.HasCache && scale == it.CachedScale && basePos == it.CachedBase && it.CachedVersion == cacheVersion;
@@ -378,7 +422,7 @@ namespace QuestMarkerApp.UI
                 {
                     SensorHistory.Sample now = it.Series[i];
                     if (!now.HasDisplacement) continue;
-                    if (ToWorld(now, scale, cosYaw, sinYaw, out Vector3 vec))
+                    if (ToWorld(now, scale, cosYaw, sinYaw, modelFrame, out Vector3 vec))
                     {
                         it.Valid = true;
                         it.Vec = vec;
@@ -391,26 +435,10 @@ namespace QuestMarkerApp.UI
 
                 if (it.Valid)
                 {
-                    // The path so far: every reading up to now. Time moving forward within the same
-                    // frame only appends the new samples; anything else rebuilds the trail.
-                    int from;
-                    if (sameFrame && index > it.CachedIndex) from = it.CachedIndex + 1;
-                    else { from = 0; it.TrailCount = 0; }
-                    for (int i = from; i <= index; i++)
-                    {
-                        SensorHistory.Sample s = it.Series[i];
-                        if (s.HasDisplacement && ToWorld(s, scale, cosYaw, sinYaw, out Vector3 v))
-                            it.TrailBuf[it.TrailCount++] = basePos + v;
-                    }
-                    if (it.Trail.positionCount != it.TrailCount) it.Trail.positionCount = it.TrailCount;
-                    if (it.TrailCount > 0) it.Trail.SetPositions(it.TrailBuf.GetSubArray(0, it.TrailCount));
-
                     Color color = it.Color;
                     it.Shaft.startColor = color.WithAlpha(0.75f);
                     it.Shaft.endColor = color;
                     it.HeadMaterial.color = color;
-                    it.Trail.startColor = color.WithAlpha(0.05f);
-                    it.Trail.endColor = color.WithAlpha(0.6f);
                     it.Label.text = it.Text;
                     it.Label.color = color;
                 }
@@ -452,7 +480,6 @@ namespace QuestMarkerApp.UI
                 it.Head.SetPositionAndRotation(tip - dir * headLen, Quaternion.LookRotation(dir));
                 it.Head.localScale = new Vector3(width * 1.6f, width * 1.6f, headLen);
             }
-            it.Trail.widthMultiplier = width * 0.4f;
 
             bool label = visible && camDist < LabelWithin;
             SetOn(it.Label.gameObject, ref it.LabelOn, label);
@@ -500,9 +527,6 @@ namespace QuestMarkerApp.UI
             }
 
             LineRenderer shaft = Line("Shaft", 9);
-            LineRenderer trail = Line("Trail", 8);
-            trail.positionCount = 0;
-            trail.numCapVertices = 0;
 
             var head = new GameObject("Head");
             head.transform.SetParent(root, false);
@@ -529,8 +553,7 @@ namespace QuestMarkerApp.UI
             return new Item
             {
                 MarkerId = markerId, Series = series, Root = root, Head = head.transform,
-                Shaft = shaft, Trail = trail, HeadMaterial = mat, Label = label,
-                TrailBuf = new NativeArray<Vector3>(Mathf.Max(1, series.Count), Allocator.Persistent, NativeArrayOptions.UninitializedMemory)
+                Shaft = shaft, HeadMaterial = mat, Label = label
             };
         }
 

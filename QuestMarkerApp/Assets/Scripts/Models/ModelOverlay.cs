@@ -475,6 +475,8 @@ namespace QuestMarkerApp.Models
         }
 
         /// <summary>Root scale of the default tabletop miniature: the longest horizontal side becomes 1 m.</summary>
+        public float DefaultTabletopScale => TabletopScale;
+
         private float TabletopScale => TabletopSize / Mathf.Max(modelBounds.size.x, modelBounds.size.z, 0.01f);
 
         // Zoom limits. Tabletop: from a fifth of the default miniature up to real size. Life

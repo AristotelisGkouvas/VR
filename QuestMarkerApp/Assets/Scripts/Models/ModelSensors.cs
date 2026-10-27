@@ -22,8 +22,13 @@ namespace QuestMarkerApp.Models
     public class ModelSensors : MonoBehaviour
     {
         private const string EnabledKey = "model.sensors";
-        /// <summary>World size of a dot at 1:1 and on the smallest miniature, metres.</summary>
-        private const float DotMax = 0.2f, DotMin = 0.025f;
+        /// <summary>World size of a dot at 1:1, metres.</summary>
+        private const float DotMax = 0.2f;
+        /// <summary>
+        /// World size of a dot on the tabletop at its default size, metres. The dots then grow
+        /// and shrink with the model's zoom, like everything else on it.
+        /// </summary>
+        private const float DotTabletop = 0.025f;
         /// <summary>
         /// At 1:1 far dots grow with distance so they keep this angular size (radians, ~1.7°):
         /// a 20 cm dot 40 m away along the bridge would be a speck.
@@ -104,7 +109,7 @@ namespace QuestMarkerApp.Models
         private bool builtPractice, builtEnabled, dirty = true;
         private Reason reason = Reason.NoProject;
         private int total;
-        private float appliedScale = -1f, dotLocal = 1f, nextRecolour;
+        private float dotLocal = 1f, nextRecolour;
 
         private Dot aimed;
         private float aimedSince;
@@ -149,9 +154,24 @@ namespace QuestMarkerApp.Models
 
         private void MarkDirty() => dirty = true;
 
+        /// <summary>The dots' parent under the model root: the model's frame (x East, y Up, z North), zoom included.</summary>
+        public Transform Container => container;
+
+        /// <summary>True while the dots are on show on a preview (tabletop or 1:1).</summary>
+        public bool Showing { get; private set; }
+
+        /// <summary>The dot of a project point (ProjectPoint.id), when it is drawn on the model.</summary>
+        public Transform DotOf(string pointId)
+        {
+            foreach (Dot d in dots)
+                if (d.Point.id == pointId) return d.T;
+            return null;
+        }
+
         private void OnDestroy()
         {
             if (overlay != null) overlay.OnChanged -= MarkDirty;
+            if (markers != null) markers.HideProjectLayer = false;
             if (container != null) Destroy(container.gameObject);
         }
 
@@ -169,6 +189,11 @@ namespace QuestMarkerApp.Models
             bool show = container != null && dots.Count > 0 && root != null && root.gameObject.activeInHierarchy
                         && overlay.CurrentPlacement != ModelOverlay.Placement.Project;
             if (container != null && container.gameObject.activeSelf != show) container.gameObject.SetActive(show);
+            Showing = show;
+            // On the model, not twice: the site's sensors step aside while the preview shows them
+            // (except while aligning, where the touched points are the job).
+            if (markers != null)
+                markers.HideProjectLayer = show && (project == null || !project.IsModeActive);
             Camera cam = Camera.main;
             if (!show || cam == null)
             {
@@ -177,12 +202,15 @@ namespace QuestMarkerApp.Models
             }
 
             float rootScale = Mathf.Max(root.lossyScale.x, 1e-6f);
-            ApplyScale(rootScale);
+            bool lifeSize = overlay.CurrentPlacement == ModelOverlay.Placement.LifeSize;
+            // At 1:1 a fixed world size, growing with distance; on the table a fixed size in
+            // model metres, so zooming the miniature in makes the dots bigger with it.
+            dotLocal = lifeSize ? DotMax / rootScale : DotTabletop / Mathf.Max(overlay.DefaultTabletopScale, 1e-6f);
             if (Time.unscaledTime >= nextRecolour) Recolour();
             Vector3 eye = cam.transform.position;
             Vector3 up = cam.transform.up;
             float baseWorld = dotLocal * rootScale;
-            float labelReach = overlay.CurrentPlacement == ModelOverlay.Placement.LifeSize ? LabelLifeSize : LabelTabletop;
+            float labelReach = lifeSize ? LabelLifeSize : LabelTabletop;
             float pulseAlarm = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 6f));
             float pulseAlert = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 3f));
             foreach (Dot d in dots)
@@ -190,7 +218,7 @@ namespace QuestMarkerApp.Models
                 Vector3 away = d.T.position - eye;
                 if (away.sqrMagnitude > 1e-8f) d.T.rotation = Quaternion.LookRotation(away, up);
                 float dist = away.magnitude;
-                float world = Mathf.Max(baseWorld, dist * DotAngular);
+                float world = lifeSize ? Mathf.Max(baseWorld, dist * DotAngular) : baseWorld;
                 d.T.localScale = Vector3.one * (world / rootScale) * (d == aimed ? 1.4f : 1f);
                 // Alarm and alert pulse in a ring, as on the real markers.
                 if (d.Ring.enabled)
@@ -254,7 +282,6 @@ namespace QuestMarkerApp.Models
             // None near the model: another site, or another CRS. Say so rather than draw dots
             // in empty space kilometres off the table.
             reason = dots.Count == 0 ? Reason.Far : Reason.Ok;
-            appliedScale = -1f;
             Debug.Log($"[ModelSensors] {dots.Count} of {total} sensors on '{overlay.LoadedName}'" +
                       (heightOffset != 0f ? $", heights shifted {heightOffset:F1} m" : ""));
         }
@@ -428,17 +455,6 @@ namespace QuestMarkerApp.Models
                 string s = (d.Point.alertState ?? "none").ToLowerInvariant();
                 if (s != d.State) SetState(d, s);
             }
-        }
-
-        // Base world size, whatever the zoom: 20 cm at 1:1 (more far away, see DotAngular), shrinking
-        // with the model down to 2.5 cm, where a miniature's dots would otherwise vanish.
-        private void ApplyScale(float rootScale)
-        {
-            if (Mathf.Approximately(rootScale, appliedScale)) return;
-            appliedScale = rootScale;
-            float world = Mathf.Clamp(DotMax * rootScale, DotMin, DotMax);
-            dotLocal = world / Mathf.Max(rootScale, 1e-6f);
-            foreach (Dot d in dots) d.T.localScale = Vector3.one * dotLocal * (d == aimed ? 1.4f : 1f);
         }
 
         // ------------------------------------------------------------------
