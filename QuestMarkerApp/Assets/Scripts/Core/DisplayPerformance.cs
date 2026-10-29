@@ -23,7 +23,7 @@ namespace QuestMarkerApp.Core
         /// <summary>Requested refresh rate in Hz (72 or 90).</summary>
         public static float RefreshRate
         {
-            get => PlayerPrefs.GetFloat(RateKey, 72f);
+            get => PlayerPrefs.GetFloat(RateKey, 90f); // ~5 ms GPU leaves room in 11.1 ms
             set { PlayerPrefs.SetFloat(RateKey, value); PlayerPrefs.Save(); }
         }
 

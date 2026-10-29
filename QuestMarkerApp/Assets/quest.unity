@@ -599,6 +599,7 @@ GameObject:
   m_Component:
   - component: {fileID: 720358433}
   - component: {fileID: 720358434}
+  - component: {fileID: 720358435}
   m_Layer: 0
   m_Name: LeftEyeAnchor
   m_TagString: MainCamera
@@ -672,6 +673,50 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &720358435
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 720358432}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
 --- !u!1 &747472143
 GameObject:
   m_ObjectHideFlags: 0
@@ -789,15 +834,13 @@ MonoBehaviour:
   spatialAnchorManager: {fileID: 0}
   calibrationSystem: {fileID: 0}
   sessionManager: {fileID: 0}
+  projectAlignment: {fileID: 0}
   useLocalServer: 1
   useRemotePolling: 0
   useWebSocketPush: 0
   remoteServerUrl: http://192.168.1.100:5000
+  remoteApiKey: 
   highlightWithControllerRay: 1
-  calibrationButton: 1
-  clearMarkersButton: 2
-  startCalibrationButton: 4
-  undoButton: 8
 --- !u!114 &783134393
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -837,6 +880,7 @@ MonoBehaviour:
   laserPointer: {fileID: 0}
   calibrationMarkerPrefab: {fileID: 0}
   laserLength: 10
+  markerManager: {fileID: 0}
   showDebugInfo: 1
 --- !u!114 &783134395
 MonoBehaviour:
@@ -852,10 +896,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: QuestMarkerApp.Runtime::QuestMarkerApp.Core.SpatialAnchorManager
   autoCreateReferenceAnchor: 1
   persistAnchors: 1
-  anchorSaveDelay: 2
-  preferOvrSpatialAnchors: 1
-  showAnchorGizmos: 1
-  anchorVisualizerPrefab: {fileID: 0}
+  localizeTimeout: 8
 --- !u!114 &783134396
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -881,6 +922,7 @@ MonoBehaviour:
   visibleLayerFilter: 
   referencePoint: {fileID: 0}
   markersContainer: {fileID: 0}
+  maxLabels: 40
 --- !u!114 &783134397
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -930,6 +972,7 @@ MonoBehaviour:
   sessionManager: {fileID: 0}
   spatialAnchorManager: {fileID: 0}
   networkDiscovery: {fileID: 0}
+  projectAlignment: {fileID: 0}
 --- !u!4 &783134399
 Transform:
   m_ObjectHideFlags: 0
@@ -1217,7 +1260,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.1
-  far clip plane: 1000
+  far clip plane: 300
   field of view: 90
   orthographic: 0
   orthographic size: 5

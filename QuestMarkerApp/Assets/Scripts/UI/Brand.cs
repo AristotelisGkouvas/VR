@@ -167,6 +167,13 @@ namespace QuestMarkerApp.UI
             }
             var m = new Material(shader) { name = writesDepth ? "MarkerSprite" : "MarkerSpriteFade" };
             if (m.HasProperty("_ZWrite")) m.SetFloat("_ZWrite", writesDepth ? 1f : 0f);
+            if (m.HasProperty("_AlphaToMask"))
+            {
+                // Depth-writing pieces: alpha-to-coverage, no blending (MarkerSprite's comment).
+                m.SetFloat("_AlphaToMask", writesDepth ? 1f : 0f);
+                m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
+                m.SetFloat("_DstBlend", (float)(writesDepth ? UnityEngine.Rendering.BlendMode.Zero : UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha));
+            }
             return m;
         }
 
@@ -243,7 +250,8 @@ namespace QuestMarkerApp.UI
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, true)
             {
                 name = name,
-                wrapMode = TextureWrapMode.Clamp
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Trilinear // no visible step between mip levels at range
             };
             var pixels = new Color32[size * size];
             float half = size * 0.5f;

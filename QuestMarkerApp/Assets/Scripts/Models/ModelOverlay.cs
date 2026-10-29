@@ -1348,7 +1348,7 @@ namespace QuestMarkerApp.Models
             }
             tex.wrapMode = TextureWrapMode.Clamp;
             tex.filterMode = FilterMode.Trilinear;
-            tex.anisoLevel = 2;
+            tex.anisoLevel = 4; // terrain seen at a low angle
             bool compressed = false;
             try
             {

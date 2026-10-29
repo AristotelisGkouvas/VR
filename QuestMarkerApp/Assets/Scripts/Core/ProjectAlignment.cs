@@ -365,6 +365,7 @@ namespace QuestMarkerApp.Core
 
         private void OnDestroy()
         {
+            if (lateHooked) Application.onBeforeRender -= LatePose;
             // These publishers can outlive us on scene teardown; a dangling handler would run
             // Render on a destroyed component.
             if (anchors != null) anchors.OnReferenceAnchorLoaded -= OnAnchorRestored;
@@ -1193,8 +1194,19 @@ namespace QuestMarkerApp.Core
             return cam != null ? cam.transform.position + cam.transform.forward * 0.5f : Vector3.zero;
         }
 
+        private bool lateHooked;
+
+        // The rig re-reads the controllers just before rendering; the tip and the panel held on
+        // the hand, placed in Update, would trail the hand by a frame. Placed again here.
+        private void LatePose()
+        {
+            if (!isActiveAndEnabled || !modeActive) return;
+            UpdateCursorAndPanelPose();
+        }
+
         private void UpdateCursorAndPanelPose()
         {
+            if (!lateHooked) { Application.onBeforeRender += LatePose; lateHooked = true; }
             if (tipCursor != null) tipCursor.position = TipWorldPosition();
 
             Camera cam = Camera.main;

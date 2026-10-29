@@ -158,11 +158,47 @@ namespace QuestMarkerApp.UI
             beamGo.SetActive(false);
         }
 
+        // What the beam ends on, kept for the late redraw: a panel plane, or a stub this long.
+        private RectTransform beamTarget;
+        private float beamStub;
+        private bool lateHooked;
+
+        // The rig moves the controllers again just before rendering (late controller update);
+        // the beam and cursor built in Update would trail the hand by a frame. Redrawn here
+        // from the fresh pose, on the same panel or stub, so they stay glued to it.
+        private void LateBeam()
+        {
+            if (beam == null || !beam.gameObject.activeSelf || dragging != null) return;
+#if !MOBILE_PREVIEW
+            if (rig == null || !Hands.DominantConnected) return;
+            Transform hand = Hands.DominantAnchor(rig);
+            var ray = new Ray(hand.position, hand.forward);
+            Vector3 end = ray.GetPoint(beamStub);
+            if (beamTarget != null)
+            {
+                var plane = new Plane(beamTarget.forward, beamTarget.position);
+                if (!plane.Raycast(ray, out float d)) return;
+                end = ray.GetPoint(d) - ray.direction * 0.004f;
+                cursor.position = end;
+                cursor.rotation = Quaternion.LookRotation(ray.direction, Vector3.up);
+            }
+            beam.SetPosition(0, ray.origin);
+            beam.SetPosition(1, end);
+#endif
+        }
+
+        private void OnDestroy()
+        {
+            if (lateHooked) Application.onBeforeRender -= LateBeam;
+        }
+
         // hit: the beam ends on a panel (bright to the end); otherwise a short fading stub.
         private void ShowBeam(bool on, Ray ray = default, Vector3 end = default, bool hit = false)
         {
             if (beam.gameObject.activeSelf != on) beam.gameObject.SetActive(on);
             if (!on) return;
+            beamTarget = hit && hovered != null ? hovered.Rect : null;
+            beamStub = Vector3.Distance(ray.origin, end);
             beam.SetPosition(0, ray.origin);
             beam.SetPosition(1, end);
             Color c = hit ? Brand.Fg : Brand.Primary;
@@ -191,6 +227,8 @@ namespace QuestMarkerApp.UI
 
         private void Update()
         {
+            // After the rig's own onBeforeRender (it subscribes on start), so the pose is fresh.
+            if (!lateHooked) { Application.onBeforeRender += LateBeam; lateHooked = true; }
             Targets.RemoveAll(t => t.Rect == null);
             Draggables.RemoveAll(d => d.Area == null || d.Panel == null);
 
@@ -340,7 +378,7 @@ namespace QuestMarkerApp.UI
 #if !MOBILE_PREVIEW
             // A faint tick in the hand on entering each element: the same "you are on it"
             // everywhere, also for rows whose only visual is the cursor.
-            Feedback.Buzz(Hands.Dominant, 0.1f, 0.012f, 0.9f);
+            Feedback.Buzz(Hands.Dominant, 0.25f, 0.02f, 0.9f); // shorter than a frame was not felt
 #endif
             hovered.Hover?.Invoke();
         }

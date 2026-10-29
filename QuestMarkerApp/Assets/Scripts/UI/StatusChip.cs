@@ -35,6 +35,23 @@ namespace QuestMarkerApp.UI
         private int warnedAt = 101; // lowest threshold already warned about
         private TextMeshProUGUI modeText, alignText, dataText, batteryText;
         private float nextRefresh;
+        private Transform watchHand;
+        private bool lateHooked;
+
+        // Again from the pose the rig sets just before rendering: placed only in LateUpdate,
+        // the watch swam a frame behind the hand.
+        private void LatePose()
+        {
+            Camera cam = Camera.main;
+            if (chip == null || !chip.gameObject.activeSelf || watchHand == null || cam == null) return;
+            chip.position = watchHand.position + Vector3.up * 0.07f;
+            VrUi.FaceViewer(chip, cam.transform);
+        }
+
+        private void OnDestroy()
+        {
+            if (lateHooked) Application.onBeforeRender -= LatePose;
+        }
 #if !MOBILE_PREVIEW
         private OVRCameraRig rig;
 #endif
@@ -62,7 +79,7 @@ namespace QuestMarkerApp.UI
             foreach (TextMeshProUGUI t in new[] { modeText, alignText, dataText, batteryText })
             {
                 t.enableAutoSizing = true; // long lines shrink rather than run off the watch
-                t.fontSizeMin = 9f;
+                t.fontSizeMin = 12f;
                 t.fontSizeMax = t.fontSize;
             }
             chip.gameObject.SetActive(false);
@@ -84,6 +101,8 @@ namespace QuestMarkerApp.UI
             if (!show) return;
 
             // Over the back of the hand, facing the eyes, like a watch.
+            watchHand = hand;
+            if (!lateHooked) { Application.onBeforeRender += LatePose; lateHooked = true; }
             chip.position = hand.position + Vector3.up * 0.07f;
             VrUi.FaceViewer(chip, cam.transform);
             if (Time.unscaledTime < nextRefresh) return;

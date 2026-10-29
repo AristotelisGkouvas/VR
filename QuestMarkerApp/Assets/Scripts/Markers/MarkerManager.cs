@@ -370,6 +370,8 @@ namespace QuestMarkerApp.Markers
             }
 
             referencePoint = newReference;
+            shownPosition = newReference.position; // a new frame: no easing from the old one
+            shownRotation = newReference.rotation;
 
             foreach (var kvp in activeMarkers)
             {
@@ -459,22 +461,47 @@ namespace QuestMarkerApp.Markers
                 byDistance[i].marker.LabelSlot = i < maxLabels;
         }
 
-        private Vector3 lastReferencePosition;
-        private Quaternion lastReferenceRotation;
+        /// <summary>Anchor corrections up to this (metres / degrees) glide; larger ones snap.</summary>
+        private const float GlideMetres = 0.1f, GlideDegrees = 3f;
+        /// <summary>Time constant of the glide, seconds (~0.3 s to settle).</summary>
+        private const float GlideTau = 0.1f;
+
+        // The anchor pose the markers are drawn from: it eases toward the real one.
+        private Vector3 shownPosition;
+        private Quaternion shownRotation = Quaternion.identity;
 
         // A spatial anchor's transform is corrected by the system (relocalisation, recenter):
-        // markers were placed once from it, so move them along whenever it shifts.
+        // markers were placed once from it, so move them along whenever it shifts. A small
+        // correction glides over ~0.3 s (every icon jumping at once in one frame was jarring);
+        // a large one, a real relocalisation, snaps.
         private void LateUpdate()
         {
             if (referencePoint == null || referencePoint == markersContainer) return;
-            if ((referencePoint.position - lastReferencePosition).sqrMagnitude < 1e-6f
-                && Quaternion.Angle(referencePoint.rotation, lastReferenceRotation) < 0.05f) return;
-            lastReferencePosition = referencePoint.position;
-            lastReferenceRotation = referencePoint.rotation;
+            Vector3 p = referencePoint.position;
+            Quaternion r = referencePoint.rotation;
+            float off = Vector3.Distance(p, shownPosition), turn = Quaternion.Angle(r, shownRotation);
+            if (off < 1e-3f && turn < 0.05f)
+            {
+                if (off == 0f && turn == 0f) return;
+                shownPosition = p; // close enough: settle exactly once
+                shownRotation = r;
+            }
+            else if (off > GlideMetres || turn > GlideDegrees)
+            {
+                shownPosition = p;
+                shownRotation = r;
+            }
+            else
+            {
+                float k = 1f - Mathf.Exp(-Time.unscaledDeltaTime / GlideTau);
+                shownPosition = Vector3.Lerp(shownPosition, p, k);
+                shownRotation = Quaternion.Slerp(shownRotation, r, k);
+            }
+            Matrix4x4 frame = Matrix4x4.TRS(shownPosition, shownRotation, referencePoint.lossyScale);
             // MoveTo(…, 0) rather than a plain assignment: it also stops a move tween still
             // running toward a target computed in the old frame, which would drag the marker back.
             foreach (Marker marker in activeMarkers.Values)
-                if (marker != null) marker.MoveTo(referencePoint.TransformPoint(marker.LocalCoordinates), 0f);
+                if (marker != null) marker.MoveTo(frame.MultiplyPoint3x4(marker.LocalCoordinates), 0f);
         }
 
         /// <summary>The marker the controller ray currently points at, if any.</summary>

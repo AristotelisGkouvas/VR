@@ -20,6 +20,11 @@ Shader "QuestMarker/MarkerSprite"
         _Color ("Tint", Color) = (1,1,1,1)
         _Cutoff ("Alpha cutoff", Range(0, 1)) = 0.02
         [Enum(Off,0,On,1)] _ZWrite ("ZWrite", Float) = 1
+        // Depth-writing pieces use alpha-to-coverage (MSAA smooths their edges; a clip() edge
+        // shimmered, and a near icon's faint rim hid a far one); the fade material blends.
+        [Toggle] _AlphaToMask ("Alpha to coverage", Float) = 0
+        [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Src blend", Float) = 1
+        [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Dst blend", Float) = 10
         [MaterialToggle] PixelSnap ("Pixel snap", Float) = 0
         [HideInInspector] _RendererColor ("RendererColor", Color) = (1,1,1,1)
         [HideInInspector] _Flip ("Flip", Vector) = (1,1,1,1)
@@ -50,7 +55,8 @@ Shader "QuestMarker/MarkerSprite"
         // cannot tell them apart and they flickered through each other. Each piece draws with
         // its own offset in depth-buffer steps (Brand.MarkerSpriteLayer), which holds at any range.
         Offset [_OffsetFactor], [_OffsetUnits]
-        Blend One OneMinusSrcAlpha
+        Blend [_SrcBlend] [_DstBlend]
+        AlphaToMask [_AlphaToMask]
 
         Pass
         {
@@ -66,6 +72,7 @@ Shader "QuestMarker/MarkerSprite"
             #include "Packages/com.meta.xr.sdk.core/Shaders/EnvironmentDepth/BiRP/EnvironmentOcclusionBiRP.cginc"
 
             fixed _Cutoff;
+            float _AlphaToMask;
             float _XrayAlpha;
             float _EnvironmentDepthBias;
 
@@ -95,8 +102,15 @@ Shader "QuestMarker/MarkerSprite"
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);
                 fixed4 c = SampleSpriteTexture(IN.texcoord) * IN.color;
-                clip(c.a - _Cutoff);
                 float visible = META_DEPTH_GET_OCCLUSION_VALUE(IN, _EnvironmentDepthBias);
+                if (_AlphaToMask > 0.5)
+                {
+                    // A crisp edge one screen pixel wide: MSAA then resolves it into 4 steps.
+                    c.a = saturate((c.a - 0.5) / max(fwidth(c.a), 1e-4) + 0.5);
+                    c.a *= lerp(_XrayAlpha, 1.0, visible);
+                    return c; // coverage does the blending: not premultiplied
+                }
+                clip(c.a - _Cutoff);
                 c.a *= lerp(_XrayAlpha, 1.0, visible);
                 c.rgb *= c.a; // premultiplied, like Sprites/Default
                 return c;

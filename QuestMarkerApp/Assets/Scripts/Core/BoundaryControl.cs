@@ -86,34 +86,59 @@ namespace QuestMarkerApp.Core
         }
 
 #if !MOBILE_PREVIEW
-        // Hides the passthrough layer and clears the eye camera to opaque black (its clear colour
-        // is transparent so passthrough shows through); off, both go back as they were.
+        /// <summary>Passthrough fades in and out over this long instead of cutting, seconds.</summary>
+        private const float FadeSeconds = 0.25f;
+        private float black; // 0 room visible … 1 black
+        private bool fading;
+
+        // Fades the eye camera's clear colour from transparent (the room shows through) to
+        // opaque black, then hides the passthrough layer; on, the layer comes back first and the
+        // black fades out. A hard cut between the room and the black was harsh on the eyes.
         private void SetPassthrough(bool on)
         {
             passthroughOn = on;
-            foreach (OVRPassthroughLayer layer in FindObjectsByType<OVRPassthroughLayer>(FindObjectsSortMode.None))
-                layer.hidden = !on;
-            if (!on)
+            if (!on && blackedCamera == null)
             {
                 blackedCamera = Camera.main;
-                if (blackedCamera != null)
-                {
-                    savedBackground = blackedCamera.backgroundColor;
-                    blackedCamera.backgroundColor = Color.black;
-                }
+                if (blackedCamera != null) savedBackground = blackedCamera.backgroundColor;
             }
+            if (on) ShowLayers(true);
+            fading = true;
+            Debug.Log(on ? (immersive ? "[Boundary] Peek: passthrough on" : "[Boundary] Passthrough back on")
+                : "[Boundary] Life-size model: passthrough off, Guardian on");
+        }
+
+        private static void ShowLayers(bool on)
+        {
+            foreach (OVRPassthroughLayer layer in FindObjectsByType<OVRPassthroughLayer>(FindObjectsSortMode.None))
+                layer.hidden = !on;
+        }
+
+        private void LateUpdate()
+        {
+            if (!fading) return;
+            black = Mathf.MoveTowards(black, passthroughOn ? 0f : 1f, Time.unscaledDeltaTime / FadeSeconds);
+            if (blackedCamera != null)
+                blackedCamera.backgroundColor = Color.Lerp(savedBackground, Color.black, black);
+            if (black > 0f && black < 1f) return;
+            fading = false;
+            if (!passthroughOn) ShowLayers(false); // fully black: the layer can stop
             else if (blackedCamera != null)
             {
                 blackedCamera.backgroundColor = savedBackground;
                 blackedCamera = null;
             }
-            Debug.Log(on ? (immersive ? "[Boundary] Peek: passthrough on" : "[Boundary] Passthrough back on")
-                : "[Boundary] Life-size model: passthrough off, Guardian on");
         }
 
         private void OnDisable()
         {
-            if (!passthroughOn) SetPassthrough(true);
+            // No fade left to run: the room and the camera come back at once.
+            ShowLayers(true);
+            if (blackedCamera != null) blackedCamera.backgroundColor = savedBackground;
+            blackedCamera = null;
+            passthroughOn = true;
+            fading = false;
+            black = 0f;
             immersive = false;
             Peeking = false;
         }

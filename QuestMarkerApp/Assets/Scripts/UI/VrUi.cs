@@ -23,12 +23,12 @@ namespace QuestMarkerApp.UI
         /// layout together, so nothing overflows. Read once at start: a change applies on the
         /// next launch, as panels are built once.
         /// </summary>
-        public static readonly int TextSize = Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 1), 0, 2);
+        public static readonly int TextSize = Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 2), 0, 2);
 
         /// <summary>The menu switch: what the next launch will use.</summary>
         public static int TextSizeNext
         {
-            get => Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 1), 0, 2);
+            get => Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 2), 0, 2);
             set { PlayerPrefs.SetInt(TextSizeKey, Mathf.Clamp(value, 0, 2)); PlayerPrefs.Save(); }
         }
 
