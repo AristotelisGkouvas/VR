@@ -66,8 +66,27 @@ namespace QuestMarkerApp.UI
             if (IsActive) { IsActive = false; TargetName = null; }
         }
 
+        /// <summary>
+        /// Navigation leads to the real sensor on site: it needs the project aligned, and no
+        /// model preview on show (the arrow pointed at the hidden site marker, "anywhere" from
+        /// the tabletop or the 1:1 copy). Null when it can run, else why not.
+        /// </summary>
+        public static string Unavailable(Core.ProjectAlignment project)
+        {
+            if (Models.ModelOverlay.PreviewShown) return L.T("Πλοήγηση μόνο στον χώρο, όχι στο μοντέλο", "Navigation on site only, not on the model");
+            if (project == null || !project.IsAligned) return L.T("Πλοήγηση μετά την ευθυγράμμιση", "Navigation after alignment");
+            return null;
+        }
+
         public void Navigate(string markerId, ProjectPoint point)
         {
+            string why = Unavailable(FindAnyObjectByType<Core.ProjectAlignment>());
+            if (why != null)
+            {
+                Feedback.Play(Feedback.Sound.Warn, 0.6f);
+                Debug.Log("[Navigator] Not started: " + why);
+                return;
+            }
             Stop();
             targetId = markerId;
             targetPoint = point;

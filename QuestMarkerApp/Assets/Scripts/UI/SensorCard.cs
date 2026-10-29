@@ -106,6 +106,7 @@ namespace QuestMarkerApp.UI
             readHeader.text = L.T("ΜΕΤΡΗΣΕΙΣ", "READINGS");
             retryLabel.text = L.T("Ξανά", "Retry");
             navigateLabel.text = L.T("Πλοήγηση εδώ", "Navigate here");
+            navigateWhy = null; // re-checked in the new language on the next frame
             noteLabel.text = L.T("Σημείωση", "Note");
         }
 
@@ -344,13 +345,37 @@ namespace QuestMarkerApp.UI
             if (VrKeyboard.IsOpen || VrKeyboard.ClosedFrame == Time.frameCount || MainMenu.IsOpen || FlowPanel.IsOpen) return;
             if (Hands.AnyBackDown()) { Close(); return; }
             if (Hands.DominantPrimaryDown()) NavigateHere();
+            RelabelNavigate();
 #else
             if (Input.GetKeyDown(KeyCode.Escape)) Close();
 #endif
         }
 
+        private string navigateWhy = "";
+
+        // "Πλοήγηση εδώ" on the aligned site; on the model or before alignment it says why not.
+        private void RelabelNavigate()
+        {
+            string why = SensorNavigator.Unavailable(alignment) ?? "";
+            if (why == navigateWhy) return;
+            navigateWhy = why;
+            navigateLabel.text = why == "" ? L.T("Πλοήγηση εδώ", "Navigate here") : why;
+            navigateLabel.color = why == "" ? Brand.Fg : Brand.FgFaint;
+            if (!navigateLabel.enableAutoSizing)
+            {
+                navigateLabel.fontSizeMax = navigateLabel.fontSize; // the reason may be long: shrink, never grow
+                navigateLabel.fontSizeMin = 9f;
+                navigateLabel.enableAutoSizing = true;
+            }
+        }
+
         private void NavigateHere()
         {
+            if (SensorNavigator.Unavailable(alignment) != null)
+            {
+                Feedback.Play(Feedback.Sound.Warn, 0.6f);
+                return;
+            }
             ProjectPoint p = point;
             string id = markerId;
             Close();
