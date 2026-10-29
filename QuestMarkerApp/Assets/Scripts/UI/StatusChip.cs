@@ -108,13 +108,17 @@ namespace QuestMarkerApp.UI
 
             bool online = Application.internetReachability != NetworkReachability.NotReachable;
             bool signedIn = client != null && client.IsLoggedIn;
-            string net = !online ? L.T("Χωρίς δίκτυο", "Offline")
+            bool fromPack = client != null && client.ServingOffline;
+            string net = fromPack ? L.T("Offline πακέτο", "Offline pack")
+                : !online ? L.T("Χωρίς δίκτυο", "Offline")
                 : signedIn ? "Terraweb" : L.T("Εκτός Terraweb", "Signed out");
             string age = "";
-            if (flow != null && flow.LastLoaded > DateTime.MinValue)
+            if (fromPack && client.OfflineDataDate < DateTime.MaxValue)
+                age = " · " + L.T("δεδομένα ", "data ") + Ago(DateTime.UtcNow - client.OfflineDataDate);
+            else if (flow != null && flow.LastLoaded > DateTime.MinValue)
                 age = " · " + L.T("δεδομένα ", "data ") + Ago(DateTime.UtcNow - flow.LastLoaded);
             dataText.text = net + age;
-            netDot.color = !online ? Brand.Danger : signedIn ? Brand.Primary : Brand.Warning;
+            netDot.color = fromPack || !signedIn ? Brand.Warning : !online ? Brand.Danger : Brand.Primary;
         }
 
         // What runs on top, which is also what B ends (UiState.Context's order).

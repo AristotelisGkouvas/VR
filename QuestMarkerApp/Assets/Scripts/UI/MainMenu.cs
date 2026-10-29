@@ -283,6 +283,16 @@ namespace QuestMarkerApp.UI
 
         // Office practice with two printed targets (docs/practice-targets.html), no Terraweb.
         // Replacing a loaded real project asks twice; leaving brings it back.
+        // "5 min ago" for a UTC time, in the interface language.
+        private static string AgoUtc(DateTime utc)
+        {
+            TimeSpan t = DateTime.UtcNow - utc;
+            if (t.TotalMinutes < 1) return L.T("τώρα", "now");
+            if (t.TotalHours < 1) return L.En ? $"{(int)t.TotalMinutes} min ago" : $"πριν {(int)t.TotalMinutes} λεπτά";
+            if (t.TotalDays < 1) return L.En ? $"{(int)t.TotalHours} h ago" : $"πριν {(int)t.TotalHours} ώρες";
+            return L.En ? $"{(int)t.TotalDays} days ago" : $"πριν {(int)t.TotalDays} ημέρες";
+        }
+
         private float PracticeRow(float y) => Row(y, new Item
         {
             Label = PracticeProject.IsActive ? L.T("Έξοδος από εξάσκηση", "Leave practice") : L.T("Εξάσκηση · χωρίς Terraweb", "Practice · no Terraweb"),
@@ -487,6 +497,18 @@ namespace QuestMarkerApp.UI
                 // Reload the same project/area: alert states and history, without the lists.
                 Label = L.T("Ανανέωση δεδομένων", "Refresh data"),
                 Value = () => flow != null && flow.CanReload ? flow.LoadedAgo() : L.T("Χωρίς έργο", "No project"),
+                Enabled = () => flow != null && flow.CanReload,
+                Run = () => { Close(); flow.Reload(); }
+            });
+            y = Row(y, new Item
+            {
+                // Every reply is kept on the headset: loading the project here, online, is the
+                // pack; on a site with no signal the same steps open from it.
+                Label = L.T("Offline πακέτο", "Offline pack"),
+                Value = () => terraweb != null && terraweb.ServingOffline
+                    ? L.T("Σε χρήση · ", "In use · ") + AgoUtc(terraweb.OfflineDataDate)
+                    : OfflineCache.Newest(terraweb != null ? terraweb.Server : null) is DateTime t
+                        ? L.T("Ενημερώθηκε ", "Updated ") + AgoUtc(t) : L.T("Κενό · φόρτωσε το έργο online", "Empty · load the project online"),
                 Enabled = () => flow != null && flow.CanReload,
                 Run = () => { Close(); flow.Reload(); }
             });

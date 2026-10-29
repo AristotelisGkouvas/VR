@@ -131,7 +131,13 @@ namespace QuestMarkerApp.Core
             return PrefPin + (host ?? "").ToLowerInvariant();
         }
 
-        public void Logout() => Logout(true);
+        /// <summary>The user logs out: the session and the offline copy of its replies go.</summary>
+        public void Logout()
+        {
+            Logout(true);
+            OfflineCache.Clear();
+            ServingOffline = false;
+        }
 
         /// <param name="revoke">False when the refresh token is already known dead on the server.</param>
         private void Logout(bool revoke)
@@ -274,14 +280,21 @@ namespace QuestMarkerApp.Core
 
         public IEnumerator SelectProject(int id, string name, Action ok, Action<string> fail)
         {
+            void Selected()
+            {
+                CurrentProjectId = id;
+                CurrentProjectName = name;
+                typeCache.Clear(); // sensor types are per project database
+                ok();
+            }
             yield return Send("PATCH", "auth/profile/", new JObject { ["current_project_id"] = id }, true,
-                _ =>
+                _ => Selected(),
+                error =>
                 {
-                    CurrentProjectId = id;
-                    CurrentProjectName = name;
-                    typeCache.Clear(); // sensor types are per project database
-                    ok();
-                }, fail);
+                    // Offline with the project's replies on file: carry on from them.
+                    if (lastResponseCode == 0 && OfflineCache.Has(Server)) { ServingOffline = true; Selected(); }
+                    else fail(error);
+                });
         }
 
         public IEnumerator GetAreas(Action<JArray> ok, Action<string> fail) =>
@@ -375,8 +388,37 @@ namespace QuestMarkerApp.Core
             return Encoding.UTF8.GetString(data, skip, data.Length - skip);
         }
 
-        private IEnumerator Get(string path, Action<JToken> ok, Action<string> fail) =>
-            Send("GET", path, null, true, ok, fail);
+        /// <summary>
+        /// The last replies came from the offline copy (no network): what the user sees is as
+        /// old as <see cref="OfflineDataDate"/>. Cleared by the next live reply.
+        /// </summary>
+        public bool ServingOffline { get; private set; }
+        /// <summary>When the oldest reply served offline was saved (UTC).</summary>
+        public DateTime OfflineDataDate { get; private set; } = DateTime.MaxValue;
+
+        // Every GET reply is kept on the headset (OfflineCache); with no network the same
+        // request is answered from it, so a project loaded once in the office opens on site.
+        private IEnumerator Get(string path, Action<JToken> ok, Action<string> fail)
+        {
+            string failed = null;
+            yield return Send("GET", path, null, true, ok, e => failed = e);
+            if (failed == null) yield break;
+            if (lastResponseCode == 0 && OfflineCache.TryLoad(Server, path, out string text, out DateTime saved))
+            {
+                JToken cached = null;
+                try { cached = JToken.Parse(text); }
+                catch (Exception e) { Debug.LogWarning($"[Terraweb] Offline copy of {path} unreadable: {e.Message}"); }
+                if (cached != null)
+                {
+                    if (!ServingOffline) Debug.Log("[Terraweb] No network: answering from the offline copy");
+                    ServingOffline = true;
+                    if (saved < OfflineDataDate) OfflineDataDate = saved;
+                    ok(cached);
+                    yield break;
+                }
+            }
+            fail(failed);
+        }
 
         // ------------------------------------------------------------------
         //  Transport
@@ -479,6 +521,12 @@ namespace QuestMarkerApp.Core
                 {
                     fail(L.T("Μη έγκυρη απάντηση: ", "Invalid response: ") + parseError?.Message);
                     yield break;
+                }
+                if (method == "GET")
+                {
+                    OfflineCache.Save(Server, path, data);
+                    ServingOffline = false;
+                    OfflineDataDate = DateTime.MaxValue;
                 }
                 // A throwing callback must surface as an error, not silently end this coroutine.
                 try { ok(parsed); }
