@@ -37,6 +37,7 @@ namespace QuestMarkerApp.UI
 
         private TerrawebClient client;
         private Func<int> projectId;
+        private CanvasGroup walkFade; // WalkFade: faint while the user walks
         private RectTransform root;
         private Image chip, glyph, stateDot;
         private TextMeshProUGUI nameText, typeText, stateText, distanceText, heightText, dateText, valuesText,
@@ -206,6 +207,9 @@ namespace QuestMarkerApp.UI
             chartMin = VrUi.Text("Min", root, 36, 306 + ChartH - 16, 200, 18, "", 12f, Brand.FgSubtle);
             chartCaption = VrUi.Text("Caption", root, 32, 306 + ChartH + 6, Width - 64, 20, "", 12f, Brand.FgSubtle,
                 false, TextAlignmentOptions.MidlineRight);
+            chartCaption.enableAutoSizing = true; // legend + rates: shrink rather than spill
+            chartCaption.fontSizeMin = 9f;
+            chartCaption.fontSizeMax = 12f;
 
             for (int i = 0; i < MaxLimitLines; i++)
             {
@@ -333,6 +337,7 @@ namespace QuestMarkerApp.UI
             Camera cam = Camera.main;
             if (cam != null && !VrPointer.IsDragging && !PanelPin.IsPinned(this))
                 VrUi.LazyFollow(transform, cam.transform, Distance, Drop, ref gliding);
+            WalkFade.Apply(root, ref walkFade);
             UpdateWhere();
 
 #if !MOBILE_PREVIEW
@@ -555,9 +560,19 @@ namespace QuestMarkerApp.UI
                 if (codes.Count < 2) codes = new List<string> { code };
                 LimitMath.FieldLimit lines = chartLimit != null && codes.Contains(driving.Field) && codes[0] != "x" ? chartLimit : null;
                 DrawChart(list, codes, unit, lines);
+                chartCaption.text += RateText(list, codes, unit);
                 break;
             }
             footer.text = L.T($"{list.Count} πιο πρόσφατες", list.Count == 1 ? "1 latest" : $"{list.Count} latest");
+            // From the offline pack: say how old the copy is, in amber, so it is not taken as live.
+            if (client != null && client.ServingOffline && client.OfflineDataDate < DateTime.MaxValue)
+            {
+                int days = (int)(DateTime.UtcNow - client.OfflineDataDate).TotalDays;
+                footer.text = days < 1 ? L.T("Offline · σημερινά", "Offline · today's")
+                    : L.En ? $"Offline · {days} d old" : $"Offline · πριν {days} ημ.";
+                footer.color = Brand.Warning;
+            }
+            else footer.color = Brand.FgFaint;
         }
 
         // ------------------------------------------------------------------
@@ -725,6 +740,73 @@ namespace QuestMarkerApp.UI
             }
             chartCaption.text = L.T($"{legend} · {columns} μετρήσεις", $"{legend} · {columns} readings");
         }
+
+        /// <summary>
+        /// "  ·  0.40 mm/ημ. (7 ημ.) · 0.12 (30 ημ.)", from the readings on the card: the change of
+        /// the charted field (of the x/y/z or dx/dy/dz vector for a 3D point) per day over the
+        /// last 7 and 30 days. Faster lately than over the month reads "speeding up", in amber:
+        /// a point under its limit but accelerating matters more than a steady one near it.
+        /// </summary>
+        private static string RateText(JArray list, List<string> codes, string unit)
+        {
+            // Newest enabled reading carrying every field, and its date.
+            JObject latest = null;
+            DateTime latestAt = default;
+            foreach (JToken m in list)
+                if (IsEnabled(m) && Has(m, codes) && TryDate(m, out latestAt)) { latest = (JObject)m; break; }
+            if (latest == null) return "";
+            double? r7 = Rate(list, codes, latest, latestAt, 7), r30 = Rate(list, codes, latest, latestAt, 30);
+            if (r7 == null && r30 == null) return "";
+            // Coordinates in metres move by millimetres: per day in mm.
+            double k = codes[0] == "x" && (unit == "m" || unit == "") ? 1000.0 : 1.0;
+            string u = k > 1 ? "mm" : unit;
+            string perDay = L.T($"{u}/ημ.", $"{u}/day");
+            var parts = new List<string>();
+            if (r7 != null) parts.Add($"{FormatRate(r7.Value * k)} {perDay} " + L.T("(7 ημ.)", "(7 d)"));
+            if (r30 != null) parts.Add($"{FormatRate(r30.Value * k)} " + L.T("(30 ημ.)", "(30 d)"));
+            string text = "  ·  " + string.Join(" · ", parts);
+            if (r7 != null && r30 != null && Math.Abs(r7.Value) > Math.Abs(r30.Value) * 1.5 && Math.Abs(r7.Value * k) > 0.05)
+                text += L.T("  <color=#e4a62b>↑ επιτάχυνση</color>", "  <color=#e4a62b>↑ speeding up</color>");
+            return text;
+        }
+
+        // Change per day between the newest reading and the newest one at least `days` older.
+        private static double? Rate(JArray list, List<string> codes, JObject latest, DateTime latestAt, int days)
+        {
+            DateTime cut = latestAt.AddDays(-days);
+            foreach (JToken m in list) // newest first
+            {
+                if (!IsEnabled(m) || !Has(m, codes) || !TryDate(m, out DateTime at) || at > cut) continue;
+                double span = (latestAt - at).TotalDays;
+                if (span < days * 0.5) return null;
+                double sum = 0;
+                foreach (string c in codes)
+                {
+                    TryNumber(latest["values"]?[c], out double a);
+                    TryNumber(m["values"]?[c], out double b);
+                    sum += (a - b) * (a - b);
+                }
+                double change = codes.Count == 1
+                    ? (TryNumber(latest["values"]?[codes[0]], out double a1) && TryNumber(m["values"]?[codes[0]], out double b1) ? a1 - b1 : 0)
+                    : Math.Sqrt(sum);
+                return change / span;
+            }
+            return null; // the card's readings do not reach that far back
+        }
+
+        private static bool Has(JToken m, List<string> codes)
+        {
+            foreach (string c in codes)
+                if (!TryNumber(m["values"]?[c], out _)) return false;
+            return true;
+        }
+
+        private static bool TryDate(JToken m, out DateTime at) =>
+            DateTime.TryParse((string)m["meas_date"], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out at);
+
+        private static string FormatRate(double v) =>
+            Math.Abs(v) >= 10 ? v.ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture)
+            : v.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
 
         private static double LastValue(List<double> col)
         {

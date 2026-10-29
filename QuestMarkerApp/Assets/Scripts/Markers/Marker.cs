@@ -589,7 +589,7 @@ namespace QuestMarkerApp.Markers
             var r = go.AddComponent<SpriteRenderer>();
             r.sprite = sprite;
             r.color = color;
-            r.sharedMaterial = writesDepth ? Brand.MarkerSpriteMaterial : Brand.MarkerSpriteFadeMaterial;
+            r.sharedMaterial = writesDepth ? Brand.MarkerSpriteLayer(order - 1) : Brand.MarkerSpriteFadeMaterial;
             r.sortingOrder = order;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;

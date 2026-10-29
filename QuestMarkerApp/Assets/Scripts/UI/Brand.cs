@@ -131,6 +131,28 @@ namespace QuestMarkerApp.UI
         public static Material MarkerSpriteMaterial =>
             markerSprite != null ? markerSprite : (markerSprite = MakeMarkerSprite(true));
 
+        private static Material markerSpriteMid, markerSpriteTop;
+
+        /// <summary>
+        /// The depth-writing sprite material for one piece of an icon, back to front: 0 the
+        /// halo, 1 the disc, 2 the glyph. Each layer is pulled a step nearer in the depth buffer,
+        /// so the pieces never fight however far the icon is (they flickered at range).
+        /// </summary>
+        public static Material MarkerSpriteLayer(int layer)
+        {
+            if (layer <= 0) return MarkerSpriteMaterial;
+            if (layer == 1) return markerSpriteMid != null ? markerSpriteMid : (markerSpriteMid = Offset(MakeMarkerSprite(true), -1f, "MarkerSpriteMid"));
+            return markerSpriteTop != null ? markerSpriteTop : (markerSpriteTop = Offset(MakeMarkerSprite(true), -2f, "MarkerSpriteTop"));
+        }
+
+        private static Material Offset(Material m, float steps, string name)
+        {
+            m.name = name;
+            if (m.HasProperty("_OffsetFactor")) m.SetFloat("_OffsetFactor", steps);
+            if (m.HasProperty("_OffsetUnits")) m.SetFloat("_OffsetUnits", steps * 2f);
+            return m;
+        }
+
         /// <summary>Same, without depth write: fading rings must not punch holes in what is behind.</summary>
         public static Material MarkerSpriteFadeMaterial =>
             markerSpriteFade != null ? markerSpriteFade : (markerSpriteFade = MakeMarkerSprite(false));

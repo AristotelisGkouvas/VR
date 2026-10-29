@@ -66,6 +66,7 @@ namespace QuestMarkerApp.UI
 
         // What the HUD currently shows, so strings are only rebuilt when the shown value changes.
         private float hudScaleShown = float.NaN;
+        private float hudScaleBar = float.NaN;
         private DateTime hudDateShown = DateTime.MinValue;
         private float hudProgressShown = -1f;
         private bool? hudPlayingShown;
@@ -88,6 +89,8 @@ namespace QuestMarkerApp.UI
         private class Item
         {
             public string MarkerId, PointId, SensorId;
+            /// <summary>Metres per unit of this sensor's dx/dy/dz (SensorHistory.MetresPerUnit).</summary>
+            public double MetresPerUnit = 0.001;
             public IReadOnlyList<SensorHistory.Sample> Series;
             public Transform Root, Head;
             public LineRenderer Shaft;
@@ -188,6 +191,7 @@ namespace QuestMarkerApp.UI
                 Item item = CreateItem(ProjectAlignment.MarkerPrefix + p.id, series);
                 item.PointId = p.id;
                 item.SensorId = p.sensorId;
+                item.MetresPerUnit = SensorHistory.MetresPerUnit(p.sensorId);
                 items.Add(item);
             }
             if (items.Count == 0) return false;
@@ -229,7 +233,7 @@ namespace QuestMarkerApp.UI
         // Constant while open (and re-set on a language change).
         private void SetConstantTexts()
         {
-            hudCount.text = L.En ? (items.Count == 1 ? "1 point" : $"{items.Count} points") : $"{items.Count} σημεία";
+            hudScaleBar = float.NaN; // the count line now carries the scale (UpdateHud)
             hudFrom.text = Format(SensorHistory.First);
             hudTo.text = Format(SensorHistory.Last);
         }
@@ -382,13 +386,13 @@ namespace QuestMarkerApp.UI
 
         // Survey-grid millimetres → a world vector, exaggerated. Yaw's cos/sin are hoisted per frame.
         // On the model the project frame is the model's own (x East, y Up, z North), zoom included.
-        private bool ToWorld(in SensorHistory.Sample s, float scale, double cosYaw, double sinYaw, Transform modelFrame,
-            out Vector3 world)
+        private bool ToWorld(in SensorHistory.Sample s, double metresPerUnit, float scale, double cosYaw, double sinYaw,
+            Transform modelFrame, out Vector3 world)
         {
             double dx = s.Dx ?? 0, dy = s.Dy ?? 0, dz = s.Dz ?? 0;
             double e = dx * cosYaw - dy * sinYaw;
             double n = dx * sinYaw + dy * cosYaw;
-            var v = new Vector3((float)e, (float)dz, (float)n) * (0.001f * scale);
+            var v = new Vector3((float)e, (float)dz, (float)n) * (float)(metresPerUnit * scale);
             if (modelFrame == null) return project.TryWorldVector(v, out world);
             world = modelFrame.TransformVector(v);
             return true;
@@ -472,11 +476,11 @@ namespace QuestMarkerApp.UI
                         now.Dy -= zero.Dy ?? 0;
                         now.Dz = (now.Dz ?? 0) - (zero.Dz ?? 0);
                     }
-                    if (ToWorld(now, scale, cosYaw, sinYaw, modelFrame, out Vector3 vec))
+                    if (ToWorld(now, it.MetresPerUnit, scale, cosYaw, sinYaw, modelFrame, out Vector3 vec))
                     {
                         it.Valid = true;
                         it.Vec = vec;
-                        it.Mm = (float)Math.Sqrt(Sq(now.Dx) + Sq(now.Dy) + Sq(now.Dz));
+                        it.Mm = (float)(Math.Sqrt(Sq(now.Dx) + Sq(now.Dy) + Sq(now.Dz)) * it.MetresPerUnit * 1000.0);
                         it.Color = Heat(it.Mm);
                         it.Text = $"{it.Mm:F1} mm";
                     }
@@ -676,6 +680,18 @@ namespace QuestMarkerApp.UI
             hud.position = hudSnap ? target : Vector3.Lerp(hud.position, target, 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime));
             hudSnap = false;
             VrUi.FaceViewer(hud, cam.transform);
+
+            // Always on screen: the arrows are a diagram, not true size. "10 mm = 1.0 m" is how
+            // long 10 mm of movement is drawn where the arrows stand (site, table or 1:1 model).
+            float zoom = lastOnModel && modelSensors != null && modelSensors.Container != null
+                ? modelSensors.Container.lossyScale.x : 1f;
+            float drawn = 0.01f * scale * zoom;
+            if (!Mathf.Approximately(drawn, hudScaleBar))
+            {
+                hudScaleBar = drawn;
+                string len = drawn >= 1f ? $"{drawn:0.0} m" : $"{drawn * 100f:0} cm";
+                hudCount.text = $"10 mm = {len}";
+            }
 
             if (scale != hudScaleShown)
             {

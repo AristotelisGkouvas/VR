@@ -331,6 +331,7 @@ namespace QuestMarkerApp.UI
             foreach (JToken s in sensors)
                 if (((bool?)s["is_active"] ?? true) && (int?)s["type"]?["type_id"] is int t && t > 0) typeIds.Add(t);
             var surveyTypes = new HashSet<int>();
+            var dxUnit = new Dictionary<int, string>();
             foreach (int t in typeIds)
             {
                 JObject type = null;
@@ -338,15 +339,26 @@ namespace QuestMarkerApp.UI
                 if (token != session) yield break;
                 var codes = new HashSet<string>();
                 if (type?["fields"] is JArray fields)
-                    foreach (JToken f in fields) codes.Add((string)f["codename"]);
+                    foreach (JToken f in fields)
+                    {
+                        string code = (string)f["codename"];
+                        codes.Add(code);
+                        if (code == "dx") dxUnit[t] = (string)f["unit"] ?? "";
+                    }
                 if ((codes.Contains("x") && codes.Contains("y")) || (codes.Contains("dx") && codes.Contains("dy")))
                     surveyTypes.Add(t);
             }
 
             var ids = new List<string>();
             foreach (JToken s in sensors)
-                if (((bool?)s["is_active"] ?? true) && surveyTypes.Contains((int?)s["type"]?["type_id"] ?? 0))
-                    ids.Add((string)s["sensor_id"]);
+            {
+                int t = (int?)s["type"]?["type_id"] ?? 0;
+                if (!((bool?)s["is_active"] ?? true) || !surveyTypes.Contains(t)) continue;
+                string id = (string)s["sensor_id"];
+                ids.Add(id);
+                // The arrows need dx/dy/dz in metres: from the type's own unit, not assumed mm.
+                history.SetDisplacementUnit(id, dxUnit.TryGetValue(t, out string u) ? u : null);
+            }
 
             if (ids.Count > 0 && ids.Count <= MaxHistorySensors)
             {

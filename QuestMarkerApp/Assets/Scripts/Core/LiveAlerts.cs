@@ -307,7 +307,7 @@ namespace QuestMarkerApp.Core
             {
                 string name = string.IsNullOrEmpty(c.Point.label) ? c.Point.id : c.Point.label;
                 string tier = TierName(c.To);
-                string detail = strongest.TryGetValue(c.Point.sensorId, out JObject ev) ? Detail(ev) : "";
+                string detail = strongest.TryGetValue(c.Point.sensorId, out JObject ev) ? Detail(ev, c.Point.typeId) : "";
                 if (string.IsNullOrEmpty(name)) name = ev != null ? (string)ev["sensor_name"] ?? "?" : "?";
                 if (changes.Count <= BatchThreshold)
                 {
@@ -357,8 +357,11 @@ namespace QuestMarkerApp.Core
         private static Color DotColor(int rank) =>
             rank == RankAlarm ? Brand.Danger : rank == RankAlert ? Brand.Warning : Brand.Primary;
 
-        /// <summary>"dz -6.4 mm (όριο 5.0)" from the event's strongest breach; empty when it has none.</summary>
-        private static string Detail(JObject ev)
+        /// <summary>
+        /// "dz -6.4 mm (όριο 5.0)" from the event's strongest breach; empty when it has none. The
+        /// unit is the sensor type's own (kPa, mrad, µε…), none when unknown: never assumed mm.
+        /// </summary>
+        private static string Detail(JObject ev, int typeId)
         {
             var breaches = ev?["breaches"] as JArray;
             if (breaches == null) return "";
@@ -382,7 +385,9 @@ namespace QuestMarkerApp.Core
             string field = (string)best["field"] ?? "";
             string value = Number(best["value"]).ToString("+0.0;-0.0", CultureInfo.InvariantCulture);
             string limit = Number(best["limit"]).ToString("0.0##", CultureInfo.InvariantCulture);
-            return L.T($"{field} {value} mm (όριο {limit})", $"{field} {value} mm (limit {limit})");
+            string unit = SensorLimits.Unit(typeId, field);
+            if (unit != "") unit = " " + unit;
+            return L.T($"{field} {value}{unit} (όριο {limit})", $"{field} {value}{unit} (limit {limit})");
         }
 
         // The backend serialises decimals as strings in places; take either.

@@ -261,7 +261,7 @@ namespace QuestMarkerApp.Markers
                     }
                     r.Marker = m;
                     r.HasData = true;
-                    Plot(r, series, fallback, point.alertState);
+                    Plot(r, series, fallback, point.alertState, SensorHistory.MetresPerUnit(point.sensorId) * 1000.0);
                 }
             }
 
@@ -300,7 +300,7 @@ namespace QuestMarkerApp.Markers
             return windowIndices.Count >= 2;
         }
 
-        private void Plot(Ribbon r, IReadOnlyList<SensorHistory.Sample> series, bool fallback, string alertState)
+        private void Plot(Ribbon r, IReadOnlyList<SensorHistory.Sample> series, bool fallback, string alertState, double toMm)
         {
             int count = windowIndices.Count;
             // At most MaxPoints vertices: evenly thinned, always keeping the newest reading.
@@ -310,7 +310,7 @@ namespace QuestMarkerApp.Markers
             for (int k = 0; k < n; k++)
             {
                 int idx = windowIndices[k == n - 1 ? count - 1 : (int)((long)k * count / n)];
-                double mm = Magnitude(series[idx]);
+                double mm = Magnitude(series[idx]) * toMm; // the type's unit, not assumed mm
                 if (mm < min) min = mm;
                 if (mm > max) max = mm;
                 // Stash the value in x for the second pass; y is filled once min/max are known.

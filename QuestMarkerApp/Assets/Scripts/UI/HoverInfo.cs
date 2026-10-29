@@ -134,10 +134,12 @@ namespace QuestMarkerApp.UI
             string extra = "";
             if (SensorHistory.TryDisplacementAt(p.sensorId, DateTime.MaxValue, out SensorHistory.Sample s))
             {
-                double mm = Math.Sqrt((s.Dx ?? 0) * (s.Dx ?? 0) + (s.Dy ?? 0) * (s.Dy ?? 0) + (s.Dz ?? 0) * (s.Dz ?? 0));
+                double toMm = SensorHistory.MetresPerUnit(p.sensorId) * 1000.0; // the type's unit, not assumed mm
+                double mm = Math.Sqrt((s.Dx ?? 0) * (s.Dx ?? 0) + (s.Dy ?? 0) * (s.Dy ?? 0) + (s.Dz ?? 0) * (s.Dz ?? 0)) * toMm;
+                double dz = (s.Dz ?? 0) * toMm;
                 extra = L.En
-                    ? $"Displacement <b>{mm:F1} mm</b>  ·  dz {(s.Dz ?? 0):+0.0;-0.0;0.0} mm"
-                    : $"Μετακίνηση <b>{mm:F1} mm</b>  ·  dz {(s.Dz ?? 0):+0.0;-0.0;0.0} mm";
+                    ? $"Displacement <b>{mm:F1} mm</b>  ·  dz {dz:+0.0;-0.0;0.0} mm"
+                    : $"Μετακίνηση <b>{mm:F1} mm</b>  ·  dz {dz:+0.0;-0.0;0.0} mm";
             }
             if (p.approx) extra = (extra.Length > 0 ? extra + "  ·  " : "") + L.T("θέση κατά προσέγγιση", "approximate position");
             tagExtra.text = extra.Length > 0 ? extra : L.T("Trigger: πλήρης καρτέλα", "Trigger: full card");

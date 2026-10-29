@@ -15,7 +15,9 @@ namespace QuestMarkerApp.UI
     public class StatusChip : MonoBehaviour
     {
         private const string EnabledKey = "ui.statusChip";
-        private const float W = 300f, H = 76f, Scale = 0.0005f;
+        private const float W = 300f, H = 98f, Scale = 0.0005f;
+        /// <summary>Battery warnings, percent: a buzz and a sound once each per charge.</summary>
+        private const int LowBattery = 20, CriticalBattery = 10;
         private const float RefreshSeconds = 0.5f;
 
         public static bool Enabled
@@ -29,8 +31,9 @@ namespace QuestMarkerApp.UI
         private TerrawebFlow flow;
         private ModelOverlay model;
         private RectTransform chip;
-        private Image modeDot, alignDot, netDot;
-        private TextMeshProUGUI modeText, alignText, dataText;
+        private Image modeDot, alignDot, netDot, batteryDot;
+        private int warnedAt = 101; // lowest threshold already warned about
+        private TextMeshProUGUI modeText, alignText, dataText, batteryText;
         private float nextRefresh;
 #if !MOBILE_PREVIEW
         private OVRCameraRig rig;
@@ -54,6 +57,14 @@ namespace QuestMarkerApp.UI
             alignText = VrUi.Text("Align", chip, 28, 24, W - 36, 24, "", 13f, Brand.FgMuted);
             netDot = VrUi.Icon("NetDot", chip, 12, 54, 10, Brand.DiscSprite, Brand.FgFaint);
             dataText = VrUi.Text("Data", chip, 28, 46, W - 36, 24, "", 13f, Brand.FgMuted);
+            batteryDot = VrUi.Icon("BatteryDot", chip, 12, 76, 10, Brand.DiscSprite, Brand.FgFaint);
+            batteryText = VrUi.Text("Battery", chip, 28, 68, W - 36, 24, "", 13f, Brand.FgMuted);
+            foreach (TextMeshProUGUI t in new[] { modeText, alignText, dataText, batteryText })
+            {
+                t.enableAutoSizing = true; // long lines shrink rather than run off the watch
+                t.fontSizeMin = 9f;
+                t.fontSizeMax = t.fontSize;
+            }
             chip.gameObject.SetActive(false);
         }
 
@@ -65,6 +76,7 @@ namespace QuestMarkerApp.UI
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();
             if (rig != null && OVRInput.IsControllerConnected(Hands.OffHand)) hand = Hands.OffHandAnchor(rig);
 #endif
+            WatchBattery();
             // Panels own the view while open; the hand-held alignment panel sits on this hand.
             bool show = Enabled && cam != null && hand != null && !UiState.AnyModal
                         && (project == null || !project.IsModeActive);
@@ -117,8 +129,45 @@ namespace QuestMarkerApp.UI
                 age = " · " + L.T("δεδομένα ", "data ") + Ago(DateTime.UtcNow - client.OfflineDataDate);
             else if (flow != null && flow.LastLoaded > DateTime.MinValue)
                 age = " · " + L.T("δεδομένα ", "data ") + Ago(DateTime.UtcNow - flow.LastLoaded);
+            // Offline the alert states are those of the copy: say they are not live.
+            if (fromPack || !online) age += L.T(" · συναγερμοί όχι ζωντανοί", " · alarms not live");
             dataText.text = net + age;
+            FillBattery();
             netDot.color = fromPack || !signedIn ? Brand.Warning : !online ? Brand.Danger : Brand.Primary;
+        }
+
+        // Low battery is told even with the watch hidden: a headset dying mid-route loses the
+        // walk. Once per threshold per charge (a charger resets it).
+        private float nextBatteryCheck;
+        private void WatchBattery()
+        {
+            if (Time.unscaledTime < nextBatteryCheck) return;
+            nextBatteryCheck = Time.unscaledTime + 10f;
+            float level = SystemInfo.batteryLevel;
+            if (level < 0f) return;
+            int pct = Mathf.RoundToInt(level * 100f);
+            if (SystemInfo.batteryStatus == BatteryStatus.Charging || pct > LowBattery) { warnedAt = 101; return; }
+            int threshold = pct <= CriticalBattery ? CriticalBattery : LowBattery;
+            if (threshold >= warnedAt) return;
+            warnedAt = threshold;
+            Feedback.Play(Feedback.Sound.Warn);
+#if !MOBILE_PREVIEW
+            Feedback.Buzz(Hands.OffHand, 0.6f, 0.3f);
+#endif
+            Debug.Log($"[Status] Battery {pct}%");
+        }
+
+        private void FillBattery()
+        {
+            float level = SystemInfo.batteryLevel;
+            if (level < 0f) { batteryText.text = L.T("Μπαταρία: —", "Battery: —"); batteryDot.color = Brand.FgFaint; return; }
+            int pct = Mathf.RoundToInt(level * 100f);
+            bool charging = SystemInfo.batteryStatus == BatteryStatus.Charging;
+            string hint = charging ? L.T(" · φορτίζει", " · charging")
+                : pct <= CriticalBattery ? L.T(" · φόρτισε τώρα", " · charge now")
+                : pct <= LowBattery ? L.T(" · χαμηλή, 72 Hz στις Ρυθμίσεις", " · low, 72 Hz in Settings") : "";
+            batteryText.text = L.T($"Μπαταρία {pct}%", $"Battery {pct}%") + hint;
+            batteryDot.color = pct <= CriticalBattery ? Brand.Danger : pct <= LowBattery ? Brand.Warning : Brand.Primary;
         }
 
         // What runs on top, which is also what B ends (UiState.Context's order).

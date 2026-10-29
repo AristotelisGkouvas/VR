@@ -26,6 +26,8 @@ Shader "QuestMarker/MarkerSprite"
         [PerRendererData] _AlphaTex ("External Alpha", 2D) = "white" {}
         [PerRendererData] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
         _XrayAlpha ("Alpha behind real surfaces", Range(0, 1)) = 0.3
+        _OffsetFactor ("Depth offset factor", Float) = 0
+        _OffsetUnits ("Depth offset units", Float) = 0
         _EnvironmentDepthBias ("Environment depth bias", Float) = 0.06
     }
 
@@ -44,6 +46,10 @@ Shader "QuestMarker/MarkerSprite"
         Lighting Off
         ZWrite [_ZWrite]
         ZTest LEqual
+        // Halo, disc and glyph of one icon sit millimetres apart: far away the depth buffer
+        // cannot tell them apart and they flickered through each other. Each piece draws with
+        // its own offset in depth-buffer steps (Brand.MarkerSpriteLayer), which holds at any range.
+        Offset [_OffsetFactor], [_OffsetUnits]
         Blend One OneMinusSrcAlpha
 
         Pass

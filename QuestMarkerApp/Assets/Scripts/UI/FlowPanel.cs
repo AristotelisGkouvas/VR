@@ -45,6 +45,7 @@ namespace QuestMarkerApp.UI
         public static bool IsOpen { get; private set; }
         public static bool IsForm { get; private set; }
 
+        private CanvasGroup walkFade; // WalkFade: faint while the user walks
         private RectTransform root, listPage, messagePage;
         private TextMeshProUGUI eyebrow, title, listCount, messageTitle, messageText;
         private Image spinner, scrollThumb;
@@ -295,6 +296,7 @@ namespace QuestMarkerApp.UI
             Camera cam = Camera.main;
             if (cam != null && !VrPointer.IsDragging && !PanelPin.IsPinned(this))
                 VrUi.LazyFollow(transform, cam.transform, Distance, Drop, ref gliding);
+            WalkFade.Apply(root, ref walkFade);
             if (spinner.gameObject.activeInHierarchy)
                 spinner.rectTransform.Rotate(0f, 0f, -180f * Time.unscaledDeltaTime);
 

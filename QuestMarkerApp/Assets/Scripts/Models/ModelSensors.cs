@@ -224,12 +224,14 @@ namespace QuestMarkerApp.Models
             bool lifeSize = overlay.CurrentPlacement == ModelOverlay.Placement.LifeSize;
             // At 1:1 a fixed world size, growing with distance; on the table a fixed size in
             // model metres, so zooming the miniature in makes the dots bigger with it.
-            dotLocal = lifeSize ? DotMax / rootScale : DotTabletop / Mathf.Max(overlay.DefaultTabletopScale, 1e-6f);
+            // The 1:1 copy zoomed down (1:210, say) shrinks its dots with it, like the tabletop.
+            float lifeZoom = Mathf.Min(rootScale, 1f);
+            dotLocal = lifeSize ? DotMax * lifeZoom / rootScale : DotTabletop / Mathf.Max(overlay.DefaultTabletopScale, 1e-6f);
             if (Time.unscaledTime >= nextRecolour) Recolour();
             Vector3 eye = cam.transform.position;
             Vector3 up = cam.transform.up;
             float baseWorld = dotLocal * rootScale;
-            float labelReach = lifeSize ? LabelLifeSize : LabelTabletop;
+            float labelReach = lifeSize ? Mathf.Max(LabelLifeSize * lifeZoom, LabelTabletop) : LabelTabletop;
             float pulseAlarm = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 6f));
             float pulseAlert = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 3f));
             foreach (Dot d in dots)
@@ -237,7 +239,7 @@ namespace QuestMarkerApp.Models
                 Vector3 away = d.T.position - eye;
                 if (away.sqrMagnitude > 1e-8f) d.T.rotation = Quaternion.LookRotation(away, up);
                 float dist = away.magnitude;
-                float world = lifeSize ? Mathf.Max(baseWorld, dist * DotAngular) : baseWorld;
+                float world = lifeSize ? Mathf.Max(baseWorld, dist * DotAngular * lifeZoom) : baseWorld;
                 d.T.localScale = Vector3.one * (world / rootScale) * (d == aimed ? 1.4f : 1f);
                 // Alarm and alert pulse in a ring, as on the real markers.
                 if (d.Ring.enabled && !d.Stale)
@@ -449,7 +451,7 @@ namespace QuestMarkerApp.Models
             var r = go.AddComponent<SpriteRenderer>();
             r.sprite = sprite;
             r.color = color;
-            r.sharedMaterial = writesDepth ? Brand.MarkerSpriteMaterial : Brand.MarkerSpriteFadeMaterial;
+            r.sharedMaterial = writesDepth ? Brand.MarkerSpriteLayer(order - 1) : Brand.MarkerSpriteFadeMaterial;
             r.sortingOrder = order;
             r.shadowCastingMode = ShadowCastingMode.Off;
             r.receiveShadows = false;

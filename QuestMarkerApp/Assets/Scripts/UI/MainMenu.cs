@@ -54,6 +54,7 @@ namespace QuestMarkerApp.UI
         private AnchorFieldTest fieldTest;
         private AnchorFieldTest FieldTest => fieldTest != null ? fieldTest : (fieldTest = FindAnyObjectByType<AnchorFieldTest>());
 
+        private CanvasGroup walkFade; // WalkFade: faint while the user walks
         private RectTransform root, body;
         private TextMeshProUGUI crumb, title;
         // GetServerUrls enumerates the network interfaces: cache its text and refresh it once a second.
@@ -750,6 +751,13 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                Label = L.T("Μέγεθος γραμμάτων", "Text size"),
+                Value = () => VrUi.TextSizeNames[VrUi.TextSizeNext]
+                    + (VrUi.TextSizeNext != VrUi.TextSize ? L.T(" · μετά από επανεκκίνηση", " · after a restart") : ""),
+                Run = () => VrUi.TextSizeNext = (VrUi.TextSizeNext + 1) % VrUi.TextSizeNames.Length
+            });
+            y = Row(y, new Item
+            {
                 Label = L.T("Υψηλή αντίθεση (ήλιος)", "High contrast (sunlight)"),
                 Value = () => (Brand.HighContrastNext ? L.T("Ναι", "On") : L.T("Όχι", "Off"))
                     + (Brand.HighContrastNext != Brand.HighContrast ? L.T(" · μετά από επανεκκίνηση", " · after a restart") : ""),
@@ -1285,6 +1293,7 @@ namespace QuestMarkerApp.UI
             Camera cam = Camera.main;
             if (cam != null && !VrPointer.IsDragging && !PanelPin.IsPinned(this))
                 VrUi.LazyFollow(transform, cam.transform, Distance, Drop, ref gliding);
+            WalkFade.Apply(root, ref walkFade);
 
             if (confirmIndex >= 0 && Time.unscaledTime > confirmUntil) confirmIndex = -1;
             // The home page's layout follows the app state (login / project / alignment): rebuild

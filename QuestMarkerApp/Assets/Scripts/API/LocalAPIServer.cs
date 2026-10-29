@@ -112,7 +112,7 @@ namespace QuestMarkerApp.API
             "/api/coordinates", "/api/status", "/api/logs", "/api/clear", "/api/undo", "/api/calibrate",
             "/api/calibrate/start", "/api/calibrate/status", "/api/calibrate/reset", "/api/session",
             "/api/session/new", "/api/gps-origin", "/api/anchors", "/api/layer", "/api/project",
-            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest", "/api/fieldnotes"
+            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest", "/api/fieldnotes", "/api/reports"
         };
         private long requestCount;
         private DateTime startedAtUtc;
@@ -123,6 +123,7 @@ namespace QuestMarkerApp.API
         private string modelsDirectory = "";
         private string fieldTestDirectory = "";
         private string fieldNotesFile = "";
+        private string reportsDirectory = "";
 
         public int Port => port;
         /// <summary>Per-device key every LAN client (PC bridge, scripts) must send as X-Api-Key.</summary>
@@ -144,6 +145,7 @@ namespace QuestMarkerApp.API
             modelsDirectory = Path.Combine(Application.persistentDataPath, "models");
             fieldTestDirectory = Path.Combine(Application.persistentDataPath, FieldTestLog.FolderName);
             fieldNotesFile = FieldNotes.FilePath;
+            reportsDirectory = Path.Combine(Application.persistentDataPath, "reports");
             if (markerManager == null) markerManager = FindAnyObjectByType<MarkerManager>();
             if (calibrationSystem == null) calibrationSystem = FindAnyObjectByType<CoordinateCalibration>();
             if (sessionManager == null) sessionManager = FindAnyObjectByType<SessionManager>();
@@ -553,6 +555,13 @@ namespace QuestMarkerApp.API
             }
 
             if (path == "/api/fieldtest" && method == "GET") return HandleFieldTestList(response);
+            if (path == "/api/reports" && method == "GET") return HandleReportList(response);
+            if (path.StartsWith("/api/reports/") && method == "GET")
+            {
+                string rawPath = request.Url.AbsolutePath.TrimEnd('/');
+                string name = Uri.UnescapeDataString(rawPath.Substring(rawPath.LastIndexOf('/') + 1));
+                return HandleReportDownload(name, response);
+            }
             if (path == "/api/fieldnotes" && method == "GET")
             {
                 // The notes taken on site against sensors (FieldNotes); an empty list before any.
@@ -570,7 +579,7 @@ namespace QuestMarkerApp.API
             }
 
             if (KnownPaths.Contains(path) || path.StartsWith("/api/coordinates/") || path.StartsWith("/api/model/")
-                || path.StartsWith("/api/fieldtest/"))
+                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/reports/"))
             {
                 SendJson(response, 405, "{\"error\":\"Method not allowed\",\"method\":\"" + EscapeJson(method) +
                                         "\",\"path\":\"" + EscapeJson(path) + "\"}");
@@ -1557,12 +1566,17 @@ namespace QuestMarkerApp.API
         }
 
         /// <summary>GET /api/fieldtest — the anchor field test CSVs (persistentDataPath/fieldtest).</summary>
-        private int HandleFieldTestList(HttpListenerResponse response)
+        private int HandleFieldTestList(HttpListenerResponse response) => HandleFileList(FieldTestFiles(), response);
+
+        /// <summary>GET /api/reports — the inspection route reports (persistentDataPath/reports, .json and .txt).</summary>
+        private int HandleReportList(HttpListenerResponse response) => HandleFileList(ReportFiles(), response);
+
+        private int HandleFileList(string[] files, HttpListenerResponse response)
         {
             var sb = new StringBuilder(256);
             sb.Append('[');
             bool first = true;
-            foreach (string file in FieldTestFiles())
+            foreach (string file in files)
             {
                 if (!first) sb.Append(',');
                 first = false;
@@ -1584,14 +1598,23 @@ namespace QuestMarkerApp.API
         /// GET /api/fieldtest/{file} — one CSV as text/csv. The name only selects among the files
         /// the listing returns (exact match); no path is ever built from it.
         /// </summary>
-        private int HandleFieldTestDownload(string name, HttpListenerResponse response)
+        private int HandleFieldTestDownload(string name, HttpListenerResponse response) =>
+            HandleFileDownload(FieldTestFiles(), name, "text/csv; charset=utf-8", response);
+
+        /// <summary>GET /api/reports/{file} — one route report, the same exact-name rule as the field test.</summary>
+        private int HandleReportDownload(string name, HttpListenerResponse response) =>
+            HandleFileDownload(ReportFiles(), name,
+                name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? "application/json; charset=utf-8" : "text/plain; charset=utf-8",
+                response);
+
+        private int HandleFileDownload(string[] files, string name, string contentType, HttpListenerResponse response)
         {
             string match = null;
-            foreach (string file in FieldTestFiles())
+            foreach (string file in files)
                 if (string.Equals(Path.GetFileName(file), name, StringComparison.Ordinal)) { match = file; break; }
             if (match == null)
             {
-                SendJson(response, 404, "{\"error\":\"Field test file not found\",\"file\":\"" + EscapeJson(name) + "\"}");
+                SendJson(response, 404, "{\"error\":\"File not found\",\"file\":\"" + EscapeJson(name) + "\"}");
                 return 404;
             }
 
@@ -1615,7 +1638,7 @@ namespace QuestMarkerApp.API
             try
             {
                 response.StatusCode = 200;
-                response.ContentType = "text/csv; charset=utf-8";
+                response.ContentType = contentType;
                 response.Headers.Add("Cache-Control", "no-store");
                 response.AddHeader("Content-Disposition", "attachment; filename=\"" + Path.GetFileName(match) + "\"");
                 response.ContentLength64 = data.Length;
@@ -1631,6 +1654,27 @@ namespace QuestMarkerApp.API
                 try { response.Close(); } catch { /* */ }
             }
             return 200;
+        }
+
+        // The route reports InspectionRoute.Save wrote (route_*.json / .txt), newest last.
+        private string[] ReportFiles()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(reportsDirectory) || !Directory.Exists(reportsDirectory)) return Array.Empty<string>();
+                var list = new List<string>();
+                foreach (string f in Directory.GetFiles(reportsDirectory, "route_*", SearchOption.TopDirectoryOnly))
+                    if (f.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                        list.Add(f);
+                string[] files = list.ToArray();
+                Array.Sort(files, StringComparer.Ordinal);
+                return files;
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning($"[LocalAPIServer] Reports folder unreadable: {e.Message}");
+                return Array.Empty<string>();
+            }
         }
 
         // Only *.csv directly in the field test folder (the per-project anchor JSONs are not served).

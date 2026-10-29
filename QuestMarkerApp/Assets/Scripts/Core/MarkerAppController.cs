@@ -224,6 +224,7 @@ namespace QuestMarkerApp.Core
             // The watch on the off hand: mode, alignment trust, data age, connection.
             Child<StatusChip>("StatusChip").Init(projectAlignment, terraweb, flow, model);
             Child<ComfortVignette>("ComfortVignette");
+            Child<WalkFade>("WalkFade");
             Child<AlarmBeacons>("AlarmBeacons").Init(markerManager);
             Child<MeasureTool>("MeasureTool").Init(projectAlignment, markerManager);
             Child<DepthOcclusion>("DepthOcclusion");

@@ -14,6 +14,24 @@ namespace QuestMarkerApp.UI
         /// <summary>Box height per point of font size that always fits one Manrope line (ascent + descent ≈ 1.37 em).</summary>
         private const float LineHeight = 1.45f;
 
+        private const string TextSizeKey = "ui.textSize";
+        public static readonly string[] TextSizeNames = { "S", "M", "L" };
+        private static readonly float[] TextSizeScales = { 0.85f, 1f, 1.2f };
+
+        /// <summary>
+        /// Text size (menu Settings): every panel is drawn this much larger or smaller, text and
+        /// layout together, so nothing overflows. Read once at start: a change applies on the
+        /// next launch, as panels are built once.
+        /// </summary>
+        public static readonly int TextSize = Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 1), 0, 2);
+
+        /// <summary>The menu switch: what the next launch will use.</summary>
+        public static int TextSizeNext
+        {
+            get => Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 1), 0, 2);
+            set { PlayerPrefs.SetInt(TextSizeKey, Mathf.Clamp(value, 0, 2)); PlayerPrefs.Save(); }
+        }
+
         public static RectTransform CreateCanvas(string name, Transform parent, Vector2 sizePx, float metersPerPixel)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
@@ -27,7 +45,7 @@ namespace QuestMarkerApp.UI
             go.GetComponent<CanvasScaler>().dynamicPixelsPerUnit = 4f;
             var rt = (RectTransform)go.transform;
             rt.sizeDelta = sizePx;
-            rt.localScale = Vector3.one * metersPerPixel;
+            rt.localScale = Vector3.one * metersPerPixel * TextSizeScales[TextSize];
             return rt;
         }
 

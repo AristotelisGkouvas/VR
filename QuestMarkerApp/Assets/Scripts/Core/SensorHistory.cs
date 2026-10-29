@@ -34,6 +34,30 @@ namespace QuestMarkerApp.Core
             public DateTime First { get; private set; } = DateTime.MaxValue;
             public DateTime Last { get; private set; } = DateTime.MinValue;
             public bool HasDisplacements { get; private set; }
+            internal readonly Dictionary<string, double> MetresPerUnit = new Dictionary<string, double>();
+
+            /// <summary>
+            /// The unit of a sensor's dx/dy/dz, from its type ("mm", "cm", "m"). Unknown or
+            /// missing reads as millimetres, Terraweb's survey default, and is logged.
+            /// </summary>
+            public void SetDisplacementUnit(string sensorId, string unit)
+            {
+                if (string.IsNullOrEmpty(sensorId)) return;
+                double f;
+                switch ((unit ?? "").Trim().ToLowerInvariant())
+                {
+                    case "mm": f = 0.001; break;
+                    case "cm": f = 0.01; break;
+                    case "m": f = 1.0; break;
+                    case "µm": case "um": f = 1e-6; break;
+                    default:
+                        f = 0.001;
+                        if (!string.IsNullOrEmpty(unit))
+                            UnityEngine.Debug.LogWarning($"[History] Sensor {sensorId}: displacement unit '{unit}' not known, taken as mm");
+                        break;
+                }
+                MetresPerUnit[sensorId] = f;
+            }
 
             /// <summary>Store one sensor's measurements as the API returned them (any order).</summary>
             public void Add(string sensorId, JArray measurements)
@@ -72,6 +96,10 @@ namespace QuestMarkerApp.Core
         public static void Use(Store store) => current = store ?? new Store();
 
         public static void Clear(int projectId) => current = Begin(projectId);
+
+        /// <summary>Metres per unit of a sensor's dx/dy/dz (0.001 for mm, the default).</summary>
+        public static double MetresPerUnit(string sensorId) =>
+            sensorId != null && current.MetresPerUnit.TryGetValue(sensorId, out double f) ? f : 0.001;
 
         /// <summary>Oldest first; null when the sensor has no history.</summary>
         public static IReadOnlyList<Sample> Of(string sensorId) =>
