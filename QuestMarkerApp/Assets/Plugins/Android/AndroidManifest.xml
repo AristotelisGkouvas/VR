@@ -18,5 +18,6 @@
   <uses-feature android:name="oculus.software.overlay_keyboard" android:required="false" />
   <uses-permission android:name="com.oculus.permission.BOUNDARY_VISIBILITY" />
   <uses-permission android:name="com.oculus.permission.USE_ANCHOR_API" />
+  <uses-permission android:name="com.oculus.permission.USE_SCENE" />
   <horizonos:uses-horizonos-sdk horizonos:minSdkVersion="60" horizonos:targetSdkVersion="207" />
 </manifest>

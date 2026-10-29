@@ -7,6 +7,11 @@
 // (almost) opaque pixels and a clip of the transparent ones, so near-over-far is settled by
 // the depth test and all halos, discs and glyphs can batch across markers.
 // Lives in Resources so it always ships in the build.
+//
+// With the Quest 3 depth sensor on (DepthOcclusion, Display menu), a marker behind a real
+// pier or wall turns faint (_XrayAlpha) instead of floating solid in front of the concrete.
+// Meta's EnvironmentDepthManager sets HARD_/SOFT_OCCLUSION globally; without it the
+// occlusion macros compile to 1 and nothing changes.
 Shader "QuestMarker/MarkerSprite"
 {
     Properties
@@ -20,6 +25,8 @@ Shader "QuestMarker/MarkerSprite"
         [HideInInspector] _Flip ("Flip", Vector) = (1,1,1,1)
         [PerRendererData] _AlphaTex ("External Alpha", 2D) = "white" {}
         [PerRendererData] _EnableExternalAlpha ("Enable External Alpha", Float) = 0
+        _XrayAlpha ("Alpha behind real surfaces", Range(0, 1)) = 0.3
+        _EnvironmentDepthBias ("Environment depth bias", Float) = 0.06
     }
 
     SubShader
@@ -42,20 +49,49 @@ Shader "QuestMarker/MarkerSprite"
         Pass
         {
         CGPROGRAM
-            #pragma vertex SpriteVert
+            #pragma vertex vert
             #pragma fragment frag
-            #pragma target 2.0
+            #pragma target 3.5
             #pragma multi_compile_instancing
             #pragma multi_compile_local _ PIXELSNAP_ON
             #pragma multi_compile _ ETC1_EXTERNAL_ALPHA
+            #pragma multi_compile _ HARD_OCCLUSION SOFT_OCCLUSION
             #include "UnitySprites.cginc"
+            #include "Packages/com.meta.xr.sdk.core/Shaders/EnvironmentDepth/BiRP/EnvironmentOcclusionBiRP.cginc"
 
             fixed _Cutoff;
+            float _XrayAlpha;
+            float _EnvironmentDepthBias;
 
-            fixed4 frag(v2f IN) : SV_Target
+            struct v2fOcc
             {
+                float4 vertex   : SV_POSITION;
+                fixed4 color    : COLOR;
+                float2 texcoord : TEXCOORD0;
+                META_DEPTH_VERTEX_OUTPUT(1)
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            v2fOcc vert(appdata_t IN)
+            {
+                v2f s = SpriteVert(IN);
+                v2fOcc OUT;
+                UNITY_INITIALIZE_OUTPUT(v2fOcc, OUT);
+                UNITY_TRANSFER_VERTEX_OUTPUT_STEREO(s, OUT);
+                OUT.vertex = s.vertex;
+                OUT.color = s.color;
+                OUT.texcoord = s.texcoord;
+                META_DEPTH_INITIALIZE_VERTEX_OUTPUT(OUT, float4(IN.vertex.xyz, 1.0));
+                return OUT;
+            }
+
+            fixed4 frag(v2fOcc IN) : SV_Target
+            {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);
                 fixed4 c = SampleSpriteTexture(IN.texcoord) * IN.color;
                 clip(c.a - _Cutoff);
+                float visible = META_DEPTH_GET_OCCLUSION_VALUE(IN, _EnvironmentDepthBias);
+                c.a *= lerp(_XrayAlpha, 1.0, visible);
                 c.rgb *= c.a; // premultiplied, like Sprites/Default
                 return c;
             }

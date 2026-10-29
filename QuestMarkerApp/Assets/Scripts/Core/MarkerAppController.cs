@@ -226,6 +226,7 @@ namespace QuestMarkerApp.Core
             Child<ComfortVignette>("ComfortVignette");
             Child<AlarmBeacons>("AlarmBeacons").Init(markerManager);
             Child<MeasureTool>("MeasureTool").Init(projectAlignment, markerManager);
+            Child<DepthOcclusion>("DepthOcclusion");
             if (localServer != null)
             {
                 // Kept so Cleanup can unsubscribe: the server may outlive this controller.

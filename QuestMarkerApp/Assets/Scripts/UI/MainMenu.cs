@@ -664,6 +664,12 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                Label = L.T("Πίσω από τοίχους: αχνά (πειρ.)", "Behind walls: faint (exp.)"),
+                Value = () => DepthOcclusion.Enabled ? DepthOcclusion.Status : L.T("Όχι", "Off"),
+                Run = () => DepthOcclusion.Enabled = !DepthOcclusion.Enabled
+            });
+            y = Row(y, new Item
+            {
                 Label = L.T("Ετικέτες", "Labels"),
                 Value = () => Marker.LabelsVisible ? L.T("Εμφάνιση", "Shown") : L.T("Απόκρυψη", "Hidden"),
                 Run = () => Marker.LabelsVisible = !Marker.LabelsVisible

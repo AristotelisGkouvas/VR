@@ -3,7 +3,8 @@
     "rootNamespace": "QuestMarkerApp",
     "references": [
         "Unity.TextMeshPro",
-        "Oculus.VR"
+        "Oculus.VR",
+        "Meta.XR.EnvironmentDepth"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
