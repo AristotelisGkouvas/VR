@@ -32,6 +32,8 @@ namespace QuestMarkerApp.Core
 
 
         private bool isInitialized;
+        /// <summary>Menu went down over a running route: released early it opens the menu, held it stops the route.</summary>
+        private bool routeMenuPending;
         private bool useRealCoordinates;
         private WebSocketPushClient wsClient;
         private MainMenu mainMenu;
@@ -187,6 +189,7 @@ namespace QuestMarkerApp.Core
             }
 
             Child<VrPointer>("VrPointer");
+            Child<HoldConfirm>("HoldConfirm");
             Child<BoundaryControl>("BoundaryControl");
             Child<DisplayPerformance>("DisplayPerformance");
             Child<AnchorFieldTest>("AnchorFieldTest");
@@ -218,6 +221,9 @@ namespace QuestMarkerApp.Core
             model.Init(projectAlignment, markerManager);
             // The project's sensors as dots on the tabletop / life-size preview of that model.
             Child<ModelSensors>("ModelSensors").Init(model, projectAlignment, markerManager, sensorCard);
+            // The watch on the off hand: mode, alignment trust, data age, connection.
+            Child<StatusChip>("StatusChip").Init(projectAlignment, terraweb, flow, model);
+            Child<ComfortVignette>("ComfortVignette");
             if (localServer != null)
             {
                 // Kept so Cleanup can unsubscribe: the server may outlive this controller.
@@ -381,9 +387,35 @@ namespace QuestMarkerApp.Core
 #else
             // The Menu button sits on the left controller only. With it pocketed, a click of
             // the remaining controller's stick opens the menu instead.
+            bool pocketed = !OVRInput.IsControllerConnected(OVRInput.Controller.LTouch);
             bool menuPressed = OVRInput.GetDown(OVRInput.Button.Start)
-                || (!OVRInput.IsControllerConnected(OVRInput.Controller.LTouch)
-                    && OVRInput.GetDown(OVRInput.Button.PrimaryThumbstick, OVRInput.Controller.RTouch));
+                || (pocketed && OVRInput.GetDown(OVRInput.Button.PrimaryThumbstick, OVRInput.Controller.RTouch));
+            bool menuHeld = OVRInput.Get(OVRInput.Button.Start)
+                || (pocketed && OVRInput.Get(OVRInput.Button.PrimaryThumbstick, OVRInput.Controller.RTouch));
+            // A running route ends on a held Menu (a ring fills); a short press opens the menu
+            // over it, on release, so a brushed button no longer throws the route away.
+            bool routeOnTop = route != null && UiState.Context(projectAlignment) == "route";
+            if (routeOnTop || routeMenuPending)
+            {
+                if (menuPressed) routeMenuPending = true;
+                if (routeMenuPending)
+                {
+                    if (HoldConfirm.Run("route", menuHeld, L.T("Διακοπή διαδρομής", "Stop route")))
+                    {
+                        routeMenuPending = false;
+                        Feedback.Play(Feedback.Sound.Undo, 0.6f);
+                        route.Stop();
+                    }
+                    else if (!menuHeld)
+                    {
+                        routeMenuPending = false;
+                        Feedback.Play(Feedback.Sound.Tick);
+                        mainMenu?.Toggle();
+                    }
+                    return;
+                }
+                menuPressed = false;
+            }
             if (menuPressed)
             {
                 Feedback.Play(Feedback.Sound.Tick);
@@ -392,9 +424,6 @@ namespace QuestMarkerApp.Core
                 if (VrKeyboard.IsOpen) VrKeyboard.CancelOpen();
                 else if (FlowPanel.IsOpen) flowPanel.Close();
                 else if (SensorCard.IsOpen) sensorCard.Close();
-                // Only when the route is on top: with navigation or the time machine over it the
-                // hint reads plain "Μενού" (ControllerHints), and B ends those first.
-                else if (route != null && UiState.Context(projectAlignment) == "route") route.Stop();
                 else mainMenu?.Toggle();
                 return;
             }
@@ -450,8 +479,9 @@ namespace QuestMarkerApp.Core
             // Role-based like the controller hints: with the left hand dominant the labels
             // swap sides, and these must swap with them (B used to clear everything while the
             // badge on it read "Αναίρεση").
-            if (Hands.DominantPrimaryDown()) CalibrateReferencePoint();
-            if (Hands.DominantSecondaryDown()) ClearAllMarkers();
+            // Held, with a ring: in thin gloves a brushed A or B moved the origin or wiped everything.
+            if (HoldConfirm.Run("origin", Hands.DominantPrimaryHeld(), L.T("Αρχή εδώ", "Origin here"))) CalibrateReferencePoint();
+            if (HoldConfirm.Run("clear", Hands.DominantSecondaryHeld(), L.T("Καθαρισμός", "Clear all"))) ClearAllMarkers();
             if (Hands.OffHandSecondaryDown()) Undo();
 #endif
         }

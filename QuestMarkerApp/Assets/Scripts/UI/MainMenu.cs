@@ -691,6 +691,19 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                Label = L.T("Κατάσταση στο χέρι", "Status on the hand"),
+                Value = () => StatusChip.Enabled ? L.T("Ναι", "On") : L.T("Όχι", "Off"),
+                Run = () => StatusChip.Enabled = !StatusChip.Enabled
+            });
+            y = Row(y, new Item
+            {
+                Label = L.T("Υψηλή αντίθεση (ήλιος)", "High contrast (sunlight)"),
+                Value = () => (Brand.HighContrastNext ? L.T("Ναι", "On") : L.T("Όχι", "Off"))
+                    + (Brand.HighContrastNext != Brand.HighContrast ? L.T(" · μετά από επανεκκίνηση", " · after a restart") : ""),
+                Run = () => Brand.HighContrastNext = !Brand.HighContrastNext
+            });
+            y = Row(y, new Item
+            {
                 Label = L.T("Ήχοι", "Sounds"),
                 Value = () => Feedback.SoundOn ? L.T("Ενεργοί", "On") : L.T("Σίγαση", "Muted"),
                 Run = () => { Feedback.SoundOn = !Feedback.SoundOn; Feedback.Play(Feedback.Sound.Click); }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using QuestMarkerApp.Models;
+using QuestMarkerApp.UI;
 
 namespace QuestMarkerApp.Core
 {
@@ -36,8 +37,15 @@ namespace QuestMarkerApp.Core
             }
         }
 
+        /// <summary>Walking this far (m) from where the life-size view began brings the room back.</summary>
+        private const float WalkAwayMetres = 1f;
+
+        /// <summary>The room shows through the life-size model right now (peek or walked off).</summary>
+        public static bool Peeking { get; private set; }
+
         private float nextCheck;
-        private bool immersive;
+        private bool immersive, passthroughOn = true;
+        private Vector3 immersiveFrom;
         private Camera blackedCamera;
         private Color savedBackground;
 
@@ -45,12 +53,25 @@ namespace QuestMarkerApp.Core
         {
 #if !MOBILE_PREVIEW
             bool want = ModelOverlay.LifeSizeShown;
+            Camera cam = Camera.main;
             if (want != immersive)
             {
                 immersive = want;
-                SetPassthrough(!want);
+                if (want && cam != null) immersiveFrom = cam.transform.position;
                 nextCheck = 0f; // the Guardian follows at once
             }
+            // In the black the room comes back while the off-hand trigger is held, and by itself
+            // once the user has physically walked off (the sticks move the model, not them).
+            bool walkedOff = false;
+            if (immersive && cam != null)
+            {
+                Vector3 d = cam.transform.position - immersiveFrom;
+                d.y = 0f;
+                walkedOff = d.magnitude > WalkAwayMetres;
+            }
+            Peeking = immersive && (Hands.OffHandTriggerHeld() || walkedOff);
+            bool show = !immersive || Peeking;
+            if (show != passthroughOn) SetPassthrough(show);
             // Re-asserted periodically: the request lapses if passthrough restarts.
             if (Time.unscaledTime < nextCheck) return;
             nextCheck = Time.unscaledTime + 1f;
@@ -69,6 +90,7 @@ namespace QuestMarkerApp.Core
         // is transparent so passthrough shows through); off, both go back as they were.
         private void SetPassthrough(bool on)
         {
+            passthroughOn = on;
             foreach (OVRPassthroughLayer layer in FindObjectsByType<OVRPassthroughLayer>(FindObjectsSortMode.None))
                 layer.hidden = !on;
             if (!on)
@@ -85,13 +107,15 @@ namespace QuestMarkerApp.Core
                 blackedCamera.backgroundColor = savedBackground;
                 blackedCamera = null;
             }
-            Debug.Log(on ? "[Boundary] Passthrough back on" : "[Boundary] Life-size model: passthrough off, Guardian on");
+            Debug.Log(on ? (immersive ? "[Boundary] Peek: passthrough on" : "[Boundary] Passthrough back on")
+                : "[Boundary] Life-size model: passthrough off, Guardian on");
         }
 
         private void OnDisable()
         {
-            if (immersive) SetPassthrough(true);
+            if (!passthroughOn) SetPassthrough(true);
             immersive = false;
+            Peeking = false;
         }
 #endif
     }

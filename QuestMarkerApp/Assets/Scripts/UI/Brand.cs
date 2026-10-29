@@ -12,16 +12,32 @@ namespace QuestMarkerApp.UI
     /// </summary>
     public static class Brand
     {
-        public static readonly Color Canvas = Hex(0x0f1716);
-        public static readonly Color Surface = Hex(0x172221);
-        public static readonly Color SurfaceMuted = Hex(0x1e2b2a);
-        public static readonly Color SurfaceSunken = Hex(0x263433);
-        public static readonly Color Border = Hex(0x232f2e);
-        public static readonly Color BorderStrong = Hex(0x35443f);
-        public static readonly Color Fg = Hex(0xebefea);
-        public static readonly Color FgMuted = Hex(0xc4d0ce);
-        public static readonly Color FgSubtle = Hex(0x8ca09e);
-        public static readonly Color FgFaint = Hex(0x6f817f);
+        private const string ContrastKey = "ui.highContrast";
+
+        /// <summary>
+        /// Outdoor theme for bright sun on passthrough: near-black cards, every grey text a step
+        /// lighter, bold throughout. Read once at start (every panel takes its colours when it
+        /// is built), so a change applies on the next launch.
+        /// </summary>
+        public static readonly bool HighContrast = PlayerPrefs.GetInt(ContrastKey, 0) == 1;
+
+        /// <summary>The menu switch: what the next launch will use.</summary>
+        public static bool HighContrastNext
+        {
+            get => PlayerPrefs.GetInt(ContrastKey, 0) == 1;
+            set { PlayerPrefs.SetInt(ContrastKey, value ? 1 : 0); PlayerPrefs.Save(); }
+        }
+
+        public static readonly Color Canvas = Hex(HighContrast ? 0x050807 : 0x0f1716);
+        public static readonly Color Surface = Hex(HighContrast ? 0x070b0a : 0x172221);
+        public static readonly Color SurfaceMuted = Hex(HighContrast ? 0x111a19 : 0x1e2b2a);
+        public static readonly Color SurfaceSunken = Hex(HighContrast ? 0x1c2928 : 0x263433);
+        public static readonly Color Border = Hex(HighContrast ? 0x4a5b57 : 0x232f2e);
+        public static readonly Color BorderStrong = Hex(HighContrast ? 0x8a9c98 : 0x35443f);
+        public static readonly Color Fg = Hex(HighContrast ? 0xffffff : 0xebefea);
+        public static readonly Color FgMuted = Hex(HighContrast ? 0xf2f5f1 : 0xc4d0ce);
+        public static readonly Color FgSubtle = Hex(HighContrast ? 0xd6dfdd : 0x8ca09e);
+        public static readonly Color FgFaint = Hex(HighContrast ? 0xb4c2c0 : 0x6f817f);
         public static readonly Color Primary = Hex(0x8fc93a);
         public static readonly Color PrimarySoft = Hex(0x1f2e14);
         public static readonly Color PrimaryFg = Hex(0x10201f);
@@ -103,7 +119,7 @@ namespace QuestMarkerApp.UI
         /// <summary>Apply the brand face; keeps the TMP default when the font failed to load.</summary>
         public static void Style(TMP_Text text, bool useBold = false)
         {
-            TMP_FontAsset face = useBold ? Bold : Body;
+            TMP_FontAsset face = useBold || HighContrast ? Bold : Body;
             if (face != null) text.font = face;
         }
 

@@ -362,7 +362,7 @@ namespace QuestMarkerApp.UI
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
                         (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
-                        (Button.Menu, "menu", L.T("Μενού / διακοπή", "Menu / stop"), false)
+                        (Button.Menu, "menu", L.T("Μενού · κράτα: διακοπή", "Menu · hold: stop"), false)
                     });
                 case "nav":
                     {
@@ -413,6 +413,12 @@ namespace QuestMarkerApp.UI
             domMap.RemoveAll(e => e.Item1 == Button.Thumbstick);
             // Sideways snap-turns, up/down rises and sinks (ModelOverlay.Walk).
             domMap.Add((Button.Thumbstick, "history", L.T("Στροφή 30° · ↕ ύψος", "Turn 30° · ↕ height"), false));
+            // In the black of the life-size view the room shows while it is held (BoundaryControl).
+            if (Models.ModelOverlay.LifeSizeShown)
+            {
+                offMap.RemoveAll(e => e.Item1 == Button.Trigger);
+                offMap.Add((Button.Trigger, "eye", L.T("Κράτα: δες τον χώρο", "Hold: see the room"), false));
+            }
         }
 
         // Tabletop / life-size preview (ModelOverlay.Grab): the off-hand grip carries and turns
@@ -524,8 +530,8 @@ namespace QuestMarkerApp.UI
                 default:
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Secondary, "trash", L.T("Καθαρισμός όλων", "Clear all"), false),
-                        (Button.Primary, "location", L.T("Αρχή (0,0,0) εδώ", "Origin (0,0,0) here"), false)
+                        (Button.Secondary, "trash", L.T("Κράτα: καθαρισμός όλων", "Hold: clear all"), false),
+                        (Button.Primary, "location", L.T("Κράτα: αρχή (0,0,0) εδώ", "Hold: origin (0,0,0) here"), false)
                     };
             }
         }

@@ -160,6 +160,9 @@ namespace QuestMarkerApp.Models
         /// </summary>
         public static bool WalkActive { get; private set; }
 
+        /// <summary>The sticks moved the user through the life-size copy this frame (ComfortVignette).</summary>
+        public static bool Moving { get; private set; }
+
         /// <summary>True while a tabletop or life-size preview is on show (ControllerHints labels the grips).</summary>
         public static bool PreviewShown { get; private set; }
 
@@ -338,6 +341,7 @@ namespace QuestMarkerApp.Models
             bool walk = false;
             bool preview = false;
             bool lifeSize = false;
+            Moving = false;
             if (show)
             {
                 Placement p = CurrentPlacement;
@@ -369,6 +373,7 @@ namespace QuestMarkerApp.Models
             WalkActive = false;
             PreviewShown = false;
             LifeSizeShown = false;
+            Moving = false;
             if (!loading) return;
             bool partial = building;
             CancelPending();
@@ -664,6 +669,7 @@ namespace QuestMarkerApp.Models
                     // are worse for comfort than one steady pace.
                     Vector3 step = (forward * dir.y + right * dir.x).normalized * WalkSpeed * Time.unscaledDeltaTime;
                     root.position -= step;
+                    Moving = true;
                 }
             }
 
@@ -673,7 +679,10 @@ namespace QuestMarkerApp.Models
             float turn = Hands.DominantStickX();
             float lift = Hands.DominantStickY();
             if (Mathf.Abs(lift) > StickDeadZone && Mathf.Abs(lift) > Mathf.Abs(turn))
+            {
                 root.position -= Vector3.up * (Mathf.Sign(lift) * WalkSpeed * VerticalSpeedFactor * Time.unscaledDeltaTime);
+                Moving = true;
+            }
 
             // Dominant stick left/right: snap turn about the user's head.
             if (Mathf.Abs(turn) < 0.3f) snapArmed = true;

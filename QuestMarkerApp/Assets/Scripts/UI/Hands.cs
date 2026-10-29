@@ -66,6 +66,8 @@ namespace QuestMarkerApp.UI
         public static bool GripHeld() => OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, Dominant);
         /// <summary>Grip of the other hand: grabs the model preview (tabletop / 1:1).</summary>
         public static bool OffHandGripHeld() => OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, OffHand);
+        /// <summary>Index trigger of the other hand: held in the life-size model, the room shows through.</summary>
+        public static bool OffHandTriggerHeld() => OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, OffHand);
 
         public static float DominantStickY() => OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick, Dominant).y;
         public static float OffHandStickY() => OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick, OffHand).y;
@@ -77,8 +79,10 @@ namespace QuestMarkerApp.UI
 
         /// <summary>A / X on the pointing hand (controller-specific: never a hand-tracking pinch).</summary>
         public static bool DominantPrimaryDown() => OVRInput.GetDown(OVRInput.Button.One, Dominant);
+        public static bool DominantPrimaryHeld() => OVRInput.Get(OVRInput.Button.One, Dominant);
         /// <summary>B / Y on the pointing hand.</summary>
         public static bool DominantSecondaryDown() => OVRInput.GetDown(OVRInput.Button.Two, Dominant);
+        public static bool DominantSecondaryHeld() => OVRInput.Get(OVRInput.Button.Two, Dominant);
         /// <summary>X / A on the other hand (opens the main menu; closes the alignment list while it is open).</summary>
         public static bool OffHandPrimaryDown() => OVRInput.GetDown(OVRInput.Button.One, OffHand);
         public static bool OffHandSecondaryDown() => OVRInput.GetDown(OVRInput.Button.Two, OffHand);
