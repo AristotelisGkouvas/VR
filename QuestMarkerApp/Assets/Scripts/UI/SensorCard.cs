@@ -93,7 +93,8 @@ namespace QuestMarkerApp.UI
         {
             bool stale = p != null && p.IsStale(out _);
             dateText.color = stale ? Brand.Warning : Brand.Fg;
-            dateCaption.text = stale ? L.T("Τελευταία μέτρηση · παλιά", "Last reading · old") : L.T("Τελευταία μέτρηση", "Last reading");
+            // The caption keeps its words (a longer one ran past the card's edge); amber says "old".
+            dateCaption.color = stale ? Brand.Warning : Brand.FgSubtle;
         }
 
         private void Relabel()
@@ -169,6 +170,15 @@ namespace QuestMarkerApp.UI
             heightText = Metric(root, 210, 120, "", out heightCaption);
             dateText = Metric(root, 384, 120, "", out dateCaption);
             dateText.fontSize = 15f; // "21/02/22 · πριν 3 έτη" is longer than a number
+            // The third column ends inside the panel (it ran 14 px past it), text shrinking to fit.
+            dateText.rectTransform.sizeDelta = new Vector2(148f, dateText.rectTransform.sizeDelta.y);
+            dateCaption.rectTransform.sizeDelta = new Vector2(148f, dateCaption.rectTransform.sizeDelta.y);
+            dateText.enableAutoSizing = true;
+            dateText.fontSizeMin = 11f;
+            dateText.fontSizeMax = 15f;
+            dateCaption.enableAutoSizing = true;
+            dateCaption.fontSizeMin = 10f;
+            dateCaption.fontSizeMax = 13f;
 
             // Readings
             readHeader = VrUi.Text("ReadHeader", root, 28, 202, 300, 22, "", 13f, Brand.FgSubtle, true);
