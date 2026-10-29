@@ -515,7 +515,7 @@ namespace QuestMarkerApp.Models
             if (aimed == null) return;
             PlaceTag(cam);
 
-            if (Hands.TriggerDown() && !VrPointer.ConsumedThisFrame && (!UiState.InputBlocked || cardOnly) && card != null)
+            if (Hands.TriggerDown() && !VrPointer.ConsumedThisFrame && !MeasureTool.IsActive && (!UiState.InputBlocked || cardOnly) && card != null)
             {
                 Feedback.Play(Feedback.Sound.Click);
                 Feedback.Buzz(Hands.Dominant, 0.35f, 0.04f);

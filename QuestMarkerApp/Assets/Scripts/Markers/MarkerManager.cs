@@ -80,6 +80,33 @@ namespace QuestMarkerApp.Markers
         }
 
         private bool hideProjectLayer;
+        private static bool? alarmsOnly;
+
+        /// <summary>
+        /// Only the project's sensors in alert or alarm stay on site (PlayerPrefs "ui.alarmsOnly"):
+        /// among 80 icons the two that matter get lost. Off by default.
+        /// </summary>
+        public bool AlarmsOnly
+        {
+            get => alarmsOnly ?? (bool)(alarmsOnly = PlayerPrefs.GetInt("ui.alarmsOnly", 0) == 1);
+            set
+            {
+                alarmsOnly = value;
+                PlayerPrefs.SetInt("ui.alarmsOnly", value ? 1 : 0);
+                PlayerPrefs.Save();
+                ApplyLayerVisibility();
+            }
+        }
+
+        /// <summary>Alert or alarm: what "alarms only" keeps and the edge beacons point at.</summary>
+        public static bool IsAlerting(CoordinateData d) => d != null && (d.status == "alarm" || d.status == "alert");
+
+        private bool IsShown(CoordinateData data)
+        {
+            string layer = data != null ? data.layer : "default";
+            if (!IsLayerVisible(layer)) return false;
+            return !AlarmsOnly || !string.Equals(layer, "project", StringComparison.OrdinalIgnoreCase) || IsAlerting(data);
+        }
 
         /// <summary>
         /// Hides the aligned project's sensors on the site (layer "project") while the model is
@@ -237,7 +264,7 @@ namespace QuestMarkerApp.Markers
             }
 
             marker.SetShowDistance(showDistanceOnMarkers);
-            marker.gameObject.SetActive(IsLayerVisible(data.layer));
+            marker.gameObject.SetActive(IsShown(data));
 
             if (animateMarkerAppearance)
             {
@@ -281,6 +308,8 @@ namespace QuestMarkerApp.Markers
             }
 
             marker.UpdateData(data);
+            bool shown = IsShown(data); // a sensor going into alarm appears under "alarms only"
+            if (marker.gameObject.activeSelf != shown) marker.gameObject.SetActive(shown);
             OnMarkerUpdated?.Invoke(marker);
         }
 
@@ -505,7 +534,7 @@ namespace QuestMarkerApp.Markers
             foreach (var kvp in activeMarkers)
             {
                 if (kvp.Value == null) continue;
-                kvp.Value.gameObject.SetActive(IsLayerVisible(kvp.Value.Layer));
+                kvp.Value.gameObject.SetActive(IsShown(kvp.Value.Data));
             }
         }
 

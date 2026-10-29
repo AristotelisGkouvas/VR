@@ -224,6 +224,8 @@ namespace QuestMarkerApp.Core
             // The watch on the off hand: mode, alignment trust, data age, connection.
             Child<StatusChip>("StatusChip").Init(projectAlignment, terraweb, flow, model);
             Child<ComfortVignette>("ComfortVignette");
+            Child<AlarmBeacons>("AlarmBeacons").Init(markerManager);
+            Child<MeasureTool>("MeasureTool").Init(projectAlignment, markerManager);
             if (localServer != null)
             {
                 // Kept so Cleanup can unsubscribe: the server may outlive this controller.
@@ -460,7 +462,7 @@ namespace QuestMarkerApp.Core
             if (projectAlignment != null && projectAlignment.IsModeActive) return;
 
             // Aim at a sensor and pull the trigger for its card.
-            if (projectAlignment != null && projectAlignment.HasProject
+            if (projectAlignment != null && projectAlignment.HasProject && !MeasureTool.IsActive
                 && !VrPointer.ConsumedThisFrame && Hands.TriggerDown())
             {
                 Marker aimed = markerManager != null ? markerManager.Highlighted : null;

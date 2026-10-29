@@ -617,6 +617,31 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                Label = L.T("Μετροταινία", "Tape measure"),
+                Value = () => MeasureTool.IsActive ? L.T("Ενεργή · B: έξοδος", "On · B: exit") : L.T("Trigger: σημεία", "Trigger: points"),
+                Run = () =>
+                {
+                    var tool = FindAnyObjectByType<MeasureTool>();
+                    if (tool == null) return;
+                    if (MeasureTool.IsActive) tool.Close();
+                    else { Close(); tool.Open(); }
+                }
+            });
+            y = Row(y, new Item
+            {
+                Label = L.T("Μόνο συναγερμοί", "Alarms only"),
+                Value = () => markers != null && markers.AlarmsOnly ? L.T("Ναι", "On") : L.T("Όχι · όλοι", "Off · all"),
+                Enabled = () => markers != null,
+                Run = () => markers.AlarmsOnly = !markers.AlarmsOnly
+            });
+            y = Row(y, new Item
+            {
+                Label = L.T("Βέλη για συναγερμούς εκτός θέας", "Arrows to alarms out of view"),
+                Value = () => AlarmBeacons.Enabled ? L.T("Ναι", "On") : L.T("Όχι", "Off"),
+                Run = () => AlarmBeacons.Enabled = !AlarmBeacons.Enabled
+            });
+            y = Row(y, new Item
+            {
                 Label = L.T("Ετικέτες", "Labels"),
                 Value = () => Marker.LabelsVisible ? L.T("Εμφάνιση", "Shown") : L.T("Απόκρυψη", "Hidden"),
                 Run = () => Marker.LabelsVisible = !Marker.LabelsVisible

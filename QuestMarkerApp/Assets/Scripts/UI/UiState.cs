@@ -37,6 +37,7 @@ namespace QuestMarkerApp.UI
             if (MainMenu.IsOpen) return "menu";
             if (project != null && project.IsModeActive) return "align";
             if (SensorNavigator.IsActive) return "nav";
+            if (MeasureTool.IsActive) return "measure";
             if (DisplacementView.IsActive) return "time";
             if (InspectionRoute.IsActive) return "route";
             if (project != null && project.HasProject) return "project";

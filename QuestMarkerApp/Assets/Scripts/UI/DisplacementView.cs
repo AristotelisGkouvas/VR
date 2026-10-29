@@ -48,6 +48,13 @@ namespace QuestMarkerApp.UI
         private Mesh headMesh;
         private const int SiteScaleIndex = 2; // ×100
         private int scaleIndex = SiteScaleIndex;
+        /// <summary>
+        /// Compare mode: the arrows show the movement since this date ("what moved since the
+        /// inspection of 3/10") instead of since the zero reading. The grip sets it at the
+        /// date on the bar and clears it again.
+        /// </summary>
+        private DateTime? baseline;
+        private Image hudBase;
         private float progress = 1f;
         private bool playing;
         private float nextScaleStep;
@@ -145,8 +152,8 @@ namespace QuestMarkerApp.UI
         {
             if (hudHint != null)
                 hudHint.text = L.En
-                    ? $"{Hands.PrimaryName} play · stick left-right: time · up-down: scale · {Hands.SecondaryName} exit"
-                    : $"{Hands.PrimaryName} αναπαραγωγή · stick δεξιά-αριστερά: χρόνος · πάνω-κάτω: κλίμακα · {Hands.SecondaryName} έξοδος";
+                    ? $"{Hands.PrimaryName} play · stick ↔ time · ↕ scale · grip: compare from here · {Hands.SecondaryName} exit"
+                    : $"{Hands.PrimaryName} αναπαραγωγή · stick ↔ χρόνος · ↕ κλίμακα · grip: σύγκριση από εδώ · {Hands.SecondaryName} έξοδος";
         }
 
         /// <summary>Why it can't open right now, or null when it can.</summary>
@@ -194,6 +201,8 @@ namespace QuestMarkerApp.UI
             hudProgressShown = -1f;
             hudPlayingShown = null;
             framePrimed = false;
+            baseline = null;
+            hudBase.gameObject.SetActive(false);
             lastOnModel = OnModel;
             scaleIndex = lastOnModel ? ModelScaleIndex() : SiteScaleIndex;
             // Opening plays the whole record once: the site moving from day one to today.
@@ -281,8 +290,7 @@ namespace QuestMarkerApp.UI
             bool onModel = OnModel;
             if (onModel != lastOnModel) scaleIndex = onModel ? ModelScaleIndex() : SiteScaleIndex;
 
-            DateTime first = SensorHistory.First, last = SensorHistory.Last;
-            DateTime at = first + TimeSpan.FromTicks((long)((last - first).Ticks * (double)progress));
+            DateTime at = CurrentAt();
             float scale = Scales[scaleIndex];
 
             // Alignment key: the change event plus the yaws Draw's maths reads from the project.
@@ -346,6 +354,15 @@ namespace QuestMarkerApp.UI
             }
             else if (Mathf.Abs(y) < 0.3f) nextScaleStep = 0f;
 
+            if (Hands.GripDown() && !Hands.OffHandGripHeld())
+            {
+                baseline = baseline.HasValue ? (DateTime?)null : CurrentAt();
+                cacheVersion++; // every arrow is now measured from elsewhere
+                hudScaleShown = float.NaN;
+                Feedback.Play(Feedback.Sound.Click);
+                Feedback.Buzz(Hands.Dominant, 0.3f, 0.04f);
+            }
+
             if (Hands.DominantPrimaryDown())
             {
                 if (!playing && progress >= 1f) progress = 0f;
@@ -354,7 +371,8 @@ namespace QuestMarkerApp.UI
             }
             // B stops navigation first, if that is running.
             if (Hands.DominantSecondaryDown() && !SensorNavigator.IsActive
-                && SensorNavigator.StoppedFrame != Time.frameCount)
+                && SensorNavigator.StoppedFrame != Time.frameCount
+                && !MeasureTool.IsActive && MeasureTool.ClosedFrame != Time.frameCount)
             {
                 Feedback.Play(Feedback.Sound.Undo, 0.6f);
                 Close();
@@ -378,6 +396,18 @@ namespace QuestMarkerApp.UI
 
         // Last sample index with Date <= at (-1 before the first). O(1) while the index is unchanged
         // (paused, or time moving within one reading), binary search otherwise.
+        private static int IndexAt(IReadOnlyList<SensorHistory.Sample> s, DateTime at)
+        {
+            int lo = 0, hi = s.Count - 1, found = -1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (s[mid].Date <= at) { found = mid; lo = mid + 1; }
+                else hi = mid - 1;
+            }
+            return found;
+        }
+
         private static int IndexAt(Item it, DateTime at)
         {
             var s = it.Series;
@@ -424,10 +454,24 @@ namespace QuestMarkerApp.UI
             {
                 // Head: newest reading at or before `at` that has a displacement (as TryDisplacementAt).
                 it.Valid = false;
+                // Compare mode: the reading in force at the baseline is the new zero.
+                bool hasBase = false;
+                SensorHistory.Sample zero = default;
+                if (baseline.HasValue)
+                {
+                    for (int i = IndexAt(it.Series, baseline.Value); i >= 0; i--)
+                        if (it.Series[i].HasDisplacement) { zero = it.Series[i]; hasBase = true; break; }
+                }
                 for (int i = index; i >= 0; i--)
                 {
                     SensorHistory.Sample now = it.Series[i];
                     if (!now.HasDisplacement) continue;
+                    if (hasBase)
+                    {
+                        now.Dx -= zero.Dx ?? 0;
+                        now.Dy -= zero.Dy ?? 0;
+                        now.Dz = (now.Dz ?? 0) - (zero.Dz ?? 0);
+                    }
                     if (ToWorld(now, scale, cosYaw, sinYaw, modelFrame, out Vector3 vec))
                     {
                         it.Valid = true;
@@ -610,6 +654,8 @@ namespace QuestMarkerApp.UI
             hudDate = VrUi.Text("Date", c, 20, 48, 520, 44, "", 30f, Brand.Fg, true, TextAlignmentOptions.Center);
             VrUi.Panel("Track", c, 20, 100, TrackW, 8, Brand.SurfaceSunken, 4);
             hudFill = VrUi.Panel("Fill", c, 20, 100, 8, 8, Brand.Primary, 4);
+            hudBase = VrUi.Panel("Baseline", c, 20, 94, 4, 20, Brand.Info, 2);
+            hudBase.gameObject.SetActive(false);
             hudFrom = VrUi.Text("From", c, 20, 110, 250, 22, "", 13f, Brand.FgSubtle);
             hudTo = VrUi.Text("To", c, 290, 110, 250, 22, "", 13f, Brand.FgSubtle, false, TextAlignmentOptions.MidlineRight);
             hudHint = VrUi.Text("Hint", c, 20, 132, 520, 22, "", 13f, Brand.FgFaint, false, TextAlignmentOptions.Center);
@@ -634,7 +680,13 @@ namespace QuestMarkerApp.UI
             if (scale != hudScaleShown)
             {
                 hudScaleShown = scale;
-                hudTitle.text = L.En ? $"Displacements · ×{scale:0}" : $"Μετακινήσεις · ×{scale:0}";
+                hudTitle.text = baseline.HasValue
+                    ? (L.En ? $"Since {Format(baseline.Value)} · ×{scale:0}" : $"Από {Format(baseline.Value)} · ×{scale:0}")
+                    : (L.En ? $"Displacements · ×{scale:0}" : $"Μετακινήσεις · ×{scale:0}");
+                bool on = baseline.HasValue;
+                if (hudBase.gameObject.activeSelf != on) hudBase.gameObject.SetActive(on);
+                if (on) hudBase.rectTransform.anchoredPosition = new Vector2(20f + TrackW * Fraction(baseline.Value) - 2f,
+                    hudBase.rectTransform.anchoredPosition.y);
             }
             DateTime day = at.Date;
             if (day != hudDateShown)
@@ -652,6 +704,19 @@ namespace QuestMarkerApp.UI
                 hudPlayingShown = playing;
                 hudPlay.sprite = Brand.UiIconSprite(playing ? "pause" : "play");
             }
+        }
+
+        private DateTime CurrentAt()
+        {
+            DateTime first = SensorHistory.First, last = SensorHistory.Last;
+            return first + TimeSpan.FromTicks((long)((last - first).Ticks * (double)progress));
+        }
+
+        // Where a date sits on the bar, 0..1.
+        private static float Fraction(DateTime d)
+        {
+            long span = (SensorHistory.Last - SensorHistory.First).Ticks;
+            return span <= 0 ? 0f : Mathf.Clamp01((float)((double)(d - SensorHistory.First).Ticks / span));
         }
 
         // English: "4 Jul 2026" from the invariant culture's month names (always present on device).

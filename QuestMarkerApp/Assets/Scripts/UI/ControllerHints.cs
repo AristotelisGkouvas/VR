@@ -519,7 +519,14 @@ namespace QuestMarkerApp.UI
                         (Button.Secondary, "close", L.T("Έξοδος χρονομηχανής", "Exit time machine"), false),
                         (Button.Primary, "play", L.T("Αναπαραγωγή / Παύση", "Play / pause"), false),
                         (Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false),
-                        (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false)
+                        (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false),
+                        (Button.Grip, "history", L.T("Σύγκριση από εδώ", "Compare from here"), false)
+                    };
+                case "measure":
+                    return new List<(Button, string, string, bool)>
+                    {
+                        (Button.Secondary, "close", L.T("Έξοδος μετροταινίας", "Exit tape measure"), false),
+                        (Button.Trigger, "location", L.T("Σημείο", "Point"), false)
                     };
                 case "message":
                     return new List<(Button, string, string, bool)>

@@ -231,6 +231,16 @@ namespace QuestMarkerApp.Core
         /// A vector in the project frame (x East, y Up, z North, metres) as a world vector.
         /// False until aligned — before that the project has no direction in the room.
         /// </summary>
+        /// <summary>The inverse of <see cref="TryWorldVector"/>: a world vector in the project frame (x East, y Up, z North).</summary>
+        public bool TryProjectVector(Vector3 world, out Vector3 projectVector)
+        {
+            projectVector = Vector3.zero;
+            Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
+            if (!isAligned || reference == null) return false;
+            projectVector = Quaternion.Inverse(solvedRotation) * reference.InverseTransformVector(world);
+            return true;
+        }
+
         public bool TryWorldVector(Vector3 projectVector, out Vector3 world)
         {
             world = Vector3.zero;

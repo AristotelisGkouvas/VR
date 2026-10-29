@@ -387,7 +387,8 @@ namespace QuestMarkerApp.UI
             bool aligning = alignment != null && alignment.IsModeActive;
             int frame = Time.frameCount;
             bool otherOwnsB = SensorNavigator.IsActive || SensorNavigator.StoppedFrame == frame
-                              || DisplacementView.IsActive || DisplacementView.ClosedFrame == frame;
+                              || DisplacementView.IsActive || DisplacementView.ClosedFrame == frame
+                              || MeasureTool.IsActive || MeasureTool.ClosedFrame == frame;
             if (IsActive && !aligning && !otherOwnsB && !UiState.InputBlocked && Hands.DominantSecondaryDown()) Skip();
 #endif
         }

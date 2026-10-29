@@ -125,6 +125,7 @@ namespace QuestMarkerApp.UI
             switch (context)
             {
                 case "nav": return L.T("Πλοήγηση · B: τέλος", "Navigation · B: end");
+                case "measure": return L.T("Μετροταινία · B: έξοδος", "Tape measure · B: exit");
                 case "time": return L.T("Time machine · B: έξοδος", "Time machine · B: exit");
                 case "route": return L.T("Διαδρομή · κράτα Μενού: διακοπή", "Route · hold Menu: stop");
             }
