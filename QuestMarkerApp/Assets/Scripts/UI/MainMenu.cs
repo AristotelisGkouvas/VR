@@ -902,6 +902,18 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                // Automatic: 1.5 × the typical spacing between sensors; narrow ×0.6, wide ×1.6.
+                Label = L.T("Εμβέλεια heatmap", "Heatmap reach"),
+                Value = () =>
+                {
+                    var heat = FindAnyObjectByType<ModelHeatmap>();
+                    return ModelHeatmap.ReachName + (heat != null && heat.Reach > 0f ? $" · {heat.Reach:0} m" : "");
+                },
+                Enabled = () => ModelHeatmap.Enabled,
+                Run = () => ModelHeatmap.ReachSetting = (ModelHeatmap.ReachSetting + 1) % 3
+            });
+            y = Row(y, new Item
+            {
                 // Stick walking through the 1:1 copy; rising / sinking follows at 0.7x.
                 Label = L.T("Ταχύτητα πλοήγησης", "Walk speed"),
                 Value = () => ModelOverlay.WalkSpeed.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m/s",
