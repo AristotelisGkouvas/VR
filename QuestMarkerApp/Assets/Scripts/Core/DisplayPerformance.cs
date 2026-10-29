@@ -72,7 +72,20 @@ namespace QuestMarkerApp.Core
             return current;
         }
 
+        /// <summary>
+        /// Eye buffer resolution over the default. At 1.0 the photogrammetry texture and the
+        /// icon edges broke into pixels with every slight head movement; the app runs in ~5 of
+        /// its 13.8 ms at 72 Hz, so 1.3 (Meta's suggestion for Quest 3) is affordable.
+        /// </summary>
+        private const float EyeResolution = 1.3f;
+
         private float nextCheck;
+
+        private void Start()
+        {
+            UnityEngine.XR.XRSettings.eyeTextureResolutionScale = EyeResolution;
+            Debug.Log($"[Display] Eye resolution x{EyeResolution}");
+        }
 
         private void Update()
         {

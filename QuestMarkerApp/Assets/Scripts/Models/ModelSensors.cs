@@ -25,10 +25,11 @@ namespace QuestMarkerApp.Models
         /// <summary>World size of a dot at 1:1, metres.</summary>
         private const float DotMax = 0.3f;
         /// <summary>
-        /// World size of a dot on the tabletop at its default size, metres. The dots then grow
-        /// and shrink with the model's zoom, like everything else on it.
+        /// How the dots follow the model's zoom, at 1:1 and on the table alike: world size =
+        /// DotMax × scale^DotZoomPower. Slower than the model (power &lt; 1), so they shrink with
+        /// it yet stay visible: 30 cm at 1:1, ~9.5 cm at 1:10, ~1.7 cm at a 300 m bridge's 1:306.
         /// </summary>
-        private const float DotTabletop = 0.012f;
+        private const float DotZoomPower = 0.5f;
         /// <summary>Sensors beyond the model's extent by more than this are not drawn (metres, model scale).</summary>
         private const float FarMargin = 50f;
         /// <summary>Aim tolerance around the ray: an angle, or a distance near the hand.</summary>
@@ -217,11 +218,11 @@ namespace QuestMarkerApp.Models
 
             float rootScale = Mathf.Max(root.lossyScale.x, 1e-6f);
             bool lifeSize = overlay.CurrentPlacement == ModelOverlay.Placement.LifeSize;
-            // A fixed size in model metres, at 1:1 as on the table: zooming the model in or out
-            // grows or shrinks the dots with it. (At 1:1 they used to grow with distance to stay
-            // visible; with every head movement they pulsed, which read as flicker.)
+            // One rule for every scale (DotZoomPower): zooming the model in or out grows or
+            // shrinks the dots with it, continuously from the table to 1:1. Not by distance:
+            // dots that grew as the head moved pulsed, which read as flicker.
             float lifeZoom = Mathf.Min(rootScale, 1f);
-            dotLocal = lifeSize ? DotMax : DotTabletop / Mathf.Max(overlay.DefaultTabletopScale, 1e-6f);
+            dotLocal = DotMax * Mathf.Pow(rootScale, DotZoomPower) / rootScale;
             if (Time.unscaledTime >= nextRecolour) Recolour();
             Vector3 eye = cam.transform.position;
             Vector3 up = cam.transform.up;
