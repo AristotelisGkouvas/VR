@@ -579,6 +579,8 @@ namespace QuestMarkerApp.UI
                     : $"Συναγερμός {alarms}   ·   Προειδοποίηση {alerts}   ·   Κανονικό {normal}"
             };
             if (skipped.Count > 0) lines.Add(L.T("Παραλείφθηκαν: ", "Skipped: ") + string.Join(", ", skipped));
+            int noted = FieldNotes.Since(alignment != null ? alignment.ProjectName : "", startedAt.ToUniversalTime()).Count;
+            if (noted > 0) lines.Add(L.En ? $"Notes: {noted}" : $"Σημειώσεις: {noted}");
 
             string file = Save(completed, finishedAt, heading, lines);
             if (file != null) lines.Add(L.T("Αρχείο: ", "File: ") + Path.GetFileName(file));
@@ -624,6 +626,15 @@ namespace QuestMarkerApp.UI
                            .Append("  ").Append(StateName(s.StateAtVisit));
                     else if (s.Skipped) txt.Append(L.T("  παραλείφθηκε", "  skipped"));
                     txt.AppendLine();
+                }
+                // Notes taken on site during the walk (sensor cards).
+                List<FieldNotes.Note> notes = FieldNotes.Since(alignment != null ? alignment.ProjectName : "", startedAt.ToUniversalTime());
+                if (notes.Count > 0)
+                {
+                    txt.AppendLine().AppendLine(L.T("ΣΗΜΕΙΩΣΕΙΣ", "NOTES"));
+                    foreach (FieldNotes.Note n in notes)
+                        txt.Append(n.Utc.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)).Append("  ")
+                           .Append(n.label).Append(": ").AppendLine(n.text);
                 }
                 File.WriteAllText(stem + ".txt", txt.ToString());
                 LastReportPath = json;

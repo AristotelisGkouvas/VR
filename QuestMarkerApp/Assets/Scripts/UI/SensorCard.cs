@@ -47,7 +47,8 @@ namespace QuestMarkerApp.UI
         private readonly TextMeshProUGUI[] limitLabels = new TextMeshProUGUI[MaxLimitLines];
         private RectTransform retryButton;
         // Fixed labels, rewritten when the language changes.
-        private TextMeshProUGUI distanceCaption, heightCaption, dateCaption, readHeader, retryLabel, navigateLabel, closeLabel;
+        private TextMeshProUGUI distanceCaption, heightCaption, dateCaption, readHeader, retryLabel, navigateLabel, noteLabel;
+        private ProjectAlignment alignment;
         private Texture2D chartTexture;
         // One pixel buffer for the sparkline: ClearChart + GetPixels32 used to allocate ~0.7 MB
         // of garbage per card open.
@@ -66,6 +67,7 @@ namespace QuestMarkerApp.UI
             client = terraweb;
             projectId = terrawebProjectId;
             markers = FindAnyObjectByType<MarkerManager>();
+            alignment = FindAnyObjectByType<ProjectAlignment>();
             Build();
             root.gameObject.SetActive(false);
             L.Changed += OnLanguageChanged;
@@ -93,7 +95,7 @@ namespace QuestMarkerApp.UI
             readHeader.text = L.T("ΜΕΤΡΗΣΕΙΣ", "READINGS");
             retryLabel.text = L.T("Ξανά", "Retry");
             navigateLabel.text = L.T("Πλοήγηση εδώ", "Navigate here");
-            closeLabel.text = L.T("Κλείσιμο", "Close");
+            noteLabel.text = L.T("Σημείωση", "Note");
         }
 
         private static TextMeshProUGUI ButtonLabel(RectTransform button) =>
@@ -103,8 +105,36 @@ namespace QuestMarkerApp.UI
             (string.IsNullOrEmpty(p.typeLabel) ? L.T("Σημείο", "Point") : p.typeLabel)
             + (p.inactive ? L.T(" · ανενεργός", " · inactive") : "");
 
-        private static string NotesLine(ProjectPoint p) =>
-            string.IsNullOrEmpty(p.notes) ? "" : L.T("Σημειώσεις: ", "Notes: ") + p.notes;
+        // Terraweb's notes, then the newest notes taken here on site (FieldNotes).
+        private string NotesLine(ProjectPoint p)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrEmpty(p.notes)) sb.Append(L.T("Σημειώσεις: ", "Notes: ")).Append(p.notes);
+            List<FieldNotes.Note> mine = alignment != null ? FieldNotes.For(alignment.ProjectName, p.id) : null;
+            if (mine != null)
+                for (int i = 0; i < mine.Count && i < 2; i++)
+                {
+                    if (sb.Length > 0) sb.AppendLine();
+                    sb.Append(L.T("Πεδίο ", "Site ")).Append(mine[i].Utc.ToLocalTime().ToString("dd/MM HH:mm")).Append("  ").Append(mine[i].text);
+                }
+            return sb.ToString();
+        }
+
+        // A note against this sensor, typed (or dictated into the keyboard), kept on the headset.
+        private void AddNote()
+        {
+            ProjectPoint p = point;
+            if (p == null || VrKeyboard.Shared == null) return;
+            string name = string.IsNullOrEmpty(p.label) ? p.id : p.label;
+            VrKeyboard.Shared.Open(L.T($"Σημείωση · {name}", $"Note · {name}"), "", false, text =>
+            {
+                int pid = projectId?.Invoke() ?? 0;
+                string project = alignment != null ? alignment.ProjectName : "";
+                if (!FieldNotes.Add(pid, project, p.id, p.sensorId, name, text)) return;
+                Feedback.Play(Feedback.Sound.Ping, 0.6f);
+                if (IsOpen && point == p) notesText.text = NotesLine(p);
+            }, null);
+        }
 
         // ------------------------------------------------------------------
         //  Build
@@ -175,7 +205,8 @@ namespace QuestMarkerApp.UI
             float fy = Height - 56f;
             VrUi.Panel("Divider", root, 28, fy - 12, Width - 56, 1, Brand.Border, 0);
             navigateLabel = ButtonLabel(VrUi.Button("Navigate", root, 28, fy - 6, 210, 44, "compass", "Πλοήγηση εδώ", NavigateHere, true));
-            closeLabel = ButtonLabel(VrUi.Button("CloseBtn", root, 248, fy - 6, 150, 44, "close", "Κλείσιμο", Close));
+            // Closing stays on the × above and on B; this slot takes a note.
+            noteLabel = ButtonLabel(VrUi.Button("NoteBtn", root, 248, fy - 6, 150, 44, "edit", "Σημείωση", AddNote));
             VrUi.Button("Close", root, Width - 64, 22, 40, 40, "close", null, Close);
             footer = VrUi.Text("Footer", root, Width - 160, fy, 132, 30, "", 13f, Brand.FgFaint, false,
                 TextAlignmentOptions.MidlineRight);

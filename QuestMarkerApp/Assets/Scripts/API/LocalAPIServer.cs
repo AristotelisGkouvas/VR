@@ -112,7 +112,7 @@ namespace QuestMarkerApp.API
             "/api/coordinates", "/api/status", "/api/logs", "/api/clear", "/api/undo", "/api/calibrate",
             "/api/calibrate/start", "/api/calibrate/status", "/api/calibrate/reset", "/api/session",
             "/api/session/new", "/api/gps-origin", "/api/anchors", "/api/layer", "/api/project",
-            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest"
+            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest", "/api/fieldnotes"
         };
         private long requestCount;
         private DateTime startedAtUtc;
@@ -122,6 +122,7 @@ namespace QuestMarkerApp.API
         // Application.persistentDataPath is main-thread only: cached in Awake for the HTTP workers.
         private string modelsDirectory = "";
         private string fieldTestDirectory = "";
+        private string fieldNotesFile = "";
 
         public int Port => port;
         /// <summary>Per-device key every LAN client (PC bridge, scripts) must send as X-Api-Key.</summary>
@@ -142,6 +143,7 @@ namespace QuestMarkerApp.API
             security = new ApiSecurity(securityConfig);
             modelsDirectory = Path.Combine(Application.persistentDataPath, "models");
             fieldTestDirectory = Path.Combine(Application.persistentDataPath, FieldTestLog.FolderName);
+            fieldNotesFile = FieldNotes.FilePath;
             if (markerManager == null) markerManager = FindAnyObjectByType<MarkerManager>();
             if (calibrationSystem == null) calibrationSystem = FindAnyObjectByType<CoordinateCalibration>();
             if (sessionManager == null) sessionManager = FindAnyObjectByType<SessionManager>();
@@ -551,6 +553,15 @@ namespace QuestMarkerApp.API
             }
 
             if (path == "/api/fieldtest" && method == "GET") return HandleFieldTestList(response);
+            if (path == "/api/fieldnotes" && method == "GET")
+            {
+                // The notes taken on site against sensors (FieldNotes); an empty list before any.
+                string json = "{\"notes\":[]}";
+                try { if (File.Exists(fieldNotesFile)) json = File.ReadAllText(fieldNotesFile); }
+                catch (Exception e) { UnityEngine.Debug.LogWarning("[API] field notes: " + e.Message); }
+                SendJson(response, 200, json);
+                return 200;
+            }
             if (path.StartsWith("/api/fieldtest/") && method == "GET")
             {
                 string rawPath = request.Url.AbsolutePath.TrimEnd('/');
