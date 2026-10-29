@@ -172,6 +172,37 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>
+        /// A re-fetch of the loaded project with the same points at the same places (within a
+        /// millimetre) only refreshes their details in place: no marker or model dot is rebuilt.
+        /// False, changing nothing, when anything moved, appeared or went.
+        /// </summary>
+        public bool TryRefreshInPlace(ProjectRequest fresh)
+        {
+            if (!HasProject || IsPractice || fresh?.points == null) return false;
+            if (fresh.terrawebProjectId != project.terrawebProjectId || fresh.points.Length != project.points.Length) return false;
+            var byId = new Dictionary<string, ProjectPoint>();
+            foreach (ProjectPoint p in project.points)
+                if (p != null) byId[p.id] = p;
+            foreach (ProjectPoint f in fresh.points)
+            {
+                if (f == null || !byId.TryGetValue(f.id, out ProjectPoint p)) return false;
+                if (Math.Abs(f.e - p.e) > 0.001 || Math.Abs(f.n - p.n) > 0.001 || Math.Abs(f.h - p.h) > 0.001) return false;
+            }
+            foreach (ProjectPoint f in fresh.points)
+            {
+                ProjectPoint p = byId[f.id];
+                p.alertState = f.alertState;
+                p.latestDate = f.latestDate;
+                p.notes = f.notes;
+                p.inactive = f.inactive;
+                p.label = f.label;
+                p.typeLabel = f.typeLabel;
+            }
+            renderPending = true;
+            return true;
+        }
+
+        /// <summary>
         /// Live alerts: the server's tier for a sensor changed. Updates the point and re-renders
         /// on the next frame (one pass for a whole poll) so its marker ring follows; false when
         /// the sensor is unknown or unchanged.

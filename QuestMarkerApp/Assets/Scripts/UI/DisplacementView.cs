@@ -46,7 +46,8 @@ namespace QuestMarkerApp.UI
         private readonly List<Item> items = new List<Item>();
         private Material lineMaterial;
         private Mesh headMesh;
-        private int scaleIndex = 2;
+        private const int SiteScaleIndex = 2; // ×100
+        private int scaleIndex = SiteScaleIndex;
         private float progress = 1f;
         private bool playing;
         private float nextScaleStep;
@@ -193,7 +194,8 @@ namespace QuestMarkerApp.UI
             hudProgressShown = -1f;
             hudPlayingShown = null;
             framePrimed = false;
-            if (OnModel) scaleIndex = ModelScaleIndex();
+            lastOnModel = OnModel;
+            scaleIndex = lastOnModel ? ModelScaleIndex() : SiteScaleIndex;
             // Opening plays the whole record once: the site moving from day one to today.
             progress = 0f;
             playing = true;
@@ -274,6 +276,11 @@ namespace QuestMarkerApp.UI
             Camera cam = Camera.main;
             if (cam == null) return;
 
+            // Between the model and the site the sizes differ ~100-fold: re-pick the scale, or a
+            // miniature's ×500 draws 20 mm as a 10 m arrow on the site.
+            bool onModel = OnModel;
+            if (onModel != lastOnModel) scaleIndex = onModel ? ModelScaleIndex() : SiteScaleIndex;
+
             DateTime first = SensorHistory.First, last = SensorHistory.Last;
             DateTime at = first + TimeSpan.FromTicks((long)((last - first).Ticks * (double)progress));
             float scale = Scales[scaleIndex];
@@ -281,7 +288,6 @@ namespace QuestMarkerApp.UI
             // Alignment key: the change event plus the yaws Draw's maths reads from the project.
             // On the model: where it stands, turns and how far it is zoomed.
             float gridYaw = project.GridYawDeg, solvedYaw = project.YawDeg;
-            bool onModel = OnModel;
             Transform frame = onModel ? modelSensors.Container : null;
             Matrix4x4 modelFrame = frame != null ? frame.localToWorldMatrix : Matrix4x4.identity;
             if (alignmentVersion != lastAlignmentVersion || gridYaw != lastGridYaw || solvedYaw != lastSolvedYaw

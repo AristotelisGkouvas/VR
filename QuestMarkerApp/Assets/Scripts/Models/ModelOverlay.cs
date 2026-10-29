@@ -340,7 +340,8 @@ namespace QuestMarkerApp.Models
                 preview = p != Placement.Project;
                 lifeSize = p == Placement.LifeSize && !Aligning;
 #if !MOBILE_PREVIEW
-                if (preview) Grab();
+                // Aligning, the 1:1 copy stays put: the off-hand grip holds the alignment panel.
+                if (preview && !Aligning) Grab();
                 else EndGrab();
                 // Only the life-size preview: on the site the model must stay on the real building.
                 walk = p == Placement.LifeSize && !grabbing && WalkAllowed();
@@ -538,9 +539,10 @@ namespace QuestMarkerApp.Models
         private void OneHand(Transform hand, bool domHeld)
         {
             // Dominant stick up/down: exponential zoom about the grabbing hand, x2 per second at
-            // full tilt. Not while it drives a panel (dragging, scrolling a menu or list).
+            // full tilt. Not while it drives a panel (dragging, scrolling a menu or list), nor
+            // under the time machine, whose scale rides on the same stick.
             float stick = Hands.DominantStickY();
-            if (!domHeld && Mathf.Abs(stick) > StickDeadZone && !UiState.InputBlocked)
+            if (!domHeld && Mathf.Abs(stick) > StickDeadZone && !UiState.InputBlocked && !DisplacementView.IsActive)
             {
                 float s = root.localScale.x;
                 float next = ClampScale(s * Mathf.Pow(2f, stick * Time.unscaledDeltaTime));

@@ -11,6 +11,8 @@ namespace QuestMarkerApp.Core
     /// the sensor's zero reading). Placement uses the latest x/y/z — survey-grade, unlike the
     /// map-picked WGS84 point — and the displacement arrows / time machine replay dx/dy/dz.
     /// In memory only: a project restored from disk has no history until it is re-loaded.
+    /// A load fills a <see cref="Store"/>; a background refresh fills a fresh one off to the
+    /// side and swaps it in at the end, so the time machine and ribbons never see it half-empty.
     /// </summary>
     public static class SensorHistory
     {
@@ -24,28 +26,56 @@ namespace QuestMarkerApp.Core
             public bool HasPosition => X.HasValue && Y.HasValue && Z.HasValue;
         }
 
-        private static readonly Dictionary<string, List<Sample>> series = new Dictionary<string, List<Sample>>();
+        /// <summary>One project's histories, filled sensor by sensor.</summary>
+        public sealed class Store
+        {
+            internal readonly Dictionary<string, List<Sample>> Series = new Dictionary<string, List<Sample>>();
+            public int ProjectId { get; internal set; }
+            public DateTime First { get; private set; } = DateTime.MaxValue;
+            public DateTime Last { get; private set; } = DateTime.MinValue;
+            public bool HasDisplacements { get; private set; }
+
+            /// <summary>Store one sensor's measurements as the API returned them (any order).</summary>
+            public void Add(string sensorId, JArray measurements)
+            {
+                if (string.IsNullOrEmpty(sensorId) || measurements == null) return;
+                List<Sample> list = Parse(measurements);
+                if (list.Count == 0) return;
+                Series[sensorId] = list;
+                foreach (Sample s in list)
+                {
+                    if (!s.HasDisplacement) continue;
+                    HasDisplacements = true;
+                    if (s.Date < First) First = s.Date;
+                    if (s.Date > Last) Last = s.Date;
+                }
+            }
+        }
+
+        private static Store current = new Store();
+
+        /// <summary>The history in use (to restore it if a refresh is thrown away).</summary>
+        public static Store Current => current;
 
         /// <summary>Terraweb project the history belongs to (0 = none).</summary>
-        public static int ProjectId { get; private set; }
-        public static int Count => series.Count;
-        public static DateTime First { get; private set; }
-        public static DateTime Last { get; private set; }
+        public static int ProjectId => current.ProjectId;
+        public static int Count => current.Series.Count;
+        public static DateTime First => current.First;
+        public static DateTime Last => current.Last;
         /// <summary>Any sensor with at least one dx/dy reading — arrows and time machine possible.</summary>
-        public static bool HasDisplacements { get; private set; }
+        public static bool HasDisplacements => current.HasDisplacements;
 
-        public static void Clear(int projectId)
-        {
-            series.Clear();
-            ProjectId = projectId;
-            HasDisplacements = false;
-            First = DateTime.MaxValue;
-            Last = DateTime.MinValue;
-        }
+        /// <summary>An empty store for <paramref name="projectId"/>, not yet in use.</summary>
+        public static Store Begin(int projectId) => new Store { ProjectId = projectId };
+
+        /// <summary>Puts <paramref name="store"/> in use.</summary>
+        public static void Use(Store store) => current = store ?? new Store();
+
+        public static void Clear(int projectId) => current = Begin(projectId);
 
         /// <summary>Oldest first; null when the sensor has no history.</summary>
         public static IReadOnlyList<Sample> Of(string sensorId) =>
-            sensorId != null && series.TryGetValue(sensorId, out List<Sample> s) ? s : null;
+            sensorId != null && current.Series.TryGetValue(sensorId, out List<Sample> s) ? s : null;
 
         /// <summary>The newest reading that carries a full measured position.</summary>
         public static bool TryLatestPosition(string sensorId, out Sample sample)
@@ -79,10 +109,9 @@ namespace QuestMarkerApp.Core
             return false;
         }
 
-        /// <summary>Store one sensor's measurements as the API returned them (any order).</summary>
-        public static void Add(string sensorId, JArray measurements)
+        // Enabled readings with a position or a displacement, oldest first.
+        private static List<Sample> Parse(JArray measurements)
         {
-            if (string.IsNullOrEmpty(sensorId) || measurements == null) return;
             var list = new List<Sample>();
             foreach (JToken m in measurements)
             {
@@ -103,16 +132,8 @@ namespace QuestMarkerApp.Core
                 if (!sample.HasPosition && !sample.HasDisplacement) continue;
                 list.Add(sample);
             }
-            if (list.Count == 0) return;
             list.Sort((a, b) => a.Date.CompareTo(b.Date));
-            series[sensorId] = list;
-            foreach (Sample s in list)
-            {
-                if (!s.HasDisplacement) continue;
-                HasDisplacements = true;
-                if (s.Date < First) First = s.Date;
-                if (s.Date > Last) Last = s.Date;
-            }
+            return list;
         }
 
         private static double? Num(JToken t)

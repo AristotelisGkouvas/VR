@@ -213,7 +213,7 @@ namespace QuestMarkerApp.Core
             // Design model (OBJ / DXF, IFC converted to OBJ on the PC) laid over the structure
             // through the same alignment as the sensors. A file sent from the PC loads at once;
             // the last one shown comes back on launch.
-            ModelOverlay.Importers["dxf"] = (path, options, progress, cancel) => DxfImporter.Load(path, options, progress);
+            ModelOverlay.Importers["dxf"] = (path, options, progress, cancel) => DxfImporter.Load(path, options, progress, cancel);
             var model = Child<ModelOverlay>("ModelOverlay");
             model.Init(projectAlignment, markerManager);
             // The project's sensors as dots on the tabletop / life-size preview of that model.

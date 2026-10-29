@@ -321,7 +321,11 @@ namespace QuestMarkerApp.UI
         private System.Collections.IEnumerator LoadHistory(string scope, JArray sensors, string areaId, string areaName)
         {
             int token = session;
-            SensorHistory.Clear(selectedProjectId);
+            // A background refresh fills its history off to the side (Apply swaps it in); a
+            // load in view starts from empty at once.
+            bool quiet = IsRefreshing;
+            SensorHistory.Store history = SensorHistory.Begin(selectedProjectId);
+            if (!quiet) SensorHistory.Use(history);
 
             var typeIds = new HashSet<int>();
             foreach (JToken s in sensors)
@@ -358,7 +362,7 @@ namespace QuestMarkerApp.UI
                             {
                                 // A reply from a cancelled load must not land in the project
                                 // opened since; the counters always advance or "n / N" sticks.
-                                try { if (token == session) SensorHistory.Add(id, list); }
+                                try { if (token == session) history.Add(id, list); }
                                 finally { running--; done++; }
                             },
                             _ => { running--; done++; }));
@@ -376,21 +380,60 @@ namespace QuestMarkerApp.UI
             if (token != session) yield break;
             // Alert limits and the latest values they are judged on (after the history, which
             // already holds most 3D points' values). Never blocks the load: no permission or an
-            // error only leaves the limit views off.
-            Busy(scope, L.T("Όρια συναγερμού…", "Alert limits…"));
-            yield return SensorLimits.Load(client, this, selectedProjectId, sensors, areaId, () => token == session);
-            if (token != session) yield break;
-            Apply(scope, sensors, areaId, areaName);
+            // error only leaves the limit views off. A background refresh keeps the limits it
+            // has: clearing them would blank the limit views for the whole download.
+            if (!quiet)
+            {
+                Busy(scope, L.T("Όρια συναγερμού…", "Alert limits…"));
+                yield return SensorLimits.Load(client, this, selectedProjectId, sensors, areaId, () => token == session);
+                if (token != session) yield break;
+            }
+            Apply(scope, sensors, areaId, areaName, history);
         }
 
-        private void Apply(string scope, JArray sensors, string areaId, string areaName)
+        /// <summary>
+        /// What a background refresh must not land on: replacing the project re-solves the
+        /// alignment and respawns every marker, under an alignment, navigation, route or time
+        /// machine in progress.
+        /// </summary>
+        private string RefreshBlocker()
         {
+            if (alignment.IsModeActive) return "alignment";
+            if (SensorNavigator.IsActive) return "navigation";
+            if (InspectionRoute.IsActive) return "route";
+            if (DisplacementView.IsActive) return "time machine";
+            return null;
+        }
+
+        private void Apply(string scope, JArray sensors, string areaId, string areaName, SensorHistory.Store history)
+        {
+            bool quiet = IsRefreshing;
+            quietSession = -1;
+            string blocker = quiet ? RefreshBlocker() : null;
+            if (blocker != null)
+            {
+                Debug.Log($"[Terraweb] Background refresh dropped: {blocker} in progress");
+                return;
+            }
+            // Positions come from the history: put the new one in use before converting, and
+            // back out of it if a background refresh keeps what is there.
+            SensorHistory.Store previous = SensorHistory.Current;
+            SensorHistory.Use(history);
             ProjectRequest project = TerrawebImport.ToProject(scope, sensors, false, out int skipped);
             project.terrawebProjectId = selectedProjectId;
             int n = project.points.Length;
-            bool quiet = IsRefreshing;
-            quietSession = -1;
-            if (n == 0 && quiet) return; // keep what is there
+            if (n == 0 && quiet)
+            {
+                SensorHistory.Use(previous); // keep what is there
+                return;
+            }
+            // Nothing moved: refresh states in place, without respawning markers or model dots.
+            if (quiet && alignment.TryRefreshInPlace(project))
+            {
+                RememberLoaded(areaId, areaName);
+                Debug.Log($"[Terraweb] Background refresh: {n} sensors, positions unchanged");
+                return;
+            }
             if (n == 0)
             {
                 panel.ShowMessage(Eyebrow, scope, L.T("Κανένας αισθητήρας με θέση", "No sensor with a position"),

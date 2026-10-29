@@ -75,8 +75,15 @@ namespace QuestMarkerApp.Models
         {
             if (Time.unscaledTime < nextRefreshTry) return;
             if (flow == null) flow = FindAnyObjectByType<TerrawebFlow>();
-            if (flow == null || !flow.CanReload || flow.IsRefreshing) return;
+            if (flow == null)
+            {
+                nextRefreshTry = Time.unscaledTime + RetrySeconds; // not searched for every frame
+                return;
+            }
+            if (!flow.CanReload || flow.IsRefreshing) return;
             if (project == null || project.IsPractice || project.IsModeActive) return;
+            // Not under work the refresh would have to drop anyway (TerrawebFlow.RefreshBlocker).
+            if (DisplacementView.IsActive || SensorNavigator.IsActive || InspectionRoute.IsActive) return;
             bool stale = (DateTime.UtcNow - flow.LastLoaded).TotalMinutes >= RefreshMinutes;
             if (!refreshNow && !stale) return;
             refreshNow = false;
@@ -102,6 +109,7 @@ namespace QuestMarkerApp.Models
         private SensorCard card;
         private Transform container;
         private readonly List<Dot> dots = new List<Dot>();
+        private readonly Dictionary<string, Dot> dotById = new Dictionary<string, Dot>();
 
         // What the dots were built from; any change rebuilds them.
         private ModelData builtModel;
@@ -161,11 +169,14 @@ namespace QuestMarkerApp.Models
         public bool Showing { get; private set; }
 
         /// <summary>The dot of a project point (ProjectPoint.id), when it is drawn on the model.</summary>
-        public Transform DotOf(string pointId)
+        public Transform DotOf(string pointId) =>
+            pointId != null && dotById.TryGetValue(pointId, out Dot d) ? d.T : null;
+
+        // The site's sensors come back whenever the dots stop showing, however that happens.
+        private void OnDisable()
         {
-            foreach (Dot d in dots)
-                if (d.Point.id == pointId) return d.T;
-            return null;
+            Showing = false;
+            if (markers != null) markers.HideProjectLayer = false;
         }
 
         private void OnDestroy()
@@ -177,7 +188,11 @@ namespace QuestMarkerApp.Models
 
         private void Update()
         {
-            if (overlay == null) return;
+            if (overlay == null)
+            {
+                OnDisable();
+                return;
+            }
             CheckSource();
             if (dirty) Rebuild();
 
@@ -348,6 +363,7 @@ namespace QuestMarkerApp.Models
             SetAimed(null);
             foreach (Dot d in dots) if (d.T != null) Destroy(d.T.gameObject);
             dots.Clear();
+            dotById.Clear();
         }
 
         // The alignment's icon piece for piece (Marker.CreateIconVisual): alert ring, paper halo,
@@ -369,6 +385,7 @@ namespace QuestMarkerApp.Models
             var dot = new Dot { Point = p, Local = local, T = go.transform, Ring = ring, Label = AddLabel(go.transform, name) };
             SetState(dot, p.alertState);
             dots.Add(dot);
+            if (p.id != null) dotById[p.id] = dot;
         }
 
         /// <summary>The ring sprite's unit scale (its sprite width undone), from the last dot built.</summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Threading;
 using UnityEngine;
 using QuestMarkerApp.Core;
 
@@ -30,9 +31,17 @@ namespace QuestMarkerApp.Models
         private const int BulgeSegmentsPerQuarter = 8;
         private const int ProgressEveryEntities = 2048;
 
-        /// <summary>Loads a DXF file from disk; <paramref name="progress"/> gets 0..1 by file position.</summary>
-        public static ModelData Load(string path, ImportOptions options, Action<float> progress = null)
+        /// <summary>
+        /// Loads a DXF file from disk; <paramref name="progress"/> gets 0..1 by file position.
+        /// <paramref name="cancel"/> is checked at each progress step: a superseded import stops.
+        /// </summary>
+        public static ModelData Load(string path, ImportOptions options, Action<float> progress = null,
+            CancellationToken cancel = default)
         {
+            Action<float> report = progress;
+            if (cancel.CanBeCanceled)
+                report = p => { cancel.ThrowIfCancellationRequested(); progress?.Invoke(p); };
+            progress = report;
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
             {
                 ThrowIfBinary(fs);
