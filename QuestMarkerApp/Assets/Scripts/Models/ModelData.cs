@@ -58,6 +58,19 @@ namespace QuestMarkerApp.Models
 
         /// <summary>True when the group carries UVs for every vertex and names a diffuse map.</summary>
         public bool IsTextured => TexturePath != null && UVs.Count > 0 && UVs.Count == Vertices.Count;
+
+        /// <summary>
+        /// Lets the geometry go once it is on the GPU: a photogrammetry model kept 100-200 MB of
+        /// lists for nothing (the menu counts from ModelData.TriangleCount). Name, colour and
+        /// visibility stay.
+        /// </summary>
+        public void Release()
+        {
+            Vertices.Clear(); Vertices.TrimExcess();
+            Triangles.Clear(); Triangles.TrimExcess();
+            UVs.Clear(); UVs.TrimExcess();
+            LineVertices.Clear(); LineVertices.TrimExcess();
+        }
     }
 
     /// <summary>What an importer needs to know besides the file: units and axes of the source.</summary>

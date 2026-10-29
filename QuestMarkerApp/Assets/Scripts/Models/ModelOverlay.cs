@@ -57,6 +57,11 @@ namespace QuestMarkerApp.Models
         private const float GroundProbeRadius = 5f;
         /// <summary>Mesh work per frame while building: triangles, plus edges at half weight.</summary>
         private const int FrameBudget = 200_000;
+        /// <summary>
+        /// Vertices per piece of a fill-only group (photogrammetry): 16-bit indices, one piece's
+        /// upload fits a frame, and at 1:1 the pieces behind the user are culled.
+        /// </summary>
+        private const int ChunkVertices = ushort.MaxValue;
         /// <summary>Beyond this a group's wireframe is skipped: the lines mesh would dwarf the fill.</summary>
         private const int MaxEdgesPerGroup = 300_000;
         private const float EdgeAlpha = 0.6f;
@@ -803,12 +808,26 @@ namespace QuestMarkerApp.Models
             prepared.TextureBytes.Clear(); // let the compressed file bytes go before the meshes are built
             hasTextures = textures.Count > 0;
 
+            // Piece by piece within the frame budget: one 2M-triangle group no longer lands in a
+            // single frame. Each group's vertex lists go as soon as its meshes are on the GPU.
             int spent = 0;
             for (int i = 0; i < prepared.Groups.Count; i++)
             {
                 GroupBuild gb = prepared.Groups[i];
-                BuildGroup(i, gb);
-                spent += gb.Group.Triangles.Count / 3 + gb.EdgeIndices.Length / 4 + gb.Group.LineVertices.Count / 2;
+                spent += BuildGroup(i, gb);
+                for (int c = 0; c < gb.Chunks.Count; c++)
+                {
+                    if (spent >= FrameBudget)
+                    {
+                        spent = 0;
+                        yield return null;
+                        if (gen != generation) { DestroyVisuals(); yield break; }
+                    }
+                    spent += BuildChunk(i, gb, gb.Chunks[c]);
+                    gb.Chunks[c] = null;
+                    buildProgress = (i + (c + 1f) / gb.Chunks.Count) / prepared.Groups.Count;
+                }
+                gb.Group.Release();
                 buildProgress = (i + 1f) / prepared.Groups.Count;
                 if (spent >= FrameBudget)
                 {
@@ -851,16 +870,32 @@ namespace QuestMarkerApp.Models
             public ModelGroup Group;
             /// <summary>Pairs of indices into Group.Vertices; empty when skipped.</summary>
             public int[] EdgeIndices = Array.Empty<int>();
+            /// <summary>The fill of a group without edges or lines, cut into 16-bit pieces (empty otherwise).</summary>
+            public readonly List<Chunk> Chunks = new List<Chunk>();
+            /// <summary>The group's IsTextured, kept: its UV list is released once chunked.</summary>
+            public bool Textured;
+            /// <summary>The fill material, shared by the group's pieces.</summary>
+            public Material Fill;
+        }
+
+        /// <summary>One piece of a fill: its own vertices, UVs (or none) and 16-bit triangles.</summary>
+        private sealed class Chunk
+        {
+            public Vector3[] Vertices;
+            public Vector2[] UVs;
+            public ushort[] Triangles;
         }
 
         private static Prepared Prepare(ModelData data, CancellationToken token)
         {
             var result = new Prepared { Model = data };
             var missing = new HashSet<string>(StringComparer.Ordinal);
+            // First: it reads every vertex, and the chunking below lets the lists go.
+            Measure(data, result);
             foreach (ModelGroup g in data.Groups)
             {
                 token.ThrowIfCancellationRequested();
-                var gb = new GroupBuild { Group = g };
+                var gb = new GroupBuild { Group = g, Textured = g.IsTextured };
                 if (g.IsTextured)
                 {
                     // A photogrammetry mesh: the image is the content. No normals (the shader is
@@ -879,10 +914,67 @@ namespace QuestMarkerApp.Models
                     if (skipped) data.Warnings.Add(L.T($"Ομάδα «{g.Name}»: πάρα πολλές ακμές, χωρίς περίγραμμα",
                         $"Group \u201c{g.Name}\u201d: too many edges, no outline"));
                 }
+                // Fill only (no outline or lines need the shared vertex list): cut it into
+                // pieces here, off the main thread, and let the group's own lists go.
+                if (g.Triangles.Count > 0 && gb.EdgeIndices.Length == 0 && g.LineVertices.Count == 0)
+                {
+                    Split(g, gb.Chunks, token);
+                    g.Release();
+                }
                 result.Groups.Add(gb);
             }
-            Measure(data, result);
             return result;
+        }
+
+        /// <summary>
+        /// Cuts a group's triangles, in file order, into pieces of at most ChunkVertices vertices
+        /// each, re-indexed from zero. Photogrammetry exports run tile by tile, so the pieces stay
+        /// compact enough to cull. Worker thread.
+        /// </summary>
+        private static void Split(ModelGroup g, List<Chunk> into, CancellationToken token)
+        {
+            List<Vector3> v = g.Vertices;
+            List<int> t = g.Triangles;
+            bool uv = g.UVs.Count == v.Count && g.UVs.Count > 0;
+            var stamp = new int[v.Count];   // piece number + 1 that last used each vertex
+            var local = new int[v.Count];   // its index in that piece
+            int piece = 0;
+            var pv = new List<Vector3>(ChunkVertices);
+            var puv = new List<Vector2>(uv ? ChunkVertices : 0);
+            var pt = new List<ushort>(ChunkVertices * 2);
+
+            void Flush()
+            {
+                if (pt.Count == 0) return;
+                into.Add(new Chunk { Vertices = pv.ToArray(), UVs = uv ? puv.ToArray() : null, Triangles = pt.ToArray() });
+                pv.Clear();
+                puv.Clear();
+                pt.Clear();
+                piece++;
+            }
+
+            int Map(int i)
+            {
+                if (stamp[i] != piece + 1)
+                {
+                    stamp[i] = piece + 1;
+                    local[i] = pv.Count;
+                    pv.Add(v[i]);
+                    if (uv) puv.Add(g.UVs[i]);
+                }
+                return local[i];
+            }
+
+            for (int i = 0; i + 2 < t.Count; i += 3)
+            {
+                if ((i & 0x3FFFF) == 0) token.ThrowIfCancellationRequested();
+                if (pv.Count + 3 > ChunkVertices) Flush();
+                int a = Map(t[i]), b = Map(t[i + 1]), c = Map(t[i + 2]);
+                pt.Add((ushort)a);
+                pt.Add((ushort)b);
+                pt.Add((ushort)c);
+            }
+            Flush();
         }
 
         /// <summary>Extent of every vertex, and the median height near the centre (life-size ground). Worker thread.</summary>
@@ -1101,14 +1193,22 @@ namespace QuestMarkerApp.Models
         //  Main-thread mesh building
         // ------------------------------------------------------------------
 
-        private void BuildGroup(int index, GroupBuild gb)
+        /// <summary>
+        /// The group's object, its whole fill when it was not cut into pieces, and its edges and
+        /// lines. Returns the work done (FrameBudget units).
+        /// </summary>
+        private int BuildGroup(int index, GroupBuild gb)
         {
             ModelGroup g = gb.Group;
             var go = new GameObject(string.IsNullOrEmpty(g.Name) ? $"group {index}" : g.Name);
             go.transform.SetParent(root, false);
             go.SetActive(g.Visible);
             groupObjects.Add(go);
+            if (gb.Textured && textures.TryGetValue(g.TexturePath, out Texture2D tex)) gb.Fill = TexturedMaterial(g.TexturePath, tex, g.Color);
+            else if (gb.Textured) gb.Fill = FillMaterial(PlainColor); // image missing: warned in Prepare / decode
+            else gb.Fill = FillMaterial(g.Color);
 
+            int work = g.Triangles.Count / 3 + gb.EdgeIndices.Length / 4 + g.LineVertices.Count / 2;
             if (g.Triangles.Count > 0)
             {
                 var mesh = new Mesh { name = g.Name + " fill", indexFormat = IndexFormatFor(g.Vertices.Count) };
@@ -1117,20 +1217,16 @@ namespace QuestMarkerApp.Models
                 // vertex attribute is fetched (interleaved) whether the shader uses it or not.
                 if (g.UVs.Count > 0 && g.UVs.Count == g.Vertices.Count) mesh.SetUVs(0, g.UVs);
                 mesh.SetTriangles(g.Triangles, 0, true);
-                // Unity drops its CPU copy; ModelData keeps the lists (the menu counts from them).
+                // Unity drops its CPU copy, and the group's lists go once it is built.
                 mesh.UploadMeshData(true);
                 meshes.Add(mesh);
                 go.AddComponent<MeshFilter>().sharedMesh = mesh;
-                Material fill;
-                if (g.IsTextured && textures.TryGetValue(g.TexturePath, out Texture2D tex)) fill = TexturedMaterial(g.TexturePath, tex, g.Color);
-                else if (g.IsTextured) fill = FillMaterial(PlainColor); // image missing: warned in Prepare / decode
-                else fill = FillMaterial(g.Color);
-                Configure(go.AddComponent<MeshRenderer>(), fill);
+                Configure(go.AddComponent<MeshRenderer>(), gb.Fill);
             }
 
             int edgeCount = gb.EdgeIndices.Length / 2;
             int lineCount = g.LineVertices.Count / 2;
-            if (edgeCount + lineCount == 0) return;
+            if (edgeCount + lineCount == 0) return work;
 
             var edgesGo = new GameObject("edges");
             edgesGo.transform.SetParent(go.transform, false);
@@ -1164,6 +1260,24 @@ namespace QuestMarkerApp.Models
             meshes.Add(lines);
             edgesGo.AddComponent<MeshFilter>().sharedMesh = lines;
             Configure(edgesGo.AddComponent<MeshRenderer>(), EdgeMaterial());
+            return work;
+        }
+
+        /// <summary>One piece of a cut fill, under its group's object. Returns its triangles.</summary>
+        private int BuildChunk(int index, GroupBuild gb, Chunk chunk)
+        {
+            Transform parent = groupObjects[index].transform;
+            var go = new GameObject("piece");
+            go.transform.SetParent(parent, false);
+            var mesh = new Mesh { name = gb.Group.Name + " fill", indexFormat = IndexFormat.UInt16 };
+            mesh.SetVertices(chunk.Vertices);
+            if (chunk.UVs != null) mesh.SetUVs(0, chunk.UVs);
+            mesh.SetIndices(chunk.Triangles, MeshTopology.Triangles, 0, true);
+            mesh.UploadMeshData(true);
+            meshes.Add(mesh);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            Configure(go.AddComponent<MeshRenderer>(), gb.Fill);
+            return chunk.Triangles.Length / 3;
         }
 
         // 16-bit indices whenever the vertices fit (most CAD groups): half the index memory and

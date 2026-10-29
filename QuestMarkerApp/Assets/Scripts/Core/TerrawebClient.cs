@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -364,6 +365,16 @@ namespace QuestMarkerApp.Core
 
         private static JArray Results(JToken t) => t as JArray ?? ((t as JObject)?["results"] as JArray) ?? new JArray();
 
+        /// <summary>Replies from this size up are parsed off the main thread, bytes.</summary>
+        private const int ParseOnWorkerFrom = 64 * 1024;
+
+        // UTF-8 without a leading BOM, as DownloadHandler.text gives it.
+        private static string Decode(byte[] data)
+        {
+            int skip = data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF ? 3 : 0;
+            return Encoding.UTF8.GetString(data, skip, data.Length - skip);
+        }
+
         private IEnumerator Get(string path, Action<JToken> ok, Action<string> fail) =>
             Send("GET", path, null, true, ok, fail);
 
@@ -446,9 +457,29 @@ namespace QuestMarkerApp.Core
                     yield break;
                 }
 
-                JToken parsed;
-                try { parsed = string.IsNullOrEmpty(req.downloadHandler.text) ? new JObject() : JToken.Parse(req.downloadHandler.text); }
-                catch (Exception e) { fail(L.T("Μη έγκυρη απάντηση: ", "Invalid response: ") + e.Message); yield break; }
+                // A large reply (limits, measurement pages: up to megabytes) is decoded and parsed
+                // on a worker thread: on the main thread it hitched the headset for a frame or more.
+                JToken parsed = null;
+                Exception parseError = null;
+                byte[] data = req.downloadHandler.data;
+                if (data == null || data.Length == 0) parsed = new JObject();
+                else if (data.Length < ParseOnWorkerFrom)
+                {
+                    try { parsed = JToken.Parse(Decode(data)); }
+                    catch (Exception e) { parseError = e; }
+                }
+                else
+                {
+                    Task<JToken> parse = Task.Run(() => JToken.Parse(Decode(data)));
+                    while (!parse.IsCompleted) yield return null;
+                    if (parse.IsFaulted) parseError = parse.Exception?.GetBaseException();
+                    else parsed = parse.Result;
+                }
+                if (parsed == null)
+                {
+                    fail(L.T("Μη έγκυρη απάντηση: ", "Invalid response: ") + parseError?.Message);
+                    yield break;
+                }
                 // A throwing callback must surface as an error, not silently end this coroutine.
                 try { ok(parsed); }
                 catch (Exception e)
