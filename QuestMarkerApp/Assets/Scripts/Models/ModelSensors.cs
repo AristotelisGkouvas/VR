@@ -28,7 +28,7 @@ namespace QuestMarkerApp.Models
         /// World size of a dot on the tabletop at its default size, metres. The dots then grow
         /// and shrink with the model's zoom, like everything else on it.
         /// </summary>
-        private const float DotTabletop = 0.025f;
+        private const float DotTabletop = 0.012f;
         /// <summary>
         /// At 1:1 far dots grow with distance so they keep this angular size (radians, ~1.7°):
         /// a 20 cm dot 40 m away along the bridge would be a speck.
