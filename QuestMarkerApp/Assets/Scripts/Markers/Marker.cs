@@ -678,7 +678,13 @@ namespace QuestMarkerApp.Markers
 
             transform.localScale = Vector3.one * size;
             if (iconBillboard != null)
-                iconBillboard.localPosition = drop > 0f ? Vector3.up * (drop / Mathf.Max(size, 1e-4f)) : Vector3.zero;
+            {
+                // Half an icon towards the eyes: on a model laid over the structure the disc
+                // would sit half inside the surface and flicker as the head moves.
+                Vector3 toEye = cam.transform.position - transform.position;
+                Vector3 pull = toEye.sqrMagnitude > 1e-6f ? transform.InverseTransformDirection(toEye.normalized) * 0.5f : Vector3.zero;
+                iconBillboard.localPosition = pull + (drop > 0f ? Vector3.up * (drop / Mathf.Max(size, 1e-4f)) : Vector3.zero);
+            }
 
             if (labelText != null)
             {

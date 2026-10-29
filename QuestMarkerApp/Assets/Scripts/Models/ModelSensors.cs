@@ -23,17 +23,12 @@ namespace QuestMarkerApp.Models
     {
         private const string EnabledKey = "model.sensors";
         /// <summary>World size of a dot at 1:1, metres.</summary>
-        private const float DotMax = 0.2f;
+        private const float DotMax = 0.3f;
         /// <summary>
         /// World size of a dot on the tabletop at its default size, metres. The dots then grow
         /// and shrink with the model's zoom, like everything else on it.
         /// </summary>
         private const float DotTabletop = 0.012f;
-        /// <summary>
-        /// At 1:1 far dots grow with distance so they keep this angular size (radians, ~1.7°):
-        /// a 20 cm dot 40 m away along the bridge would be a speck.
-        /// </summary>
-        private const float DotAngular = 0.03f;
         /// <summary>Sensors beyond the model's extent by more than this are not drawn (metres, model scale).</summary>
         private const float FarMargin = 50f;
         /// <summary>Aim tolerance around the ray: an angle, or a distance near the hand.</summary>
@@ -222,11 +217,11 @@ namespace QuestMarkerApp.Models
 
             float rootScale = Mathf.Max(root.lossyScale.x, 1e-6f);
             bool lifeSize = overlay.CurrentPlacement == ModelOverlay.Placement.LifeSize;
-            // At 1:1 a fixed world size, growing with distance; on the table a fixed size in
-            // model metres, so zooming the miniature in makes the dots bigger with it.
-            // The 1:1 copy zoomed down (1:210, say) shrinks its dots with it, like the tabletop.
+            // A fixed size in model metres, at 1:1 as on the table: zooming the model in or out
+            // grows or shrinks the dots with it. (At 1:1 they used to grow with distance to stay
+            // visible; with every head movement they pulsed, which read as flicker.)
             float lifeZoom = Mathf.Min(rootScale, 1f);
-            dotLocal = lifeSize ? DotMax * lifeZoom / rootScale : DotTabletop / Mathf.Max(overlay.DefaultTabletopScale, 1e-6f);
+            dotLocal = lifeSize ? DotMax : DotTabletop / Mathf.Max(overlay.DefaultTabletopScale, 1e-6f);
             if (Time.unscaledTime >= nextRecolour) Recolour();
             Vector3 eye = cam.transform.position;
             Vector3 up = cam.transform.up;
@@ -236,11 +231,20 @@ namespace QuestMarkerApp.Models
             float pulseAlert = 1.35f * (1f + 0.12f * Mathf.Sin(Time.time * 3f));
             foreach (Dot d in dots)
             {
+                // A sensor sits on the model's surface: its disc half inside the mesh flickered
+                // as the head moved. Each frame it is drawn a dot's width out of the surface,
+                // towards the eyes, so it always stands in front of the face it is on.
+                d.T.localPosition = d.Local;
                 Vector3 away = d.T.position - eye;
-                if (away.sqrMagnitude > 1e-8f) d.T.rotation = Quaternion.LookRotation(away, up);
                 float dist = away.magnitude;
-                float world = lifeSize ? Mathf.Max(baseWorld, dist * DotAngular * lifeZoom) : baseWorld;
-                d.T.localScale = Vector3.one * (world / rootScale) * (d == aimed ? 1.4f : 1f);
+                float world = baseWorld * (d == aimed ? 1.4f : 1f);
+                if (dist > 1e-4f)
+                {
+                    Vector3 dir = away / dist;
+                    d.T.position -= dir * Mathf.Min(world, dist * 0.5f);
+                    d.T.rotation = Quaternion.LookRotation(dir, up);
+                }
+                d.T.localScale = Vector3.one * (world / rootScale);
                 // Alarm and alert pulse in a ring, as on the real markers.
                 if (d.Ring.enabled && !d.Stale)
                 {
