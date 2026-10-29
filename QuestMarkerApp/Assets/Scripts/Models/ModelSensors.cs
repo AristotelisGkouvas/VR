@@ -166,6 +166,18 @@ namespace QuestMarkerApp.Models
         /// <summary>True while the dots are on show on a preview (tabletop or 1:1).</summary>
         public bool Showing { get; private set; }
 
+        /// <summary>Bumped on every rebuild of the dots (ModelHeatmap recomputes on it).</summary>
+        public int Version { get; private set; }
+
+        /// <summary>The sensors drawn on the model and their model-local positions.</summary>
+        public IEnumerable<(ProjectPoint point, Vector3 local)> DotPoints
+        {
+            get
+            {
+                foreach (Dot d in dots) yield return (d.Point, d.Local);
+            }
+        }
+
         /// <summary>The dot of a project point (ProjectPoint.id), when it is drawn on the model.</summary>
         public Transform DotOf(string pointId) =>
             pointId != null && dotById.TryGetValue(pointId, out Dot d) ? d.T : null;
@@ -281,6 +293,7 @@ namespace QuestMarkerApp.Models
         private void Rebuild()
         {
             dirty = false;
+            Version++;
             ModelData m = overlay.IsLoaded ? overlay.Model : null;
             builtModel = m;
             builtPoints = project != null ? project.Points : null;

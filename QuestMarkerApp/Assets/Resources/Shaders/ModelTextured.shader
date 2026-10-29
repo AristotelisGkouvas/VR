@@ -10,6 +10,9 @@
 // Stereo-instanced (Quest single-pass instanced): a custom vertex function has to set up the
 // instance and stereo eye itself, or the mesh draws in the left eye only.
 // Lives in Resources so it always ships in the build.
+// Displacement heatmap (ModelHeatmap): a plan-view colour grid in the model's own x/z,
+// global for every model material, mixed over the texture by its alpha × _ModelHeatOpacity
+// (0 when off, so the cost is one extra sample).
 Shader "QuestMarker/ModelTextured"
 {
     Properties
@@ -56,12 +59,16 @@ Shader "QuestMarker/ModelTextured"
             {
                 float4 pos : SV_POSITION;
                 float2 uv : TEXCOORD0;
+                float2 heatUv : TEXCOORD1;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
             fixed4 _Color;
+            sampler2D _ModelHeatTex;
+            float4 _ModelHeatRect; // min x, min z, 1/size x, 1/size z (model-local metres)
+            float _ModelHeatOpacity;
 
             v2f vert(appdata v)
             {
@@ -71,6 +78,9 @@ Shader "QuestMarker/ModelTextured"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                // The model's pieces sit under its root with no transform of their own: object
+                // space is the model's local frame (x east, z north), as ModelHeatmap's grid.
+                o.heatUv = (v.vertex.xz - _ModelHeatRect.xy) * _ModelHeatRect.zw;
                 return o;
             }
 
@@ -80,6 +90,11 @@ Shader "QuestMarker/ModelTextured"
                 // Opacity is the material's, not the image's: a PNG atlas with transparent
                 // padding must not punch holes in the mesh.
                 c.a = _Color.a;
+                if (_ModelHeatOpacity > 0)
+                {
+                    fixed4 h = tex2D(_ModelHeatTex, i.heatUv);
+                    c.rgb = lerp(c.rgb, h.rgb, h.a * _ModelHeatOpacity);
+                }
                 return c;
             }
         ENDCG

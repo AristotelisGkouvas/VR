@@ -34,6 +34,10 @@ namespace QuestMarkerApp.UI
             { "Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ" };
 
         public static bool IsActive { get; private set; }
+        /// <summary>The date on the bar while open (ModelHeatmap follows it).</summary>
+        public static DateTime? ShownAt { get; private set; }
+        /// <summary>The compare-from date while set (grip).</summary>
+        public static DateTime? ComparedFrom { get; private set; }
         /// <summary>Frame it last closed, so the B that closed it does nothing else (route skip).</summary>
         public static int ClosedFrame { get; private set; } = -1;
 
@@ -295,6 +299,8 @@ namespace QuestMarkerApp.UI
             if (onModel != lastOnModel) scaleIndex = onModel ? ModelScaleIndex() : SiteScaleIndex;
 
             DateTime at = CurrentAt();
+            ShownAt = at;
+            ComparedFrom = baseline;
             float scale = Scales[scaleIndex];
 
             // Alignment key: the change event plus the yaws Draw's maths reads from the project.

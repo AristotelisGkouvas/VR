@@ -890,6 +890,18 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
+                // Total movement spread over the surface, green → red at 20 mm (ModelHeatmap).
+                Label = L.T("Heatmap μετακινήσεων", "Displacement heatmap"),
+                Value = () =>
+                {
+                    var heat = FindAnyObjectByType<ModelHeatmap>();
+                    return heat != null ? heat.Status : "—";
+                },
+                Enabled = () => model != null && model.IsLoaded,
+                Run = () => ModelHeatmap.Enabled = !ModelHeatmap.Enabled
+            });
+            y = Row(y, new Item
+            {
                 // Stick walking through the 1:1 copy; rising / sinking follows at 0.7x.
                 Label = L.T("Ταχύτητα πλοήγησης", "Walk speed"),
                 Value = () => ModelOverlay.WalkSpeed.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m/s",

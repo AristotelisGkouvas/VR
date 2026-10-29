@@ -220,7 +220,10 @@ namespace QuestMarkerApp.Core
             var model = Child<ModelOverlay>("ModelOverlay");
             model.Init(projectAlignment, markerManager);
             // The project's sensors as dots on the tabletop / life-size preview of that model.
-            Child<ModelSensors>("ModelSensors").Init(model, projectAlignment, markerManager, sensorCard);
+            var modelSensors = Child<ModelSensors>("ModelSensors");
+            modelSensors.Init(model, projectAlignment, markerManager, sensorCard);
+            // Displacements spread over the model's surface (Model page).
+            Child<ModelHeatmap>("ModelHeatmap").Init(model, modelSensors);
             // The watch on the off hand: mode, alignment trust, data age, connection.
             Child<StatusChip>("StatusChip").Init(projectAlignment, terraweb, flow, model);
             Child<ComfortVignette>("ComfortVignette");
