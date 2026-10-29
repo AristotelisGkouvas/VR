@@ -611,12 +611,19 @@ namespace QuestMarkerApp.Markers
             {
                 string state = currentData?.status;
                 bool alarm = state == "alarm", alert = state == "alert";
-                alertRing.enabled = alarm || alert;
-                if (alertRing.enabled)
+                bool stale = currentData != null && currentData.stale;
+                alertRing.enabled = alarm || alert || stale;
+                if (alarm || alert)
                 {
                     alertRing.color = alarm ? Brand.Danger : Brand.Warning;
                     float pulse = 1f + 0.12f * Mathf.Sin(Time.time * (alarm ? 6f : 3f));
                     alertRing.transform.localScale = new Vector3(1.35f * pulse, 1.35f * pulse, 1f);
+                }
+                else if (stale)
+                {
+                    // Old reading: a steady grey ring, so it reads apart from a live state.
+                    alertRing.color = Brand.FgFaint.WithAlpha(0.95f);
+                    alertRing.transform.localScale = new Vector3(1.3f, 1.3f, 1f);
                 }
             }
             // The navigation target breathes and stands out so it can be spotted from afar.
@@ -666,7 +673,7 @@ namespace QuestMarkerApp.Markers
             }
             // The ring is shared with the alarm pulse: give it back once the wave has passed.
             if (!waving && alertRing != null && alertRing.enabled && currentData?.status != "alarm"
-                && currentData?.status != "alert")
+                && currentData?.status != "alert" && !(currentData != null && currentData.stale))
                 alertRing.enabled = false;
 
             transform.localScale = Vector3.one * size;

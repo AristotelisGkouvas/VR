@@ -232,6 +232,12 @@ namespace QuestMarkerApp.Core
         /// False until aligned — before that the project has no direction in the room.
         /// </summary>
         /// <summary>The inverse of <see cref="TryWorldVector"/>: a world vector in the project frame (x East, y Up, z North).</summary>
+        /// <summary>"old · 7 mo." for a stale sensor's label, in the interface language.</summary>
+        public static string OldReading(int days) =>
+            days < 60 ? (L.En ? $"old · {days} d" : $"παλιά · {days} ημ.")
+            : days < 730 ? (L.En ? $"old · {days / 30} mo." : $"παλιά · {days / 30} μήν.")
+            : (L.En ? $"old · {days / 365} yrs" : $"παλιά · {days / 365} έτη");
+
         public bool TryProjectVector(Vector3 world, out Vector3 projectVector)
         {
             projectVector = Vector3.zero;
@@ -1084,11 +1090,13 @@ namespace QuestMarkerApp.Core
                 else continue;
 
                 string name = string.IsNullOrEmpty(pt.label) ? pt.id : pt.label;
+                bool stale = pt.IsStale(out int ageDays);
                 coords.Add(new CoordinateData
                 {
                     id = MarkerPrefix + pt.id,
                     x = local.x, y = local.y, z = local.z,
-                    label = $"{name}\nH {pt.h:F2}",
+                    label = $"{name}\nH {pt.h:F2}" + (stale ? "  ·  " + OldReading(ageDays) : ""),
+                    stale = stale,
                     color = placed ? controlColor : (string.IsNullOrEmpty(pt.color) ? pointColor : pt.color),
                     scale = pointScale,
                     markerType = string.IsNullOrEmpty(pt.icon) ? "sphere" : "icon",

@@ -51,6 +51,9 @@ namespace QuestMarkerApp.API
         /// <summary>Severity / status free text (e.g. "ok", "warning", "critical").</summary>
         public string status;
 
+        /// <summary>The sensor's newest reading is old (ProjectPoint.IsStale): a grey ring on its icon.</summary>
+        public bool stale;
+
         /// <summary>Logical layer / group name.</summary>
         public string layer = "default";
 

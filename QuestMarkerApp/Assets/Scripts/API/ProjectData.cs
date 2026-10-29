@@ -36,6 +36,23 @@ namespace QuestMarkerApp.API
         /// measured position: good to metres, not centimetres.
         /// </summary>
         public bool approx;
+
+        /// <summary>A reading older than this many days is flagged "old" (icon ring, card, label).</summary>
+        public const int StaleDays = 30;
+
+        /// <summary>
+        /// The newest reading is older than <see cref="StaleDays"/>: what the icon shows may no
+        /// longer hold. The alert state stays the server's. <paramref name="days"/> is its age;
+        /// false with no reading date at all.
+        /// </summary>
+        public bool IsStale(out int days)
+        {
+            days = 0;
+            if (string.IsNullOrEmpty(latestDate) || !DateTime.TryParse(latestDate, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out DateTime d)) return false;
+            days = (int)(DateTime.UtcNow - d.ToUniversalTime()).TotalDays;
+            return days > StaleDays;
+        }
     }
 
     /// <summary>Body of POST /api/project.</summary>

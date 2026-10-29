@@ -84,7 +84,16 @@ namespace QuestMarkerApp.UI
             typeText.text = TypeLine(p);
             SetState(p.alertState);
             dateText.text = FormatDate(p.latestDate);
+            MarkStale(p);
             notesText.text = NotesLine(p);
+        }
+
+        // An old reading: the date in amber and its caption says so.
+        private void MarkStale(ProjectPoint p)
+        {
+            bool stale = p != null && p.IsStale(out _);
+            dateText.color = stale ? Brand.Warning : Brand.Fg;
+            dateCaption.text = stale ? L.T("Τελευταία μέτρηση · παλιά", "Last reading · old") : L.T("Τελευταία μέτρηση", "Last reading");
         }
 
         private void Relabel()
@@ -241,6 +250,7 @@ namespace QuestMarkerApp.UI
             typeText.text = TypeLine(p);
             SetState(p.alertState);
             dateText.text = FormatDate(p.latestDate);
+            MarkStale(p);
             notesText.text = NotesLine(p);
             ClearChart();
             footer.text = "";
@@ -506,6 +516,7 @@ namespace QuestMarkerApp.UI
             valuesText.text = parts.Count > 0 ? string.Join("     ", parts)
                 : L.T("<color=#8ca09e>Κενή μέτρηση.</color>", "<color=#8ca09e>Empty reading.</color>");
             dateText.text = FormatDate((string)latest?["meas_date"]);
+            MarkStale(point);
 
             // Limits: the field closest to its limit is the one charted, with its limit lines
             // (a vertical sensor's depths mix in one list, so it gets no lines).
@@ -521,14 +532,19 @@ namespace QuestMarkerApp.UI
                 fields.Insert(0, first);
             }
 
-            // Chart the first field that actually has a series.
+            // Chart the first field that actually has a series; a 3D point charts its x, y and z
+            // (or dx, dy, dz) together.
             foreach (var (code, unit, _) in fields)
             {
-                int count = 0;
-                foreach (JToken m in list)
-                    if (IsEnabled(m) && TryNumber(m["values"]?[code], out _)) count++;
-                if (count < 2) continue;
-                DrawChart(list, code, unit, chartLimit != null && code == driving.Field ? chartLimit : null);
+                if (SeriesCount(list, code) < 2) continue;
+                string[] trio = Trio(code);
+                var codes = new List<string>();
+                if (trio != null)
+                    foreach (string c in trio)
+                        if (SeriesCount(list, c) >= 2) codes.Add(c);
+                if (codes.Count < 2) codes = new List<string> { code };
+                LimitMath.FieldLimit lines = chartLimit != null && codes.Contains(driving.Field) && codes[0] != "x" ? chartLimit : null;
+                DrawChart(list, codes, unit, lines);
                 break;
             }
             footer.text = L.T($"{list.Count} πιο πρόσφατες", list.Count == 1 ? "1 latest" : $"{list.Count} latest");
@@ -592,24 +608,69 @@ namespace QuestMarkerApp.UI
             return result?.Driving;
         }
 
-        private void DrawChart(JArray list, string code, string unit, LimitMath.FieldLimit limit = null)
+        private static int SeriesCount(JArray list, string code)
         {
-            var series = new List<double>();
-            for (int i = list.Count - 1; i >= 0; i--) // oldest → newest
+            int count = 0;
+            foreach (JToken m in list)
+                if (IsEnabled(m) && TryNumber(m["values"]?[code], out _)) count++;
+            return count;
+        }
+
+        // The three axes of a 3D point, measured or as displacements; null for anything else.
+        private static string[] Trio(string code)
+        {
+            switch (code)
             {
-                if (IsEnabled(list[i]) && TryNumber(list[i]?["values"]?[code], out double num))
-                    series.Add(num);
+                case "x": case "y": case "z": return new[] { "x", "y", "z" };
+                case "dx": case "dy": case "dz": return new[] { "dx", "dy", "dz" };
+                default: return null;
+            }
+        }
+
+        // x red, y green, z blue, as on a survey plot.
+        private static readonly Color32[] AxisColors = { Brand.Danger, Brand.Primary, Brand.Info };
+        private static readonly string[] AxisHex = { "#db5a46", "#8fc93a", "#5bcce5" };
+
+        /// <summary>
+        /// One line per field over the same readings, oldest left. Several fields share one
+        /// scale; absolute coordinates (x, y, z: thousands of metres apart) are drawn as their
+        /// change since the first reading, so their movements compare.
+        /// </summary>
+        private void DrawChart(JArray list, List<string> codes, string unit, LimitMath.FieldLimit limit = null)
+        {
+            bool relative = codes.Count > 1 && codes[0] == "x";
+            var all = new List<List<double>>();
+            int columns = 0;
+            for (int i = list.Count - 1; i >= 0; i--) // oldest → newest
+                if (IsEnabled(list[i])) columns++;
+            foreach (string code in codes)
+            {
+                var col = new List<double>(columns);
+                double first = double.NaN;
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    if (!IsEnabled(list[i])) continue;
+                    if (TryNumber(list[i]?["values"]?[code], out double num))
+                    {
+                        if (relative && double.IsNaN(first)) first = num;
+                        col.Add(relative ? num - first : num);
+                    }
+                    else col.Add(double.NaN); // a gap, kept in its column
+                }
+                all.Add(col);
             }
             ClearChart();
-            if (series.Count < 2) { chartCaption.text = L.T("Λίγες μετρήσεις για γράφημα", "Too few readings for a chart"); return; }
+            if (columns < 2) { chartCaption.text = L.T("Λίγες μετρήσεις για γράφημα", "Too few readings for a chart"); return; }
 
             double min = double.MaxValue, max = double.MinValue;
-            foreach (double s in series) { min = Math.Min(min, s); max = Math.Max(max, s); }
+            foreach (List<double> col in all)
+                foreach (double v in col)
+                    if (!double.IsNaN(v)) { min = Math.Min(min, v); max = Math.Max(max, v); }
             if (limit != null)
             {
                 // The range always holds 0 and the limit nearest the latest value, so the gap to
                 // the limit is seen in true proportion.
-                double latestValue = series[series.Count - 1], nearest = double.NaN, best = double.MaxValue;
+                double latestValue = LastValue(all[0]), nearest = double.NaN, best = double.MaxValue;
                 for (int t = LimitMath.Reference; t <= LimitMath.Alarm; t++)
                     foreach (double? b in new[] { limit.Tiers[t].Min, limit.Tiers[t].Max })
                         if (b.HasValue && Math.Abs(b.Value - latestValue) < best) { best = Math.Abs(b.Value - latestValue); nearest = b.Value; }
@@ -622,23 +683,44 @@ namespace QuestMarkerApp.UI
 
             Color32[] pixels = chartPixels;
             if (limit != null) DrawLimitLines(pixels, limit, min, max);
-            Color32 line = Brand.Primary;
-            int px = -1, py = -1;
-            for (int i = 0; i < series.Count; i++)
+            bool multi = all.Count > 1;
+            for (int k = all.Count - 1; k >= 0; k--) // x drawn last, on top
             {
-                int x = Mathf.RoundToInt(i / (float)(series.Count - 1) * (ChartW - 5)) + 2;
-                int y = Mathf.RoundToInt((float)((series[i] - min) / (max - min)) * (ChartH - 9)) + 4;
-                if (px >= 0) Plot(pixels, px, py, x, y, line);
-                Dot(pixels, x, y, 2, line);
-                px = x; py = y;
+                List<double> col = all[k];
+                Color32 line = multi ? AxisColors[k % AxisColors.Length] : (Color32)Brand.Primary;
+                int px = -1, py = -1;
+                for (int i = 0; i < col.Count; i++)
+                {
+                    if (double.IsNaN(col[i])) continue;
+                    int x = Mathf.RoundToInt(i / (float)(col.Count - 1) * (ChartW - 5)) + 2;
+                    int y = Mathf.RoundToInt((float)((col[i] - min) / (max - min)) * (ChartH - 9)) + 4;
+                    if (px >= 0) Plot(pixels, px, py, x, y, line);
+                    Dot(pixels, x, y, 2, line);
+                    px = x; py = y;
+                }
+                if (px >= 0) Dot(pixels, px, py, 4, multi ? line : (Color32)Brand.Fg);
             }
-            Dot(pixels, px, py, 4, Brand.Fg);
             chartTexture.SetPixels32(pixels);
             chartTexture.Apply(false);
 
             chartMax.text = $"{FormatNumber(max)} {unit}";
             chartMin.text = $"{FormatNumber(min)} {unit}";
-            chartCaption.text = L.T($"{code} · {series.Count} μετρήσεις", $"{code} · {series.Count} readings");
+            string legend = codes[0];
+            if (multi)
+            {
+                var names = new List<string>();
+                for (int k = 0; k < codes.Count; k++)
+                    names.Add($"<color={AxisHex[k % AxisHex.Length]}>{(relative ? "Δ" : "")}{codes[k]}</color>");
+                legend = string.Join(" · ", names) + (relative ? L.T(" από την πρώτη", " since the first") : "");
+            }
+            chartCaption.text = L.T($"{legend} · {columns} μετρήσεις", $"{legend} · {columns} readings");
+        }
+
+        private static double LastValue(List<double> col)
+        {
+            for (int i = col.Count - 1; i >= 0; i--)
+                if (!double.IsNaN(col[i])) return col[i];
+            return 0;
         }
 
         // Dashed horizontal line per bound inside the range, in its tier's colour, labelled

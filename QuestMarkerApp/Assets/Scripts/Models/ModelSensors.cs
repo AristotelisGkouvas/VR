@@ -99,6 +99,8 @@ namespace QuestMarkerApp.Models
             public Vector3 Local;
             public Transform T;
             public SpriteRenderer Ring;
+            /// <summary>Old reading only: the ring stays still and grey.</summary>
+            public bool Stale;
             public TextMeshPro Label;
             public string State;
         }
@@ -238,7 +240,7 @@ namespace QuestMarkerApp.Models
                 float world = lifeSize ? Mathf.Max(baseWorld, dist * DotAngular) : baseWorld;
                 d.T.localScale = Vector3.one * (world / rootScale) * (d == aimed ? 1.4f : 1f);
                 // Alarm and alert pulse in a ring, as on the real markers.
-                if (d.Ring.enabled)
+                if (d.Ring.enabled && !d.Stale)
                 {
                     float r = (d.State == "alarm" ? pulseAlarm : pulseAlert) * ringBase;
                     d.Ring.transform.localScale = new Vector3(r, r, 1f);
@@ -429,8 +431,10 @@ namespace QuestMarkerApp.Models
         {
             d.State = (state ?? "none").ToLowerInvariant();
             bool alarm = d.State == "alarm", alert = d.State == "alert";
-            d.Ring.enabled = alarm || alert;
-            d.Ring.color = alarm ? Brand.Danger : Brand.Warning;
+            bool stale = d.Point.IsStale(out _);
+            d.Ring.enabled = alarm || alert || stale;
+            d.Ring.color = alarm ? Brand.Danger : alert ? Brand.Warning : Brand.FgFaint.WithAlpha(0.95f);
+            d.Stale = stale && !alarm && !alert;
         }
 
         private static SpriteRenderer Piece(Transform parent, string name, Sprite sprite, Color color, float size, float depth, int order,
