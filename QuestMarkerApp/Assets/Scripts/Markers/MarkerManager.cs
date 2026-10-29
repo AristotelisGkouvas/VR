@@ -109,8 +109,9 @@ namespace QuestMarkerApp.Markers
         }
 
         /// <summary>
-        /// Hides the aligned project's sensors on the site (layer "project") while the model is
-        /// previewed on the table or at 1:1: the sensors then show on the model instead.
+        /// Hides every marker on the site (the aligned sensors, the control points, anything the
+        /// PC pushed) while the model is previewed on the table or at 1:1: there the model is the
+        /// world, and its sensors show on it (or not at all, per the model menu).
         /// </summary>
         public bool HideProjectLayer
         {
@@ -524,7 +525,7 @@ namespace QuestMarkerApp.Markers
 
         private bool IsLayerVisible(string layer)
         {
-            if (hideProjectLayer && string.Equals(layer, "project", StringComparison.OrdinalIgnoreCase)) return false;
+            if (hideProjectLayer) return false;
             if (string.IsNullOrEmpty(visibleLayerFilter)) return true;
             return string.Equals(visibleLayerFilter, layer ?? "default", StringComparison.OrdinalIgnoreCase);
         }

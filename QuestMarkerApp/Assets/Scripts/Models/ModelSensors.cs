@@ -205,10 +205,12 @@ namespace QuestMarkerApp.Models
                         && overlay.CurrentPlacement != ModelOverlay.Placement.Project;
             if (container != null && container.gameObject.activeSelf != show) container.gameObject.SetActive(show);
             Showing = show;
-            // On the model, not twice: the site's sensors step aside while the preview shows them
-            // (except while aligning, where the touched points are the job).
+            // The preview is the world: the site's markers step aside while it is on show, the
+            // dots switched off or not (except while aligning, where the touched points are the job).
+            bool preview = root != null && root.gameObject.activeInHierarchy
+                           && overlay.CurrentPlacement != ModelOverlay.Placement.Project;
             if (markers != null)
-                markers.HideProjectLayer = show && (project == null || !project.IsModeActive);
+                markers.HideProjectLayer = preview && (project == null || !project.IsModeActive);
             Camera cam = Camera.main;
             if (!show || cam == null)
             {
