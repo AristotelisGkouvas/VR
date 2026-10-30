@@ -579,7 +579,8 @@ namespace QuestMarkerApp.UI
                     : $"Συναγερμός {alarms}   ·   Προειδοποίηση {alerts}   ·   Κανονικό {normal}"
             };
             if (skipped.Count > 0) lines.Add(L.T("Παραλείφθηκαν: ", "Skipped: ") + string.Join(", ", skipped));
-            int noted = FieldNotes.Since(alignment != null ? alignment.ProjectName : "", startedAt.ToUniversalTime()).Count;
+            int noted = FieldNotes.Since(alignment != null ? alignment.TerrawebProjectId : 0,
+                alignment != null ? alignment.ProjectName : "", startedAt.ToUniversalTime()).Count;
             if (noted > 0) lines.Add(L.En ? $"Notes: {noted}" : $"Σημειώσεις: {noted}");
 
             string file = Save(completed, finishedAt, heading, lines);
@@ -628,7 +629,8 @@ namespace QuestMarkerApp.UI
                     txt.AppendLine();
                 }
                 // Notes taken on site during the walk (sensor cards).
-                List<FieldNotes.Note> notes = FieldNotes.Since(alignment != null ? alignment.ProjectName : "", startedAt.ToUniversalTime());
+                List<FieldNotes.Note> notes = FieldNotes.Since(alignment != null ? alignment.TerrawebProjectId : 0,
+                    alignment != null ? alignment.ProjectName : "", startedAt.ToUniversalTime());
                 if (notes.Count > 0)
                 {
                     txt.AppendLine().AppendLine(L.T("ΣΗΜΕΙΩΣΕΙΣ", "NOTES"));

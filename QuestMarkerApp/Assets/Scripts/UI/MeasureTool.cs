@@ -62,7 +62,8 @@ namespace QuestMarkerApp.UI
 
             if (!UiState.InputBlocked)
             {
-                if (Hands.DominantSecondaryDown() && !SensorNavigator.IsActive)
+                if (Hands.DominantSecondaryDown() && !SensorNavigator.IsActive
+                    && SensorNavigator.StoppedFrame != Time.frameCount)
                 {
                     Feedback.Play(Feedback.Sound.Undo, 0.6f);
                     Close();

@@ -122,7 +122,7 @@ namespace QuestMarkerApp.UI
         {
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrEmpty(p.notes)) sb.Append(L.T("Σημειώσεις: ", "Notes: ")).Append(p.notes);
-            List<FieldNotes.Note> mine = alignment != null ? FieldNotes.For(alignment.ProjectName, p.id) : null;
+            List<FieldNotes.Note> mine = alignment != null ? FieldNotes.For(projectId?.Invoke() ?? 0, alignment.ProjectName, p.id) : null;
             if (mine != null)
                 for (int i = 0; i < mine.Count && i < 2; i++)
                 {
@@ -583,7 +583,8 @@ namespace QuestMarkerApp.UI
                     foreach (string c in trio)
                         if (SeriesCount(list, c) >= 2) codes.Add(c);
                 if (codes.Count < 2) codes = new List<string> { code };
-                LimitMath.FieldLimit lines = chartLimit != null && codes.Contains(driving.Field) && codes[0] != "x" ? chartLimit : null;
+                // Limit lines belong to one field: only on a single-field chart.
+                LimitMath.FieldLimit lines = chartLimit != null && codes.Count == 1 && codes[0] == driving.Field ? chartLimit : null;
                 DrawChart(list, codes, unit, lines);
                 chartCaption.text += RateText(list, codes, unit);
                 break;

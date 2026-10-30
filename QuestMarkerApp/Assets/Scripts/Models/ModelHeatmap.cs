@@ -92,6 +92,12 @@ namespace QuestMarkerApp.Models
         private Texture2D tex;
         private Color32[] pixels;
         private readonly List<(Vector2 at, float mm)> samples = new List<(Vector2, float)>();
+        private readonly System.Text.StringBuilder sampleIds = new System.Text.StringBuilder();
+        // Per pixel, the interpolation (up to 3 sensors and weights, and the fade): it depends
+        // on where the sensors are, not on their values, so a new date only recombines them.
+        private string geometryKey;
+        private int[] wIndex;
+        private float[] wWeight, wAlpha;
         private string key;
         private float nextCompute;
         private bool shown;
@@ -109,6 +115,8 @@ namespace QuestMarkerApp.Models
         private Texture2D legendTex;
         private Measure legendShown = (Measure)(-1);
         private bool legendGliding;
+        private int probeKey = int.MinValue;
+        private Sprite legendSprite;
 #if !MOBILE_PREVIEW
         private OVRCameraRig rig;
 #endif
@@ -129,6 +137,7 @@ namespace QuestMarkerApp.Models
                 if (shown) { Shader.SetGlobalFloat(HeatOpacityId, 0f); shown = false; }
                 Status = Enabled ? L.T("Χωρίς μοντέλο", "No model") : L.T("Όχι", "Off");
                 ShowUi(false);
+                key = null; // shown again: computed again (the texture is zeroed out of view)
                 return;
             }
             ShowUi(shown && !UiState.AnyModal);
@@ -148,6 +157,7 @@ namespace QuestMarkerApp.Models
         private void Collect(DateTime at, DateTime? from, Measure measure)
         {
             samples.Clear();
+            sampleIds.Clear();
             foreach ((ProjectPoint p, Vector3 local) in sensors.DotPoints)
             {
                 if (!SensorHistory.TryDisplacementAt(p.sensorId, at, out SensorHistory.Sample s)) continue;
@@ -175,6 +185,7 @@ namespace QuestMarkerApp.Models
                     value = measure == Measure.Vertical ? dz * toMm : Math.Sqrt(dx * dx + dy * dy + dz * dz) * toMm;
                 }
                 samples.Add((new Vector2(local.x, local.z), (float)value));
+                sampleIds.Append(p.id).Append(',');
             }
         }
 
@@ -201,48 +212,26 @@ namespace QuestMarkerApp.Models
 
             Bounds b = overlay.ModelBounds;
             float size = Mathf.Max(b.size.x, b.size.z, 1f);
-            float minX = b.center.x - size * 0.5f, minZ = b.center.z - size * 0.5f, cell = size / Grid;
-            // Colour reaches this far from the nearest sensor, fading over the last half.
-            float reach = Mathf.Clamp(1.5f * TypicalSpacing(), 5f, 30f) * ReachFactors[ReachSetting];
-            Reach = reach;
-            float fadeFrom = reach * 0.5f;
+            float minX = b.center.x - size * 0.5f, minZ = b.center.z - size * 0.5f;
 
-            var pts = new Vector2[samples.Count];
             var vals = new float[samples.Count];
-            for (int i = 0; i < samples.Count; i++) { pts[i] = samples[i].at; vals[i] = samples[i].mm; }
-            List<int> tris = Delaunay.Triangulate(pts);
-            // Drop triangles that bridge a gap with no sensors.
-            float maxEdge = 2f * reach;
-            var keep = new List<int>(tris.Count);
-            for (int t = 0; t + 2 < tris.Count; t += 3)
+            for (int i = 0; i < samples.Count; i++) vals[i] = samples[i].mm;
+            string geo = $"{sensors.Version}|{ReachSetting}|{overlay.LoadedName}|{sampleIds}";
+            if (geo != geometryKey)
             {
-                Vector2 a = pts[tris[t]], c1 = pts[tris[t + 1]], c2 = pts[tris[t + 2]];
-                if ((a - c1).magnitude > maxEdge || (c1 - c2).magnitude > maxEdge || (c2 - a).magnitude > maxEdge) continue;
-                keep.Add(tris[t]); keep.Add(tris[t + 1]); keep.Add(tris[t + 2]);
+                geometryKey = geo;
+                BuildWeights(minX, minZ, size);
             }
-            List<(int, int)> edges = Edges(keep, pts, maxEdge);
 
-            for (int gy = 0; gy < Grid; gy++)
+            for (int k = 0; k < Grid * Grid; k++)
             {
-                float z = minZ + (gy + 0.5f) * cell;
-                for (int gx = 0; gx < Grid; gx++)
-                {
-                    float x = minX + (gx + 0.5f) * cell;
-                    var q = new Vector2(x, z);
-                    float nearest = float.MaxValue;
-                    int nearestIndex = 0;
-                    for (int i = 0; i < pts.Length; i++)
-                    {
-                        float d = (q - pts[i]).sqrMagnitude;
-                        if (d < nearest) { nearest = d; nearestIndex = i; }
-                    }
-                    nearest = Mathf.Sqrt(nearest);
-                    if (nearest > reach) { pixels[gy * Grid + gx] = default; continue; }
-                    float value = Linear(q, pts, vals, keep, edges, nearestIndex);
-                    float alpha = nearest <= fadeFrom ? 1f : Mathf.Clamp01(1f - (nearest - fadeFrom) / (reach - fadeFrom));
-                    Color c = Ramp(value, measure);
-                    pixels[gy * Grid + gx] = new Color(c.r, c.g, c.b, alpha);
-                }
+                int j = k * 3;
+                if (wIndex[j] < 0) { pixels[k] = default; continue; }
+                float value = wWeight[j] * vals[wIndex[j]]
+                              + (wIndex[j + 1] >= 0 ? wWeight[j + 1] * vals[wIndex[j + 1]] : 0f)
+                              + (wIndex[j + 2] >= 0 ? wWeight[j + 2] * vals[wIndex[j + 2]] : 0f);
+                Color c = Ramp(value, measure);
+                pixels[k] = new Color(c.r, c.g, c.b, wAlpha[k]);
             }
             tex.SetPixels32(pixels);
             tex.Apply(false);
@@ -252,13 +241,66 @@ namespace QuestMarkerApp.Models
             Shader.SetGlobalFloat(HeatOpacityId, Opacity);
             shown = true;
             Count = samples.Count;
-            lastPts = pts;
             lastVals = vals;
+            computed = measure;
+            Status = L.En ? $"On · {samples.Count} sensors" : $"Ναι · {samples.Count} αισθητήρες";
+        }
+
+        // Where the sensors are → per pixel which of them mix, with what weights, and the fade.
+        private void BuildWeights(float minX, float minZ, float size)
+        {
+            int n = Grid * Grid;
+            if (wIndex == null) { wIndex = new int[n * 3]; wWeight = new float[n * 3]; wAlpha = new float[n]; }
+            float cell = size / Grid;
+            // Colour reaches this far from the nearest sensor, fading over the last half.
+            float reach = Mathf.Clamp(1.5f * TypicalSpacing(), 5f, 30f) * ReachFactors[ReachSetting];
+            Reach = reach;
+            float fadeFrom = reach * 0.5f;
+
+            var pts = new Vector2[samples.Count];
+            for (int i = 0; i < samples.Count; i++) pts[i] = samples[i].at;
+            List<int> tris = Delaunay.Triangulate(pts);
+            // Drop triangles that bridge a gap with no sensors, and zero-area slivers (collinear).
+            float maxEdge = 2f * reach;
+            var keep = new List<int>(tris.Count);
+            for (int t = 0; t + 2 < tris.Count; t += 3)
+            {
+                Vector2 a = pts[tris[t]], c1 = pts[tris[t + 1]], c2 = pts[tris[t + 2]];
+                float e1 = (a - c1).magnitude, e2 = (c1 - c2).magnitude, e3 = (c2 - a).magnitude;
+                if (e1 > maxEdge || e2 > maxEdge || e3 > maxEdge) continue;
+                float longest = Mathf.Max(e1, Mathf.Max(e2, e3));
+                float area2 = Mathf.Abs((c1.x - a.x) * (c2.y - a.y) - (c2.x - a.x) * (c1.y - a.y));
+                if (area2 < 1e-3f * longest * longest) continue;
+                keep.Add(tris[t]); keep.Add(tris[t + 1]); keep.Add(tris[t + 2]);
+            }
+            List<(int, int)> edges = Edges(keep, pts, maxEdge);
+            lastPts = pts;
             lastTris = keep;
             lastEdges = edges;
             lastReach = reach;
-            computed = measure;
-            Status = L.En ? $"On · {samples.Count} sensors" : $"Ναι · {samples.Count} αισθητήρες";
+
+            for (int gy = 0; gy < Grid; gy++)
+            {
+                float z = minZ + (gy + 0.5f) * cell;
+                for (int gx = 0; gx < Grid; gx++)
+                {
+                    int k = gy * Grid + gx, j = k * 3;
+                    var q = new Vector2(minX + (gx + 0.5f) * cell, z);
+                    float nearest = float.MaxValue;
+                    int nearestIndex = 0;
+                    for (int i = 0; i < pts.Length; i++)
+                    {
+                        float d = (q - pts[i]).sqrMagnitude;
+                        if (d < nearest) { nearest = d; nearestIndex = i; }
+                    }
+                    nearest = Mathf.Sqrt(nearest);
+                    if (nearest > reach) { wIndex[j] = -1; wAlpha[k] = 0f; continue; }
+                    Weights(q, pts, keep, edges, nearestIndex, out int i0, out int i1, out int i2, out float w0, out float w1, out float w2);
+                    wIndex[j] = i0; wIndex[j + 1] = i1; wIndex[j + 2] = i2;
+                    wWeight[j] = w0; wWeight[j + 1] = w1; wWeight[j + 2] = w2;
+                    wAlpha[k] = nearest <= fadeFrom ? 1f : Mathf.Clamp01(1f - (nearest - fadeFrom) / (reach - fadeFrom));
+                }
+            }
         }
 
         // Median distance from each sensor to its nearest neighbour (plan).
@@ -305,31 +347,48 @@ namespace QuestMarkerApp.Models
             return new List<(int, int)>(set);
         }
 
-        // Inside a triangle: barycentric. Outside: along the nearest edge (clamped). No edge
-        // near: the nearest sensor's own value.
-        private static float Linear(Vector2 q, Vector2[] pts, float[] vals, List<int> tris, List<(int, int)> edges, int nearest)
+        // Inside a triangle: barycentric. Outside: along the nearest edge (clamped); between
+        // equally near edges the shorter one, so a row of sensors interpolates neighbour to
+        // neighbour and never skips the one in the middle. No edge: the nearest sensor.
+        private static void Weights(Vector2 q, Vector2[] pts, List<int> tris, List<(int, int)> edges, int nearest,
+            out int i0, out int i1, out int i2, out float w0, out float w1, out float w2)
         {
             for (int t = 0; t + 2 < tris.Count; t += 3)
             {
                 Vector2 a = pts[tris[t]], b = pts[tris[t + 1]], c = pts[tris[t + 2]];
                 float den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
                 if (Mathf.Abs(den) < 1e-9f) continue;
-                float w1 = ((b.y - c.y) * (q.x - c.x) + (c.x - b.x) * (q.y - c.y)) / den;
-                float w2 = ((c.y - a.y) * (q.x - c.x) + (a.x - c.x) * (q.y - c.y)) / den;
-                float w3 = 1f - w1 - w2;
-                if (w1 >= -1e-4f && w2 >= -1e-4f && w3 >= -1e-4f)
-                    return w1 * vals[tris[t]] + w2 * vals[tris[t + 1]] + w3 * vals[tris[t + 2]];
+                float u = ((b.y - c.y) * (q.x - c.x) + (c.x - b.x) * (q.y - c.y)) / den;
+                float v = ((c.y - a.y) * (q.x - c.x) + (a.x - c.x) * (q.y - c.y)) / den;
+                float w = 1f - u - v;
+                if (u >= -1e-4f && v >= -1e-4f && w >= -1e-4f)
+                {
+                    i0 = tris[t]; i1 = tris[t + 1]; i2 = tris[t + 2];
+                    w0 = u; w1 = v; w2 = w;
+                    return;
+                }
             }
-            float bestD = float.MaxValue, best = vals[nearest];
+            i0 = nearest; i1 = -1; i2 = -1; w0 = 1f; w1 = 0f; w2 = 0f;
+            float bestD = float.MaxValue, bestLen = float.MaxValue;
             foreach ((int i, int j) in edges)
             {
                 Vector2 a = pts[i], ab = pts[j] - a;
                 float len2 = ab.sqrMagnitude;
-                float u = len2 > 1e-9f ? Mathf.Clamp01(Vector2.Dot(q - a, ab) / len2) : 0f;
-                float d = (q - (a + ab * u)).sqrMagnitude;
-                if (d < bestD) { bestD = d; best = Mathf.Lerp(vals[i], vals[j], u); }
+                float s = len2 > 1e-9f ? Mathf.Clamp01(Vector2.Dot(q - a, ab) / len2) : 0f;
+                float d = (q - (a + ab * s)).sqrMagnitude;
+                bool closer = d < bestD - 1e-6f || (Mathf.Abs(d - bestD) <= 1e-6f && len2 < bestLen);
+                if (!closer) continue;
+                bestD = d;
+                bestLen = len2;
+                i0 = i; i1 = j; i2 = -1;
+                w0 = 1f - s; w1 = s; w2 = 0f;
             }
-            return best;
+        }
+
+        private static float Linear(Vector2 q, Vector2[] pts, float[] vals, List<int> tris, List<(int, int)> edges, int nearest)
+        {
+            Weights(q, pts, tris, edges, nearest, out int i0, out int i1, out int i2, out float w0, out float w1, out float w2);
+            return w0 * vals[i0] + (i1 >= 0 ? w1 * vals[i1] : 0f) + (i2 >= 0 ? w2 * vals[i2] : 0f);
         }
 
         /// <summary>
@@ -432,9 +491,15 @@ namespace QuestMarkerApp.Models
                 if (Mathf.Sqrt(best) <= lastReach)
                 {
                     float v = Linear(q, lastPts, lastVals, lastTris, lastEdges, nearest);
-                    probeText.text = computed == Measure.Rate ? $"≈ {v:0.00} " + L.T("mm/ημ.", "mm/day")
-                        : computed == Measure.Vertical ? $"dz ≈ {v:+0.0;-0.0;0.0} mm" : $"≈ {v:0.0} mm";
-                    probeText.color = Ramp(v, computed);
+                    // Rebuilt only when the shown (rounded) value changes, not every frame.
+                    int shownKey = Mathf.RoundToInt(v * (computed == Measure.Rate ? 100f : 10f)) * 4 + (int)computed;
+                    if (shownKey != probeKey)
+                    {
+                        probeKey = shownKey;
+                        probeText.text = computed == Measure.Rate ? $"≈ {v:0.00} " + L.T("mm/ημ.", "mm/day")
+                            : computed == Measure.Vertical ? $"dz ≈ {v:+0.0;-0.0;0.0} mm" : $"≈ {v:0.0} mm";
+                        probeText.color = Ramp(v, computed);
+                    }
                     Vector3 world = overlay.Root.TransformPoint(local);
                     float dist = Vector3.Distance(cam.transform.position, world);
                     probe.position = world + Vector3.up * Mathf.Max(0.01f, dist * 0.02f);
@@ -454,7 +519,8 @@ namespace QuestMarkerApp.Models
             legendTitle = VrUi.Text("Title", legend, 14, 4, 272, 22, "", 13f, Brand.Fg, true);
             legendTex = new Texture2D(64, 1, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
             legendBar = VrUi.Panel("Bar", legend, 14, 30, 272, 14, Color.white, 0);
-            legendBar.sprite = Sprite.Create(legendTex, new Rect(0, 0, 64, 1), new Vector2(0.5f, 0.5f));
+            legendSprite = Sprite.Create(legendTex, new Rect(0, 0, 64, 1), new Vector2(0.5f, 0.5f));
+            legendBar.sprite = legendSprite;
             legendBar.type = Image.Type.Simple;
             legendLow = VrUi.Text("Low", legend, 14, 46, 100, 22, "", 12f, Brand.FgMuted);
             legendMid = VrUi.Text("Mid", legend, 100, 46, 100, 22, "", 12f, Brand.FgMuted, false, TextAlignmentOptions.Center);
@@ -473,6 +539,7 @@ namespace QuestMarkerApp.Models
         {
             Shader.SetGlobalFloat(HeatOpacityId, 0f);
             if (tex != null) Destroy(tex);
+            if (legendSprite != null) Destroy(legendSprite);
             if (legendTex != null) Destroy(legendTex);
         }
     }

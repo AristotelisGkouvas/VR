@@ -43,7 +43,7 @@ namespace QuestMarkerApp.UI
         public static void Apply(RectTransform panel, ref CanvasGroup group)
         {
             if (panel == null) return;
-            if (group == null) group = panel.GetComponent<CanvasGroup>() ?? panel.gameObject.AddComponent<CanvasGroup>();
+            if (group == null && !panel.TryGetComponent(out group)) group = panel.gameObject.AddComponent<CanvasGroup>();
             if (!Mathf.Approximately(group.alpha, Alpha)) group.alpha = Alpha;
         }
     }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -72,20 +73,22 @@ namespace QuestMarkerApp.Models
             edges.Add((a, b));
         }
 
+        // Circumcircle in double: near-collinear sensors (a deck edge, a tunnel wall) overflow
+        // float. A degenerate (collinear) triangle gets an infinite circle, so the next point
+        // removes it instead of it sticking as a zero-area sliver.
         private static Tri Make(List<Vector2> pts, int a, int b, int c)
         {
             Vector2 p = pts[a], q = pts[b], r = pts[c];
-            float d = 2f * (p.x * (q.y - r.y) + q.x * (r.y - p.y) + r.x * (p.y - q.y));
-            Vector2 centre;
-            if (Mathf.Abs(d) < 1e-12f) centre = (p + q + r) / 3f; // degenerate: never contains a point usefully
-            else
-            {
-                float p2 = p.sqrMagnitude, q2 = q.sqrMagnitude, r2 = r.sqrMagnitude;
-                centre = new Vector2(
-                    (p2 * (q.y - r.y) + q2 * (r.y - p.y) + r2 * (p.y - q.y)) / d,
-                    (p2 * (r.x - q.x) + q2 * (p.x - r.x) + r2 * (q.x - p.x)) / d);
-            }
-            return new Tri { A = a, B = b, C = c, Centre = centre, R2 = (p - centre).sqrMagnitude };
+            double px = p.x, py = p.y, qx = q.x, qy = q.y, rx = r.x, ry = r.y;
+            double d = 2.0 * (px * (qy - ry) + qx * (ry - py) + rx * (py - qy));
+            double scale = Math.Max(1e-9, Math.Max((q - p).sqrMagnitude, (r - p).sqrMagnitude));
+            if (Math.Abs(d) < 1e-9 * scale)
+                return new Tri { A = a, B = b, C = c, Centre = (p + q + r) / 3f, R2 = float.MaxValue };
+            double p2 = px * px + py * py, q2 = qx * qx + qy * qy, r2 = rx * rx + ry * ry;
+            double cx = (p2 * (qy - ry) + q2 * (ry - py) + r2 * (py - qy)) / d;
+            double cy = (p2 * (rx - qx) + q2 * (px - rx) + r2 * (qx - px)) / d;
+            double dx = px - cx, dy = py - cy;
+            return new Tri { A = a, B = b, C = c, Centre = new Vector2((float)cx, (float)cy), R2 = (float)(dx * dx + dy * dy) };
         }
     }
 }

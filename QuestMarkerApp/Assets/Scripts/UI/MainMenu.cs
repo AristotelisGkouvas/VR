@@ -993,15 +993,12 @@ namespace QuestMarkerApp.UI
                 Run = () => model.Unload()
             });
             string ip = serverText.Split(':')[0];
-            var note = VrUi.Text("ModelNote", body, 28, y + 8, Width - 56, 96,
-                L.T($"Μακέτα / 1:1: grip του {Hands.OffHandSideName}: μετακίνηση και περιστροφή · "
-                    + "και τα δύο grip ή το άλλο stick: ζουμ.\n"
-                    + $"Αποστολή από το PC: python send_model.py αρχείο.obj|dxf|ifc --quest-ip {ip} --api-key ",
-                    $"Tabletop / 1:1: {Hands.OffHandSideName} grip: move and rotate · "
-                    + "both grips or the other stick: zoom.\n"
-                    + $"Send from the PC: python send_model.py file.obj|dxf|ifc --quest-ip {ip} --api-key ")
+            // One line: the page's rows reach almost to the back button (the grips are on the
+            // controller hints).
+            var note = VrUi.Text("ModelNote", body, 28, y + 4, Width - 56, 26,
+                L.T($"PC: send_model.py αρχείο --quest-ip {ip} --api-key ", $"PC: send_model.py file --quest-ip {ip} --api-key ")
                 + (server != null ? server.ApiKey : ""),
-                13f, Brand.FgSubtle);
+                11f, Brand.FgSubtle);
             note.textWrappingMode = TextWrappingModes.Normal;
             BackButton();
         }
@@ -1052,7 +1049,8 @@ namespace QuestMarkerApp.UI
             for (int i = 0; i < groups.Count; i++)
             {
                 ModelGroup g = groups[i];
-                int tris = g.Triangles.Count / 3, segs = g.LineVertices.Count / 2;
+                // The lists are released once on the GPU: their counts were kept.
+                int tris = Math.Max(g.TriangleCount, g.Triangles.Count / 3), segs = Math.Max(g.LineCount, g.LineVertices.Count / 2);
                 items.Add(new FlowItem
                 {
                     Label = string.IsNullOrEmpty(g.Name) ? L.T("(χωρίς όνομα)", "(unnamed)") : g.Name,

@@ -49,7 +49,7 @@ namespace QuestMarkerApp.Core
                     case "mm": f = 0.001; break;
                     case "cm": f = 0.01; break;
                     case "m": f = 1.0; break;
-                    case "µm": case "um": f = 1e-6; break;
+                    case "µm": case "μm": case "um": f = 1e-6; break; // micro sign, Greek mu, ASCII
                     default:
                         f = 0.001;
                         if (!string.IsNullOrEmpty(unit))

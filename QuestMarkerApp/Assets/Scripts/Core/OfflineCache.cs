@@ -18,6 +18,8 @@ namespace QuestMarkerApp.Core
         private const int KeepDays = 60;
         private static string dir;
         private static bool pruned;
+        // Bumped by Clear: a write still queued from before must not bring a reply back.
+        private static int generation;
 
         private static string Dir
         {
@@ -30,12 +32,14 @@ namespace QuestMarkerApp.Core
             }
         }
 
-        private static string FileFor(string server, string path)
+        // Per server and per project: the API answers /sensors/... for the account's current
+        // project, so the same path means different data for two projects.
+        private static string FileFor(string server, int projectId, string path)
         {
             using (var sha = SHA1.Create())
             {
-                byte[] h = sha.ComputeHash(Encoding.UTF8.GetBytes((server ?? "") + "|" + path));
-                var sb = new StringBuilder(server == null ? "x_" : Prefix(server));
+                byte[] h = sha.ComputeHash(Encoding.UTF8.GetBytes((server ?? "") + "|" + projectId + "|" + path));
+                var sb = new StringBuilder(server == null ? "x_" : Prefix(server)).Append(projectId).Append('_');
                 foreach (byte b in h) sb.Append(b.ToString("x2"));
                 return Path.Combine(Dir, sb.Append(".json").ToString());
             }
@@ -52,17 +56,19 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>Writes the reply off the main thread (a measurement page can be megabytes).</summary>
-        public static void Save(string server, string path, byte[] data)
+        public static void Save(string server, int projectId, string path, byte[] data)
         {
             if (string.IsNullOrEmpty(server) || data == null || data.Length == 0) return;
             string file;
-            try { file = FileFor(server, path); }
+            try { file = FileFor(server, projectId, path); }
             catch (Exception e) { Debug.LogWarning("[Offline] " + e.Message); return; }
             Prune();
+            int gen = generation;
             Task.Run(() =>
             {
                 try
                 {
+                    if (gen != generation) return; // cleared (logged out) since
                     string tmp = file + ".tmp";
                     File.WriteAllBytes(tmp, data);
                     if (File.Exists(file)) File.Delete(file);
@@ -72,13 +78,13 @@ namespace QuestMarkerApp.Core
             });
         }
 
-        public static bool TryLoad(string server, string path, out string text, out DateTime savedUtc)
+        public static bool TryLoad(string server, int projectId, string path, out string text, out DateTime savedUtc)
         {
             text = null;
             savedUtc = DateTime.MinValue;
             try
             {
-                string file = FileFor(server, path);
+                string file = FileFor(server, projectId, path);
                 if (!File.Exists(file)) return false;
                 byte[] data = File.ReadAllBytes(file);
                 int skip = data.Length >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF ? 3 : 0;
@@ -93,11 +99,11 @@ namespace QuestMarkerApp.Core
             }
         }
 
-        /// <summary>Anything of this server on file.</summary>
-        public static bool Has(string server)
+        /// <summary>Anything of this project on this server on file.</summary>
+        public static bool Has(string server, int projectId)
         {
             if (string.IsNullOrEmpty(server)) return false;
-            try { return Directory.GetFiles(Dir, Prefix(server) + "*.json").Length > 0; }
+            try { return Directory.GetFiles(Dir, Prefix(server) + projectId + "_*.json").Length > 0; }
             catch { return false; }
         }
 
@@ -136,6 +142,7 @@ namespace QuestMarkerApp.Core
         /// <summary>Drops every reply on file (logging out: the next user must not read them).</summary>
         public static void Clear()
         {
+            generation++;
             try
             {
                 foreach (string f in Directory.GetFiles(Dir)) File.Delete(f);

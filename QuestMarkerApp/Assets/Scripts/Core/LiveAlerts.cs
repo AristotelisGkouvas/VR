@@ -213,6 +213,8 @@ namespace QuestMarkerApp.Core
             string error = null;
             yield return client.GetActiveAlertEvents(a => events = a, e => error = e);
             requesting = false;
+            // An answer from the offline copy is not a live poll: say so, and change nothing.
+            if (error == null && client.ServingOffline) error = L.T("χωρίς δίκτυο (offline)", "no network (offline)");
 
             if (error != null)
             {

@@ -364,7 +364,8 @@ namespace QuestMarkerApp.UI
             }
             else if (Mathf.Abs(y) < 0.3f) nextScaleStep = 0f;
 
-            if (Hands.GripDown() && !Hands.OffHandGripHeld())
+            // Not when the grip picks up a panel, nor as the first hand of a two-handed zoom.
+            if (Hands.GripDown() && !Hands.OffHandGripHeld() && !VrPointer.ConsumedThisFrame && !VrPointer.IsDragging)
             {
                 baseline = baseline.HasValue ? (DateTime?)null : CurrentAt();
                 cacheVersion++; // every arrow is now measured from elsewhere
@@ -444,16 +445,20 @@ namespace QuestMarkerApp.UI
 
         private void Draw(Item it, DateTime at, float scale, double cosYaw, double sinYaw, Vector3 camPos, Transform modelFrame)
         {
-            Transform anchor = null;
-            if (modelFrame != null) anchor = modelSensors.DotOf(it.PointId);
-            else if (markers.ActiveMarkers.TryGetValue(it.MarkerId, out Marker m) && m != null) anchor = m.transform;
-            if (anchor == null || !anchor.gameObject.activeInHierarchy)
+            Vector3 basePos;
+            bool found;
+            if (modelFrame != null) found = modelSensors.TrySensorWorld(it.PointId, out basePos);
+            else
+            {
+                found = markers.ActiveMarkers.TryGetValue(it.MarkerId, out Marker m) && m != null && m.gameObject.activeInHierarchy;
+                basePos = found ? m.transform.position : default;
+            }
+            if (!found)
             {
                 SetOn(it.Root.gameObject, ref it.RootOn, false);
                 return;
             }
 
-            Vector3 basePos = anchor.position;
             int index = IndexAt(it, at);
 
             // The arrow is a pure function of (sample index, scale, base position, alignment):
@@ -478,8 +483,8 @@ namespace QuestMarkerApp.UI
                     if (!now.HasDisplacement) continue;
                     if (hasBase)
                     {
-                        now.Dx -= zero.Dx ?? 0;
-                        now.Dy -= zero.Dy ?? 0;
+                        now.Dx = (now.Dx ?? 0) - (zero.Dx ?? 0);
+                        now.Dy = (now.Dy ?? 0) - (zero.Dy ?? 0);
                         now.Dz = (now.Dz ?? 0) - (zero.Dz ?? 0);
                     }
                     if (ToWorld(now, it.MetresPerUnit, scale, cosYaw, sinYaw, modelFrame, out Vector3 vec))

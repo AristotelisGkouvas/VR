@@ -442,7 +442,8 @@ namespace QuestMarkerApp.UI
             // Nothing moved: refresh states in place, without respawning markers or model dots.
             if (quiet && alignment.TryRefreshInPlace(project))
             {
-                RememberLoaded(areaId, areaName);
+                // Data from the offline copy is no fresher than before: keep its age.
+                if (!client.ServingOffline) RememberLoaded(areaId, areaName);
                 Debug.Log($"[Terraweb] Background refresh: {n} sensors, positions unchanged");
                 return;
             }

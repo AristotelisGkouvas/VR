@@ -49,6 +49,7 @@ namespace QuestMarkerApp.Core
         private string accessToken;
         private string refreshToken;
         private long lastResponseCode;
+        private bool certificateRejected;
         private readonly Dictionary<int, JObject> typeCache = new Dictionary<int, JObject>();
         // One refresh at a time: parallel requests that all hit 401 share it instead of each
         // rotating the refresh token (the second rotation is rejected and used to log out).
@@ -132,12 +133,7 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>The user logs out: the session and the offline copy of its replies go.</summary>
-        public void Logout()
-        {
-            Logout(true);
-            OfflineCache.Clear();
-            ServingOffline = false;
-        }
+        public void Logout() => Logout(true);
 
         /// <param name="revoke">False when the refresh token is already known dead on the server.</param>
         private void Logout(bool revoke)
@@ -146,6 +142,9 @@ namespace QuestMarkerApp.Core
             // Local state goes first and unconditionally: a dead network must not keep a
             // session alive on the headset. The server-side revocation is fire and forget.
             accessToken = refreshToken = null;
+            // The offline copy of this account's replies goes with it, whoever ended the session.
+            OfflineCache.Clear();
+            ServingOffline = false;
             CurrentProjectId = null;
             CurrentProjectName = null;
             typeCache.Clear();
@@ -292,7 +291,7 @@ namespace QuestMarkerApp.Core
                 error =>
                 {
                     // Offline with the project's replies on file: carry on from them.
-                    if (lastResponseCode == 0 && OfflineCache.Has(Server)) { ServingOffline = true; Selected(); }
+                    if (lastResponseCode == 0 && !certificateRejected && OfflineCache.Has(Server, id)) { ServingOffline = true; Selected(); }
                     else fail(error);
                 });
         }
@@ -403,7 +402,9 @@ namespace QuestMarkerApp.Core
             string failed = null;
             yield return Send("GET", path, null, true, ok, e => failed = e);
             if (failed == null) yield break;
-            if (lastResponseCode == 0 && OfflineCache.TryLoad(Server, path, out string text, out DateTime saved))
+            // Not when the server's certificate changed: that must reach the user, not be papered over.
+            if (lastResponseCode == 0 && !certificateRejected
+                && OfflineCache.TryLoad(Server, CurrentProjectId ?? 0, path, out string text, out DateTime saved))
             {
                 JToken cached = null;
                 try { cached = JToken.Parse(text); }
@@ -467,11 +468,13 @@ namespace QuestMarkerApp.Core
 
                 yield return req.SendWebRequest();
                 lastResponseCode = req.responseCode;
+                certificateRejected = false;
 
                 if (pin != null)
                 {
                     if (pin.Rejected)
                     {
+                        certificateRejected = true;
                         fail(CertificateChangedError);
                         yield break;
                     }
@@ -524,7 +527,7 @@ namespace QuestMarkerApp.Core
                 }
                 if (method == "GET")
                 {
-                    OfflineCache.Save(Server, path, data);
+                    OfflineCache.Save(Server, CurrentProjectId ?? 0, path, data);
                     ServingOffline = false;
                     OfflineDataDate = DateTime.MaxValue;
                 }

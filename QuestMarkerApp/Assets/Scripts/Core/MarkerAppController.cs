@@ -487,8 +487,10 @@ namespace QuestMarkerApp.Core
             // swap sides, and these must swap with them (B used to clear everything while the
             // badge on it read "Αναίρεση").
             // Held, with a ring: in thin gloves a brushed A or B moved the origin or wiped everything.
-            if (HoldConfirm.Run("origin", Hands.DominantPrimaryHeld(), L.T("Αρχή εδώ", "Origin here"))) CalibrateReferencePoint();
-            if (HoldConfirm.Run("clear", Hands.DominantSecondaryHeld(), L.T("Καθαρισμός", "Clear all"))) ClearAllMarkers();
+            // Not while the tape measure owns A/B (or the B that closed it this frame).
+            bool measuring = MeasureTool.IsActive || MeasureTool.ClosedFrame == Time.frameCount;
+            if (HoldConfirm.Run("origin", !measuring && Hands.DominantPrimaryHeld(), L.T("Αρχή εδώ", "Origin here"))) CalibrateReferencePoint();
+            if (HoldConfirm.Run("clear", !measuring && Hands.DominantSecondaryHeld(), L.T("Καθαρισμός", "Clear all"))) ClearAllMarkers();
             if (Hands.OffHandSecondaryDown()) Undo();
 #endif
         }

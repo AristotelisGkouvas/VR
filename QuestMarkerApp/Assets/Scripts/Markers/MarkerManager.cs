@@ -480,12 +480,9 @@ namespace QuestMarkerApp.Markers
             Vector3 p = referencePoint.position;
             Quaternion r = referencePoint.rotation;
             float off = Vector3.Distance(p, shownPosition), turn = Quaternion.Angle(r, shownRotation);
-            if (off < 1e-3f && turn < 0.05f)
-            {
-                if (off == 0f && turn == 0f) return;
-                shownPosition = p; // close enough: settle exactly once
-                shownRotation = r;
-            }
+            // Sub-millimetre tracking noise: nothing to move (moving every marker each frame
+            // also cancelled their tweens).
+            if (off < 1e-3f && turn < 0.05f) return;
             else if (off > GlideMetres || turn > GlideDegrees)
             {
                 shownPosition = p;

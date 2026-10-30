@@ -185,6 +185,19 @@ namespace QuestMarkerApp.Models
         public Transform DotOf(string pointId) =>
             pointId != null && dotById.TryGetValue(pointId, out Dot d) ? d.T : null;
 
+        /// <summary>
+        /// Where a sensor really is on the model, in world space: the dot itself is drawn pulled
+        /// toward the eye, which arrows must not start from.
+        /// </summary>
+        public bool TrySensorWorld(string pointId, out Vector3 world)
+        {
+            world = default;
+            if (pointId == null || container == null || !dotById.TryGetValue(pointId, out Dot d)) return false;
+            if (!d.T.gameObject.activeInHierarchy) return false;
+            world = container.TransformPoint(d.Local);
+            return true;
+        }
+
         // The site's sensors come back whenever the dots stop showing, however that happens.
         private void OnDisable()
         {
@@ -499,7 +512,9 @@ namespace QuestMarkerApp.Models
             foreach (Dot d in dots)
             {
                 string s = (d.Point.alertState ?? "none").ToLowerInvariant();
-                if (s != d.State) SetState(d, s);
+                // A reading can age past the limit while the state stays: re-check that too.
+                bool stale = d.Point.IsStale(out _) && s != "alarm" && s != "alert";
+                if (s != d.State || stale != d.Stale) SetState(d, s);
             }
         }
 

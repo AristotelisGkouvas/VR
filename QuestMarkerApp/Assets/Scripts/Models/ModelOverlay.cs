@@ -168,12 +168,29 @@ namespace QuestMarkerApp.Models
             float length = d.magnitude;
             if (length < 1e-6f) return false;
             d /= length;
+            // Only the stretch inside the grid's box: a tabletop ray is mostly empty room.
+            float span = heightCell * HeightGrid;
+            var box = new Bounds();
+            box.SetMinMax(new Vector3(heightMinX, modelBounds.min.y, heightMinZ),
+                new Vector3(heightMinX + span, modelBounds.max.y, heightMinZ + span));
+            float t0 = 0f, t1 = length;
+            if (!box.Contains(o))
+            {
+                if (!box.IntersectRay(new Ray(o, d), out float enter) || enter > length) return false;
+                t0 = enter;
+            }
             float step = heightCell * 0.5f;
-            Vector3 prev = o;
-            for (float t = step; t <= length; t += step)
+            Vector3 prev = o + d * t0;
+            // A hit needs a sample above the surface first: from under a bridge deck the
+            // ray starts below it, and that is not where it meets the model.
+            bool above = !TryHeight(prev.x, prev.z, out float h0) || prev.y > h0;
+            for (float t = t0 + step; t <= t1; t += step)
             {
                 Vector3 p = o + d * t;
-                if (TryHeight(p.x, p.z, out float h) && p.y <= h)
+                if (!box.Contains(p)) { if (t > t0 + step) break; continue; }
+                bool has = TryHeight(p.x, p.z, out float h);
+                if (!has || p.y > h) { above = true; prev = p; continue; }
+                if (above)
                 {
                     // Bisect between the last point above and this one below.
                     Vector3 a = prev, b = p;
@@ -1074,15 +1091,35 @@ namespace QuestMarkerApp.Models
             result.HeightMinZ = bounds.center.z - span * 0.5f;
             var top = new float[HeightGrid * HeightGrid];
             for (int i = 0; i < top.Length; i++) top[i] = float.NaN;
+            // Each triangle marks every cell its plan extent covers (a large CAD face is not
+            // just its three corners), at its highest corner.
+            void Mark(float x0, float x1, float z0, float z1, float y)
+            {
+                if (float.IsNaN(y)) return;
+                int ax = Mathf.Clamp((int)((x0 - result.HeightMinX) / result.HeightCell), 0, HeightGrid - 1);
+                int bx = Mathf.Clamp((int)((x1 - result.HeightMinX) / result.HeightCell), 0, HeightGrid - 1);
+                int az = Mathf.Clamp((int)((z0 - result.HeightMinZ) / result.HeightCell), 0, HeightGrid - 1);
+                int bz = Mathf.Clamp((int)((z1 - result.HeightMinZ) / result.HeightCell), 0, HeightGrid - 1);
+                for (int gz = az; gz <= bz; gz++)
+                    for (int gx = ax; gx <= bx; gx++)
+                    {
+                        int k = gz * HeightGrid + gx;
+                        if (float.IsNaN(top[k]) || y > top[k]) top[k] = y;
+                    }
+            }
             foreach (ModelGroup g in data.Groups)
-                foreach (Vector3 v in g.Vertices)
+            {
+                List<Vector3> v = g.Vertices;
+                List<int> t = g.Triangles;
+                for (int i = 0; i + 2 < t.Count; i += 3)
                 {
-                    if (float.IsNaN(v.y)) continue;
-                    int gx = Mathf.Clamp((int)((v.x - result.HeightMinX) / result.HeightCell), 0, HeightGrid - 1);
-                    int gz = Mathf.Clamp((int)((v.z - result.HeightMinZ) / result.HeightCell), 0, HeightGrid - 1);
-                    int k = gz * HeightGrid + gx;
-                    if (float.IsNaN(top[k]) || v.y > top[k]) top[k] = v.y;
+                    Vector3 a = v[t[i]], b = v[t[i + 1]], c = v[t[i + 2]];
+                    Mark(Mathf.Min(a.x, Mathf.Min(b.x, c.x)), Mathf.Max(a.x, Mathf.Max(b.x, c.x)),
+                        Mathf.Min(a.z, Mathf.Min(b.z, c.z)), Mathf.Max(a.z, Mathf.Max(b.z, c.z)),
+                        Mathf.Max(a.y, Mathf.Max(b.y, c.y)));
                 }
+                foreach (Vector3 p in g.LineVertices) Mark(p.x, p.x, p.z, p.z, p.y);
+            }
             result.Heights = top;
 
             var heights = new List<float>();

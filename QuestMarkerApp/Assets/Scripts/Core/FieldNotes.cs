@@ -68,22 +68,26 @@ namespace QuestMarkerApp.Core
             return Save();
         }
 
+        // The Terraweb project id when both have one (names repeat, and fall back to "Project").
+        private static bool SameProject(Note n, int projectId, string project) =>
+            projectId != 0 && n.projectId != 0 ? n.projectId == projectId : n.project == project;
+
         /// <summary>A sensor's notes in this project, newest first.</summary>
-        public static List<Note> For(string project, string pointId)
+        public static List<Note> For(int projectId, string project, string pointId)
         {
             var list = new List<Note>();
             foreach (Note n in Data.notes)
-                if (n.pointId == pointId && n.project == project) list.Add(n);
+                if (n.pointId == pointId && SameProject(n, projectId, project)) list.Add(n);
             list.Sort((a, b) => string.CompareOrdinal(b.utc, a.utc));
             return list;
         }
 
         /// <summary>This project's notes taken since <paramref name="sinceUtc"/>, oldest first.</summary>
-        public static List<Note> Since(string project, DateTime sinceUtc)
+        public static List<Note> Since(int projectId, string project, DateTime sinceUtc)
         {
             var list = new List<Note>();
             foreach (Note n in Data.notes)
-                if (n.project == project && n.Utc >= sinceUtc) list.Add(n);
+                if (SameProject(n, projectId, project) && n.Utc >= sinceUtc) list.Add(n);
             list.Sort((a, b) => string.CompareOrdinal(a.utc, b.utc));
             return list;
         }
@@ -97,8 +101,9 @@ namespace QuestMarkerApp.Core
             {
                 string tmp = FilePath + ".tmp";
                 File.WriteAllText(tmp, JsonUtility.ToJson(Data, true));
-                if (File.Exists(FilePath)) File.Delete(FilePath);
-                File.Move(tmp, FilePath);
+                // Replace in one step: a reader (GET /api/fieldnotes) never sees the file missing.
+                if (File.Exists(FilePath)) File.Replace(tmp, FilePath, null);
+                else File.Move(tmp, FilePath);
                 return true;
             }
             catch (Exception e)

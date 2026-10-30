@@ -64,8 +64,13 @@ namespace QuestMarkerApp.Models
         /// lists for nothing (the menu counts from ModelData.TriangleCount). Name, colour and
         /// visibility stay.
         /// </summary>
+        /// <summary>Triangles and line segments, kept when the lists are released (the group list counts them).</summary>
+        public int TriangleCount, LineCount;
+
         public void Release()
         {
+            TriangleCount = Triangles.Count / 3;
+            LineCount = LineVertices.Count / 2;
             Vertices.Clear(); Vertices.TrimExcess();
             Triangles.Clear(); Triangles.TrimExcess();
             UVs.Clear(); UVs.TrimExcess();
