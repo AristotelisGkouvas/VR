@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 using QuestMarkerApp.API;
 using QuestMarkerApp.Core;
 using QuestMarkerApp.UI;
@@ -8,9 +10,12 @@ using QuestMarkerApp.UI;
 namespace QuestMarkerApp.Models
 {
     /// <summary>
-    /// Displacement heatmap over the model: each sensor's total movement (mm, from its survey
-    /// history), interpolated linearly between the sensors and laid over the texture, green →
-    /// amber → red like the time machine's arrows (red at RedAtMm).
+    /// Displacement heatmap over the model, from the sensors' survey history, interpolated
+    /// linearly between them and laid over the texture. Three measures (menu): the total
+    /// movement (green → amber → red at RedAtMm, like the arrows), the vertical one dz (blue
+    /// down, red up, a diverging scale either side of 0) and the rate over the last 30 days
+    /// (red at RedAtRate mm/day). A legend under the view says which and what the colours
+    /// mean; aiming the ray at the model reads the interpolated value at that spot.
     ///
     /// Linear: the sensors are joined into triangles in plan (Delaunay) and a point inside one
     /// takes the barycentric mix of its three corners; outside every triangle it takes the
@@ -28,8 +33,24 @@ namespace QuestMarkerApp.Models
     {
         private const string EnabledKey = "model.heatmap";
         private const int Grid = 128;
-        /// <summary>Movement drawn fully red, mm (the arrows' scale).</summary>
+        /// <summary>Movement drawn fully red, mm (the arrows' scale); ± that for the vertical.</summary>
         public const float RedAtMm = 20f;
+        /// <summary>Rate drawn fully red, mm per day.</summary>
+        public const float RedAtRate = 0.5f;
+        private const int RateDays = 30;
+
+        public enum Measure { Total = 0, Vertical = 1, Rate = 2 }
+        private const string MeasureKey = "model.heatMeasure";
+        private static readonly string[] MeasureNamesEl = { "Συνολική", "Κατακόρυφη (dz)", "Ρυθμός" };
+        private static readonly string[] MeasureNamesEn = { "Total", "Vertical (dz)", "Rate" };
+
+        public static Measure Shown
+        {
+            get => (Measure)Mathf.Clamp(PlayerPrefs.GetInt(MeasureKey, 0), 0, 2);
+            set { PlayerPrefs.SetInt(MeasureKey, (int)value); PlayerPrefs.Save(); }
+        }
+
+        public static string MeasureName => (L.En ? MeasureNamesEn : MeasureNamesEl)[(int)Shown];
         /// <summary>Colour over the texture where a sensor is near.</summary>
         private const float Opacity = 0.6f;
         private const float RecomputeSeconds = 0.25f;
@@ -63,6 +84,9 @@ namespace QuestMarkerApp.Models
         /// <summary>One line for the menu: how many sensors feed it, or why it is empty.</summary>
         public string Status { get; private set; } = "";
 
+        /// <summary>Sensors in the last computation.</summary>
+        public int Count { get; private set; }
+
         private ModelOverlay overlay;
         private ModelSensors sensors;
         private Texture2D tex;
@@ -71,6 +95,23 @@ namespace QuestMarkerApp.Models
         private string key;
         private float nextCompute;
         private bool shown;
+        // The last interpolation's inputs, for the value under the pointer.
+        private Vector2[] lastPts = Array.Empty<Vector2>();
+        private float[] lastVals = Array.Empty<float>();
+        private List<int> lastTris = new List<int>();
+        private List<(int, int)> lastEdges = new List<(int, int)>();
+        private float lastReach;
+        private Measure computed;
+
+        private RectTransform legend, probe;
+        private TextMeshProUGUI legendTitle, legendLow, legendMid, legendHigh, probeText;
+        private Image legendBar;
+        private Texture2D legendTex;
+        private Measure legendShown = (Measure)(-1);
+        private bool legendGliding;
+#if !MOBILE_PREVIEW
+        private OVRCameraRig rig;
+#endif
 
         public void Init(ModelOverlay modelOverlay, ModelSensors modelSensors)
         {
@@ -87,46 +128,66 @@ namespace QuestMarkerApp.Models
             {
                 if (shown) { Shader.SetGlobalFloat(HeatOpacityId, 0f); shown = false; }
                 Status = Enabled ? L.T("Χωρίς μοντέλο", "No model") : L.T("Όχι", "Off");
+                ShowUi(false);
                 return;
             }
+            ShowUi(shown && !UiState.AnyModal);
             if (Time.unscaledTime < nextCompute) return;
             nextCompute = Time.unscaledTime + RecomputeSeconds;
 
             DateTime at = DisplacementView.IsActive && DisplacementView.ShownAt.HasValue ? DisplacementView.ShownAt.Value : DateTime.MaxValue;
             DateTime? from = DisplacementView.IsActive ? DisplacementView.ComparedFrom : null;
-            string k = $"{sensors.Version}|{SensorHistory.Count}|{SensorHistory.Last.Ticks}|{at.Ticks}|{from?.Ticks}|{overlay.LoadedName}|{ReachSetting}";
+            string k = $"{sensors.Version}|{SensorHistory.Count}|{SensorHistory.Last.Ticks}|{at.Ticks}|{from?.Ticks}|{overlay.LoadedName}|{ReachSetting}|{(int)Shown}";
             if (k == key) return;
             key = k;
             Compute(at, from);
         }
 
-        // Each sensor on the model with a displacement at the date: its plan position and mm.
-        private void Collect(DateTime at, DateTime? from)
+        // Each sensor on the model with a displacement at the date: its plan position and the
+        // chosen measure (mm, signed mm for dz, mm/day for the rate).
+        private void Collect(DateTime at, DateTime? from, Measure measure)
         {
             samples.Clear();
             foreach ((ProjectPoint p, Vector3 local) in sensors.DotPoints)
             {
                 if (!SensorHistory.TryDisplacementAt(p.sensorId, at, out SensorHistory.Sample s)) continue;
-                double dx = s.Dx ?? 0, dy = s.Dy ?? 0, dz = s.Dz ?? 0;
-                if (from.HasValue && SensorHistory.TryDisplacementAt(p.sensorId, from.Value, out SensorHistory.Sample z))
+                double toMm = SensorHistory.MetresPerUnit(p.sensorId) * 1000.0;
+                double value;
+                if (measure == Measure.Rate)
                 {
-                    dx -= z.Dx ?? 0;
-                    dy -= z.Dy ?? 0;
-                    dz -= z.Dz ?? 0;
+                    // Change of the total movement over the last RateDays before the reading.
+                    DateTime back = s.Date.AddDays(-RateDays);
+                    if (!SensorHistory.TryDisplacementAt(p.sensorId, back, out SensorHistory.Sample o)) continue;
+                    double days = (s.Date - o.Date).TotalDays;
+                    if (days < RateDays * 0.5) continue; // too short a span to call a rate
+                    double ddx = (s.Dx ?? 0) - (o.Dx ?? 0), ddy = (s.Dy ?? 0) - (o.Dy ?? 0), ddz = (s.Dz ?? 0) - (o.Dz ?? 0);
+                    value = Math.Sqrt(ddx * ddx + ddy * ddy + ddz * ddz) * toMm / days;
                 }
-                double mm = Math.Sqrt(dx * dx + dy * dy + dz * dz) * SensorHistory.MetresPerUnit(p.sensorId) * 1000.0;
-                samples.Add((new Vector2(local.x, local.z), (float)mm));
+                else
+                {
+                    double dx = s.Dx ?? 0, dy = s.Dy ?? 0, dz = s.Dz ?? 0;
+                    if (from.HasValue && SensorHistory.TryDisplacementAt(p.sensorId, from.Value, out SensorHistory.Sample z))
+                    {
+                        dx -= z.Dx ?? 0;
+                        dy -= z.Dy ?? 0;
+                        dz -= z.Dz ?? 0;
+                    }
+                    value = measure == Measure.Vertical ? dz * toMm : Math.Sqrt(dx * dx + dy * dy + dz * dz) * toMm;
+                }
+                samples.Add((new Vector2(local.x, local.z), (float)value));
             }
         }
 
         private void Compute(DateTime at, DateTime? from)
         {
-            Collect(at, from);
+            Measure measure = Shown;
+            Collect(at, from, measure);
             if (samples.Count == 0)
             {
                 Shader.SetGlobalFloat(HeatOpacityId, 0f);
                 shown = false;
                 Status = L.T("Χωρίς μετακινήσεις στο μοντέλο", "No displacements on the model");
+                Count = 0;
                 return;
             }
             if (tex == null)
@@ -179,7 +240,7 @@ namespace QuestMarkerApp.Models
                     if (nearest > reach) { pixels[gy * Grid + gx] = default; continue; }
                     float value = Linear(q, pts, vals, keep, edges, nearestIndex);
                     float alpha = nearest <= fadeFrom ? 1f : Mathf.Clamp01(1f - (nearest - fadeFrom) / (reach - fadeFrom));
-                    Color c = Ramp(value);
+                    Color c = Ramp(value, measure);
                     pixels[gy * Grid + gx] = new Color(c.r, c.g, c.b, alpha);
                 }
             }
@@ -190,6 +251,13 @@ namespace QuestMarkerApp.Models
             Shader.SetGlobalVector(HeatRectId, new Vector4(minX, minZ, 1f / size, 1f / size));
             Shader.SetGlobalFloat(HeatOpacityId, Opacity);
             shown = true;
+            Count = samples.Count;
+            lastPts = pts;
+            lastVals = vals;
+            lastTris = keep;
+            lastEdges = edges;
+            lastReach = reach;
+            computed = measure;
             Status = L.En ? $"On · {samples.Count} sensors" : $"Ναι · {samples.Count} αισθητήρες";
         }
 
@@ -264,18 +332,148 @@ namespace QuestMarkerApp.Models
             return best;
         }
 
-        /// <summary>Green → amber at half the red mark → red, as the arrows.</summary>
-        public static Color Ramp(float mm)
+        /// <summary>
+        /// Total and rate: green → amber at half the red mark → red, as the arrows. Vertical:
+        /// diverging either side of 0, blue going down (settlement), red going up.
+        /// </summary>
+        public static Color Ramp(float value, Measure measure)
         {
-            float t = Mathf.Clamp01(mm / RedAtMm);
+            if (measure == Measure.Vertical)
+            {
+                float s = Mathf.Clamp(value / RedAtMm, -1f, 1f);
+                return s < 0f ? Color.Lerp(Brand.Primary, Down, -s) : Color.Lerp(Brand.Primary, Brand.Danger, s);
+            }
+            float t = Mathf.Clamp01(value / (measure == Measure.Rate ? RedAtRate : RedAtMm));
             return t < 0.5f ? Color.Lerp(Brand.Primary, Brand.Warning, t * 2f)
                             : Color.Lerp(Brand.Warning, Brand.Danger, (t - 0.5f) * 2f);
+        }
+
+        /// <summary>Settlement blue of the vertical scale.</summary>
+        private static readonly Color Down = new Color32(0x3d, 0x7f, 0xe0, 0xff);
+
+        // ------------------------------------------------------------------
+        //  Legend and the value under the pointer
+        // ------------------------------------------------------------------
+
+        private void ShowUi(bool on)
+        {
+            if (on && legend == null) BuildUi();
+            if (legend == null) return;
+            if (legend.gameObject.activeSelf != on) legend.gameObject.SetActive(on);
+            if (!on)
+            {
+                if (probe.gameObject.activeSelf) probe.gameObject.SetActive(false);
+                return;
+            }
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            // Low on the left of the view (the time machine's bar takes the middle).
+            Vector3 fwd = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
+            if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.forward;
+            fwd.Normalize();
+            Vector3 right = Vector3.Cross(Vector3.up, fwd);
+            Vector3 target = cam.transform.position + fwd * 0.8f + Vector3.down * 0.32f - right * 0.32f;
+            if (!legendGliding && (legend.position - target).magnitude > 0.25f) legendGliding = true;
+            if (legendGliding)
+            {
+                legend.position = Vector3.Lerp(legend.position, target, 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime));
+                if ((legend.position - target).sqrMagnitude < 1e-4f) legendGliding = false;
+            }
+            VrUi.FaceViewer(legend, cam.transform);
+            if (legendShown != computed) FillLegend(computed);
+            Probe(cam);
+        }
+
+        private void FillLegend(Measure m)
+        {
+            legendShown = m;
+            for (int x = 0; x < legendTex.width; x++)
+            {
+                float u = x / (legendTex.width - 1f);
+                float v = m == Measure.Vertical ? Mathf.Lerp(-RedAtMm, RedAtMm, u) : u * (m == Measure.Rate ? RedAtRate : RedAtMm);
+                legendTex.SetPixel(x, 0, Ramp(v, m));
+            }
+            legendTex.Apply(false);
+            switch (m)
+            {
+                case Measure.Vertical:
+                    legendTitle.text = L.T("Κατακόρυφη μετακίνηση dz (mm)", "Vertical movement dz (mm)");
+                    legendLow.text = L.T("−20 κάτω", "−20 down"); legendMid.text = "0"; legendHigh.text = L.T("+20 πάνω", "+20 up");
+                    break;
+                case Measure.Rate:
+                    legendTitle.text = L.T($"Ρυθμός, τελευταίες {RateDays} ημ. (mm/ημ.)", $"Rate, last {RateDays} d (mm/day)");
+                    legendLow.text = "0"; legendMid.text = "0.25"; legendHigh.text = "0.5+";
+                    break;
+                default:
+                    legendTitle.text = L.T("Συνολική μετακίνηση (mm)", "Total movement (mm)");
+                    legendLow.text = "0"; legendMid.text = "10"; legendHigh.text = "20+";
+                    break;
+            }
+        }
+
+        // The interpolated value where the ray meets the model, unless it is on a panel or a dot.
+        private void Probe(Camera cam)
+        {
+            bool on = false;
+#if !MOBILE_PREVIEW
+            if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();
+            Transform hand = rig != null && Hands.DominantConnected ? Hands.DominantAnchor(rig) : null;
+            if (hand != null && !VrPointer.IsHovering && !sensors.Aiming && lastPts.Length > 0
+                && overlay.TryRaycastSurface(new Ray(hand.position, hand.forward), 60f, out Vector3 local))
+            {
+                var q = new Vector2(local.x, local.z);
+                int nearest = 0;
+                float best = float.MaxValue;
+                for (int i = 0; i < lastPts.Length; i++)
+                {
+                    float d = (q - lastPts[i]).sqrMagnitude;
+                    if (d < best) { best = d; nearest = i; }
+                }
+                if (Mathf.Sqrt(best) <= lastReach)
+                {
+                    float v = Linear(q, lastPts, lastVals, lastTris, lastEdges, nearest);
+                    probeText.text = computed == Measure.Rate ? $"≈ {v:0.00} " + L.T("mm/ημ.", "mm/day")
+                        : computed == Measure.Vertical ? $"dz ≈ {v:+0.0;-0.0;0.0} mm" : $"≈ {v:0.0} mm";
+                    probeText.color = Ramp(v, computed);
+                    Vector3 world = overlay.Root.TransformPoint(local);
+                    float dist = Vector3.Distance(cam.transform.position, world);
+                    probe.position = world + Vector3.up * Mathf.Max(0.01f, dist * 0.02f);
+                    probe.localScale = Vector3.one * 0.0006f * Mathf.Clamp(dist / 0.7f, 0.3f, 6f);
+                    VrUi.FaceViewer(probe, cam.transform);
+                    on = true;
+                }
+            }
+#endif
+            if (probe.gameObject.activeSelf != on) probe.gameObject.SetActive(on);
+        }
+
+        private void BuildUi()
+        {
+            legend = VrUi.CreateCanvas("HeatLegend", transform, new Vector2(300f, 74f), 0.0006f);
+            VrUi.Card("Bg", legend, 0, 0, 300, 74, Brand.Surface.WithAlpha(0.94f), Brand.BorderStrong, 14);
+            legendTitle = VrUi.Text("Title", legend, 14, 4, 272, 22, "", 13f, Brand.Fg, true);
+            legendTex = new Texture2D(64, 1, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            legendBar = VrUi.Panel("Bar", legend, 14, 30, 272, 14, Color.white, 0);
+            legendBar.sprite = Sprite.Create(legendTex, new Rect(0, 0, 64, 1), new Vector2(0.5f, 0.5f));
+            legendBar.type = Image.Type.Simple;
+            legendLow = VrUi.Text("Low", legend, 14, 46, 100, 22, "", 12f, Brand.FgMuted);
+            legendMid = VrUi.Text("Mid", legend, 100, 46, 100, 22, "", 12f, Brand.FgMuted, false, TextAlignmentOptions.Center);
+            legendHigh = VrUi.Text("High", legend, 186, 46, 100, 22, "", 12f, Brand.FgMuted, false, TextAlignmentOptions.MidlineRight);
+            legend.gameObject.SetActive(false);
+            legendGliding = true;
+
+            probe = VrUi.CreateCanvas("HeatProbe", transform, new Vector2(160f, 34f), 0.0006f);
+            VrUi.Card("Bg", probe, 0, 0, 160, 34, Brand.Surface.WithAlpha(0.92f), Brand.BorderStrong, 10);
+            probeText = VrUi.Text("Value", probe, 8, 2, 144, 30, "", 16f, Brand.Fg, true, TextAlignmentOptions.Center);
+            probe.pivot = new Vector2(0.5f, 0f);
+            probe.gameObject.SetActive(false);
         }
 
         private void OnDestroy()
         {
             Shader.SetGlobalFloat(HeatOpacityId, 0f);
             if (tex != null) Destroy(tex);
+            if (legendTex != null) Destroy(legendTex);
         }
     }
 }

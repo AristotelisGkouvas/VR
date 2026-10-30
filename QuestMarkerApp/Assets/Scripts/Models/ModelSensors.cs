@@ -118,6 +118,9 @@ namespace QuestMarkerApp.Models
         private float dotLocal = 1f, nextRecolour;
 
         private Dot aimed;
+
+        /// <summary>The ray is on a sensor dot (it, not the surface under it, answers the pointer).</summary>
+        public bool Aiming => aimed != null;
         private float aimedSince;
         private RectTransform hoverTag;
         private Image tagState;

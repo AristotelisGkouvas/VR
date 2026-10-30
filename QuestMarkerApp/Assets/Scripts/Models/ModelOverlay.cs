@@ -148,6 +148,56 @@ namespace QuestMarkerApp.Models
         // Model-local extent and the ground height near its centre, for the previews.
         private Bounds modelBounds;
         private float groundY;
+        // The model's top surface on a plan grid, kept after the vertex lists are released:
+        // enough to find where a ray meets the model (ModelHeatmap's value under the pointer).
+        private const int HeightGrid = 256;
+        private float[] heights;
+        private float heightMinX, heightMinZ, heightCell;
+
+        /// <summary>
+        /// Where a world ray first meets the model's top surface (plan height grid, ~1/256 of
+        /// its footprint), as a model-local point. False when it misses or no model is loaded.
+        /// </summary>
+        public bool TryRaycastSurface(Ray worldRay, float maxWorldDistance, out Vector3 local)
+        {
+            local = default;
+            if (heights == null || root == null || !root.gameObject.activeInHierarchy) return false;
+            Vector3 o = root.InverseTransformPoint(worldRay.origin);
+            Vector3 end = root.InverseTransformPoint(worldRay.GetPoint(maxWorldDistance));
+            Vector3 d = end - o;
+            float length = d.magnitude;
+            if (length < 1e-6f) return false;
+            d /= length;
+            float step = heightCell * 0.5f;
+            Vector3 prev = o;
+            for (float t = step; t <= length; t += step)
+            {
+                Vector3 p = o + d * t;
+                if (TryHeight(p.x, p.z, out float h) && p.y <= h)
+                {
+                    // Bisect between the last point above and this one below.
+                    Vector3 a = prev, b = p;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        Vector3 m = (a + b) * 0.5f;
+                        if (TryHeight(m.x, m.z, out float hm) && m.y <= hm) b = m; else a = m;
+                    }
+                    local = b;
+                    return true;
+                }
+                prev = p;
+            }
+            return false;
+        }
+
+        private bool TryHeight(float x, float z, out float h)
+        {
+            h = 0f;
+            int gx = Mathf.FloorToInt((x - heightMinX) / heightCell), gz = Mathf.FloorToInt((z - heightMinZ) / heightCell);
+            if (gx < 0 || gz < 0 || gx >= HeightGrid || gz >= HeightGrid) return false;
+            h = heights[gz * HeightGrid + gx];
+            return !float.IsNaN(h);
+        }
         // Placement last applied; null makes Update place the model again (a preview is placed
         // once, in front of the user, and then stays where they leave it).
         private Placement? placed;
@@ -743,6 +793,7 @@ namespace QuestMarkerApp.Models
             generation++;
             DestroyVisuals();
             model = null;
+            heights = null;
             loadedName = null;
             error = null;
             ModelStore.LastLoadedName = null;
@@ -795,6 +846,10 @@ namespace QuestMarkerApp.Models
             loadedName = info.Name;
             modelBounds = prepared.Bounds;
             groundY = prepared.GroundY;
+            heights = prepared.Heights;
+            heightMinX = prepared.HeightMinX;
+            heightMinZ = prepared.HeightMinZ;
+            heightCell = prepared.HeightCell;
             EnsureRoot();
             root.gameObject.SetActive(false);
 
@@ -869,6 +924,9 @@ namespace QuestMarkerApp.Models
             // layout check counts these Unity-typed fields and the editor does not, and refuses to build.
             [NonSerialized] public Bounds Bounds;
             [NonSerialized] public float GroundY;
+            /// <summary>Top surface per plan cell (Measure), NaN where the model has nothing.</summary>
+            public float[] Heights;
+            public float HeightMinX, HeightMinZ, HeightCell;
             public readonly List<GroupBuild> Groups = new List<GroupBuild>();
             /// <summary>Encoded image file per distinct texture path that exists and passed the size checks.</summary>
             public readonly Dictionary<string, byte[]> TextureBytes = new Dictionary<string, byte[]>(StringComparer.Ordinal);
@@ -1008,6 +1066,24 @@ namespace QuestMarkerApp.Models
             var bounds = new Bounds();
             bounds.SetMinMax(min, max);
             result.Bounds = bounds;
+
+            // Top surface per plan cell, for pointing at the model after its lists are released.
+            float span = Mathf.Max(bounds.size.x, bounds.size.z, 0.01f);
+            result.HeightCell = span / HeightGrid;
+            result.HeightMinX = bounds.center.x - span * 0.5f;
+            result.HeightMinZ = bounds.center.z - span * 0.5f;
+            var top = new float[HeightGrid * HeightGrid];
+            for (int i = 0; i < top.Length; i++) top[i] = float.NaN;
+            foreach (ModelGroup g in data.Groups)
+                foreach (Vector3 v in g.Vertices)
+                {
+                    if (float.IsNaN(v.y)) continue;
+                    int gx = Mathf.Clamp((int)((v.x - result.HeightMinX) / result.HeightCell), 0, HeightGrid - 1);
+                    int gz = Mathf.Clamp((int)((v.z - result.HeightMinZ) / result.HeightCell), 0, HeightGrid - 1);
+                    int k = gz * HeightGrid + gx;
+                    if (float.IsNaN(top[k]) || v.y > top[k]) top[k] = v.y;
+                }
+            result.Heights = top;
 
             var heights = new List<float>();
             float r2 = GroundProbeRadius * GroundProbeRadius;

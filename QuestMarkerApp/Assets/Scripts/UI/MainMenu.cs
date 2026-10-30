@@ -890,15 +890,22 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
-                // Total movement spread over the surface, green → red at 20 mm (ModelHeatmap).
+                // Movement spread over the surface (ModelHeatmap). One row cycles it: off → total
+                // → vertical dz (blue down / red up) → rate → off.
                 Label = L.T("Heatmap μετακινήσεων", "Displacement heatmap"),
                 Value = () =>
                 {
+                    if (!ModelHeatmap.Enabled) return L.T("Όχι", "Off");
                     var heat = FindAnyObjectByType<ModelHeatmap>();
-                    return heat != null ? heat.Status : "—";
+                    return ModelHeatmap.MeasureName + (heat != null && heat.Count > 0 ? $" · {heat.Count}" : "");
                 },
                 Enabled = () => model != null && model.IsLoaded,
-                Run = () => ModelHeatmap.Enabled = !ModelHeatmap.Enabled
+                Run = () =>
+                {
+                    if (!ModelHeatmap.Enabled) { ModelHeatmap.Enabled = true; ModelHeatmap.Shown = ModelHeatmap.Measure.Total; }
+                    else if (ModelHeatmap.Shown == ModelHeatmap.Measure.Rate) ModelHeatmap.Enabled = false;
+                    else ModelHeatmap.Shown = ModelHeatmap.Shown + 1;
+                }
             });
             y = Row(y, new Item
             {
