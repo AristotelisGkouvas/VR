@@ -1917,10 +1917,12 @@ namespace QuestMarkerApp.API
         }
 
         [Serializable]
+#pragma warning disable 0649
         private class SessionNewBody { public string name; }
 
         [Serializable]
         private class LayerBody { public string layer; }
+#pragma warning restore 0649
 
         public string[] GetServerUrls()
         {

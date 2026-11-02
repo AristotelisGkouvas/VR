@@ -61,8 +61,14 @@ namespace QuestMarkerApp.UI
     /// </summary>
     public class WitRecognizer : IVoiceRecognizer
     {
+#if !META_VOICE_SDK
+#pragma warning disable 0067 // the stub below never raises them
+#endif
         public event Action<string> OnTranscript;
         public event Action<string> OnError;
+#if !META_VOICE_SDK
+#pragma warning restore 0067
+#endif
 
 #if META_VOICE_SDK
         private const string ConfigResource = "WitConfiguration";

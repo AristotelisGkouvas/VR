@@ -1028,9 +1028,11 @@ namespace QuestMarkerApp.Models
             public Vector3[] Vertices;
             public Vector2[] UVs;
             public ushort[] Triangles;
+#pragma warning disable 0649 // Reserved for future runtime mesh LOD
             public Vector3[] LodVertices;
             public Vector2[] LodUVs;
             public ushort[] LodTriangles;
+#pragma warning restore 0649
         }
 
         private static Prepared Prepare(ModelData data, CancellationToken token)

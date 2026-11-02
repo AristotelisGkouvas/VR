@@ -75,7 +75,7 @@ namespace QuestMarkerApp.UI
         private float listeningSince;
 
         // Indicator
-        private RectTransform tag;
+        private RectTransform tagRect;
         private Image dot;
         private TextMeshProUGUI tagText;
         private float showUntil;          // reply visible until this time; 0 = hidden
@@ -644,14 +644,14 @@ namespace QuestMarkerApp.UI
 
         private void Build()
         {
-            if (tag != null) return;
-            tag = VrUi.CreateCanvas("VoiceTag", transform, new Vector2(TagW, TagH), MetersPerPixel);
+            if (tagRect != null) return;
+            tagRect = VrUi.CreateCanvas("VoiceTag", transform, new Vector2(TagW, TagH), MetersPerPixel);
             // Pivot at the centre: the canvas is positioned by its middle above the controller.
-            tag.pivot = new Vector2(0.5f, 0.5f);
-            VrUi.Card("Card", tag, 0, 0, TagW, TagH, Brand.Surface.WithAlpha(0.96f), Brand.BorderStrong, 24);
-            dot = VrUi.Icon("Dot", tag, 16, (TagH - 14f) / 2f, 14f, Brand.DiscSprite, Brand.Danger);
-            tagText = VrUi.Text("Text", tag, 40, 0, TagW - 52, TagH, "", 18f, Brand.Fg, true);
-            tag.gameObject.SetActive(false);
+            tagRect.pivot = new Vector2(0.5f, 0.5f);
+            VrUi.Card("Card", tagRect, 0, 0, TagW, TagH, Brand.Surface.WithAlpha(0.96f), Brand.BorderStrong, 24);
+            dot = VrUi.Icon("Dot", tagRect, 16, (TagH - 14f) / 2f, 14f, Brand.DiscSprite, Brand.Danger);
+            tagText = VrUi.Text("Text", tagRect, 40, 0, TagW - 52, TagH, "", 18f, Brand.Fg, true);
+            tagRect.gameObject.SetActive(false);
         }
 
         private void ShowReply(string text)
@@ -662,17 +662,17 @@ namespace QuestMarkerApp.UI
             showUntil = Time.unscaledTime + ReplySeconds;
             tagState = 2;
             dot.gameObject.SetActive(false);
-            tag.gameObject.SetActive(true);
+            tagRect.gameObject.SetActive(true);
         }
 
         private void UpdateTag()
         {
-            if (tag == null) return;
+            if (tagRect == null) return;
             int state = IsListening ? 1 : showUntil > Time.unscaledTime ? 2 : 0;
             if (state != tagState)
             {
                 tagState = state;
-                tag.gameObject.SetActive(state != 0);
+                tagRect.gameObject.SetActive(state != 0);
                 if (state == 1)
                 {
                     tagText.text = usesKeyboard ? L.T("Πληκτρολόγηση…", "Typing…") : L.T("Ακούω…", "Listening…");
@@ -695,7 +695,7 @@ namespace QuestMarkerApp.UI
         {
             Camera cam = Headset.Camera;
             if (cam == null) return;
-            Transform t = tag.transform;
+            Transform t = tagRect.transform;
 #if !MOBILE_PREVIEW
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();
             if (rig != null && OVRInput.IsControllerConnected(Hands.OffHand))

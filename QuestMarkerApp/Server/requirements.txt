@@ -3,3 +3,8 @@ flask-cors>=4.0.0
 requests>=2.31.0
 # Optional: only needed to convert IFC files with send_model.py (OBJ/DXF need nothing extra)
 # ifcopenshell>=0.7.0
+# Optional: for model_prep.py (decimation & texture downsampling for photogrammetry OBJ)
+# pymeshlab>=2023.12
+# pillow>=10.0.0
+# Optional: for running the unit tests
+# pytest>=8.0.0

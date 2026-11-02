@@ -88,7 +88,7 @@ namespace QuestMarkerApp.UI
 
         /// <summary>Main-menu switches.</summary>
         // Remembered across launches; cached because they are read every frame.
-        private static bool? enabled, showModel, allLabels;
+        private static bool? hintsEnabled, showModel, allLabels;
 
         private static bool Pref(ref bool? cache, string key, bool fallback) =>
             cache ?? (bool)(cache = PlayerPrefs.GetInt(key, fallback ? 1 : 0) == 1);
@@ -102,8 +102,8 @@ namespace QuestMarkerApp.UI
 
         public static bool Enabled
         {
-            get => Pref(ref enabled, "ui.hints", true);
-            set => SetPref(ref enabled, "ui.hints", value);
+            get => Pref(ref hintsEnabled, "ui.hints", true);
+            set => SetPref(ref hintsEnabled, "ui.hints", value);
         }
         public static bool ShowModel
         {

@@ -13,7 +13,9 @@ namespace QuestMarkerApp.Core
         [Header("Calibration Settings")]
         [SerializeField] private int minimumCalibrationPoints = 2;
         [SerializeField] private int maximumCalibrationPoints = 4;
+#pragma warning disable 0414
         [SerializeField] private bool useAveraging = true;
+#pragma warning restore 0414
 
         [Header("Controller Reference")]
         [SerializeField] private Transform rightController;
@@ -33,7 +35,9 @@ namespace QuestMarkerApp.Core
         [SerializeField] private Markers.MarkerManager markerManager;
 
         [Header("Debug")]
+#pragma warning disable 0414
         [SerializeField] private bool showDebugInfo = true;
+#pragma warning restore 0414
 
         // Events
         public event Action<CalibrationData> OnCalibrationComplete;

@@ -504,9 +504,11 @@ namespace QuestMarkerApp.Core
         }
 
         [Serializable]
+#pragma warning disable 0649
         private class CoordinateResponseWrapper
         {
             public CoordinateData[] coordinates;
+#pragma warning restore 0649
         }
     }
 }

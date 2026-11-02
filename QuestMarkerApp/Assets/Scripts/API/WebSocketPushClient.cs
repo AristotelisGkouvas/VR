@@ -213,6 +213,7 @@ namespace QuestMarkerApp.API
 
         /// <summary>Wire shape of a GET /api/events response from the Python bridge.</summary>
         [Serializable]
+#pragma warning disable 0649
         private class PushEvent
         {
             public CoordinateData[] coordinates;
@@ -220,6 +221,7 @@ namespace QuestMarkerApp.API
             public bool removeMissing;
             public long timestamp;
             public bool timeout;
+#pragma warning restore 0649
         }
     }
 }

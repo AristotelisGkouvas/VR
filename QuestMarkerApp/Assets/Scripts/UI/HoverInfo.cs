@@ -24,7 +24,7 @@ namespace QuestMarkerApp.UI
         private MarkerManager markers;
         private LineRenderer ray;
         private Transform dot;
-        private Transform tag;
+        private Transform tagTransform;
         private RectTransform tagCanvas;
         private Image tagIcon, tagDisc, stateDot;
         private TextMeshProUGUI tagName, tagSub, tagState, tagExtra;
@@ -84,7 +84,7 @@ namespace QuestMarkerApp.UI
 
             bool tagOn = target != null && Time.time - targetSince >= ShowAfter
                          && (!SensorCard.IsOpen || SensorCard.MarkerIdOpen != target.MarkerId);
-            if (tag.gameObject.activeSelf != tagOn) tag.gameObject.SetActive(tagOn);
+            if (tagTransform.gameObject.activeSelf != tagOn) tagTransform.gameObject.SetActive(tagOn);
             if (tagOn) PlaceTag(cam, dist);
         }
 
@@ -94,7 +94,7 @@ namespace QuestMarkerApp.UI
             if (!on)
             {
                 dot.gameObject.SetActive(false);
-                tag.gameObject.SetActive(false);
+                tagTransform.gameObject.SetActive(false);
             }
         }
 
@@ -177,8 +177,8 @@ namespace QuestMarkerApp.UI
             tagCanvas.localScale = Vector3.one * TagScale * k;
             float iconRadius = Mathf.Max(0.06f, d * 0.03f) * 0.5f;
             float lift = d < TagDistance ? Mathf.Max(0.05f * k, iconRadius * 1.6f) : 0.05f;
-            tag.position = cam.transform.position + dir * place + cam.transform.up * lift;
-            VrUi.FaceViewer(tag, cam.transform);
+            tagTransform.position = cam.transform.position + dir * place + cam.transform.up * lift;
+            VrUi.FaceViewer(tagTransform, cam.transform);
         }
 
         // ------------------------------------------------------------------
@@ -210,9 +210,9 @@ namespace QuestMarkerApp.UI
             dot = dotGo.transform;
             dotGo.SetActive(false);
 
-            tag = new GameObject("HoverTag").transform;
-            tag.SetParent(transform, false);
-            tagCanvas = VrUi.CreateCanvas("Canvas", tag, new Vector2(TagW, TagH), TagScale);
+            tagTransform = new GameObject("HoverTag").transform;
+            tagTransform.SetParent(transform, false);
+            tagCanvas = VrUi.CreateCanvas("Canvas", tagTransform, new Vector2(TagW, TagH), TagScale);
             tagCanvas.pivot = new Vector2(0.5f, 0f); // bottom edge sits just above the line of sight
             tagCanvas.GetComponent<Canvas>().sortingOrder = 110;
             VrUi.Card("Bg", tagCanvas, 0, 0, TagW, TagH, Brand.Surface.WithAlpha(0.95f), Brand.BorderStrong, 18);
@@ -223,7 +223,7 @@ namespace QuestMarkerApp.UI
             stateDot = VrUi.Icon("StateDot", tagCanvas, 18, 72, 10, Brand.DiscSprite, Brand.Primary);
             tagState = VrUi.Text("State", tagCanvas, 36, 64, TagW - 50, 24, "", 14f, Brand.FgMuted);
             tagExtra = VrUi.Text("Extra", tagCanvas, 18, 88, TagW - 32, 24, "", 14f, Brand.Fg);
-            tag.gameObject.SetActive(false);
+            tagTransform.gameObject.SetActive(false);
         }
     }
 }

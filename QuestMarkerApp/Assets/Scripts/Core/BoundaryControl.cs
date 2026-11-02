@@ -110,7 +110,7 @@ namespace QuestMarkerApp.Core
 
         private static void ShowLayers(bool on)
         {
-            foreach (OVRPassthroughLayer layer in FindObjectsByType<OVRPassthroughLayer>(FindObjectsSortMode.None))
+            foreach (OVRPassthroughLayer layer in FindObjectsByType<OVRPassthroughLayer>())
                 layer.hidden = !on;
         }
 

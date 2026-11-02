@@ -50,7 +50,7 @@ namespace QuestMarkerApp.Editor
             // Meta Quest: minimum API 32, Meta Store target API 34.
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel32;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevel34;
-            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.bundleVersion = "1.2.0";
             Debug.Log("[QuestMarkerApp] Android/Quest build settings applied (min API 32, target API 34, IL2CPP, ARM64)");
@@ -205,10 +205,10 @@ namespace QuestMarkerApp.Editor
 
         private static void SetDefine(string define, bool enable, string label)
         {
-            BuildTargetGroup[] groups = { BuildTargetGroup.Android, BuildTargetGroup.Standalone };
+            UnityEditor.Build.NamedBuildTarget[] groups = { UnityEditor.Build.NamedBuildTarget.Android, UnityEditor.Build.NamedBuildTarget.Standalone };
             foreach (var group in groups)
             {
-                string defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
+                string defines = PlayerSettings.GetScriptingDefineSymbols(group);
                 var list = new System.Collections.Generic.List<string>(
                     defines.Split(new[] { ';' }, System.StringSplitOptions.RemoveEmptyEntries));
 
@@ -216,7 +216,7 @@ namespace QuestMarkerApp.Editor
                 if (enable && !has) list.Add(define);
                 if (!enable && has) list.Remove(define);
 
-                PlayerSettings.SetScriptingDefineSymbolsForGroup(group, string.Join(";", list));
+                PlayerSettings.SetScriptingDefineSymbols(group, string.Join(";", list));
             }
 
             Debug.Log($"[QuestMarkerApp] {label} {(enable ? "ENABLED" : "DISABLED")}");

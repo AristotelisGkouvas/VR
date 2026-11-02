@@ -40,18 +40,18 @@ namespace QuestMarkerApp.Core
         /// <summary>Main-menu switch, remembered across launches.</summary>
         public static bool Enabled
         {
-            get => enabled ?? (bool)(enabled = PlayerPrefs.GetInt(PrefEnabled, 1) == 1);
+            get => alertsEnabled ?? (bool)(alertsEnabled = PlayerPrefs.GetInt(PrefEnabled, 1) == 1);
             set
             {
-                if (enabled == value) return;
-                enabled = value;
+                if (alertsEnabled == value) return;
+                alertsEnabled = value;
                 PlayerPrefs.SetInt(PrefEnabled, value ? 1 : 0);
                 Prefs.Save();
                 // Switched back on: catch up now rather than at the next scheduled poll.
                 if (value && instance != null) instance.pollRequested = true;
             }
         }
-        private static bool? enabled;
+        private static bool? alertsEnabled;
         private static LiveAlerts instance;
 
         public float PollSeconds = 20f;
