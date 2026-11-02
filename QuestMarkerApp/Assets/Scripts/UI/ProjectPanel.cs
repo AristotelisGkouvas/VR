@@ -376,8 +376,11 @@ namespace QuestMarkerApp.UI
             }
 
             bool worst = !string.IsNullOrEmpty(a.WorstId);
-            bool showTarget = a.NeedsCheck || !a.IsAligned || n < 3 || worst;
-            bool showVerdict = a.IsAligned && !a.NeedsCheck;
+            // Accuracy measurement: the target and each touch's result, no verdict (it would not
+            // change — the solution is frozen while measuring).
+            bool measuring = AlignmentAccuracy.Active && a.IsAligned && !a.NeedsCheck;
+            bool showTarget = measuring || a.NeedsCheck || !a.IsAligned || n < 3 || worst;
+            bool showVerdict = a.IsAligned && !a.NeedsCheck && !measuring;
             // With both the target and the verdict up there is no room for a third note, and the
             // verdict's hint already carries the detail.
             bool showMessage = !string.IsNullOrEmpty(a.LastMessage) && !(showTarget && showVerdict);
@@ -416,17 +419,19 @@ namespace QuestMarkerApp.UI
         private void RefreshTarget(ProjectAlignment a)
         {
             int n = a.PlacedCount;
-            bool worst = !string.IsNullOrEmpty(a.WorstId);
+            bool measuring = AlignmentAccuracy.Active && a.IsAligned && !a.NeedsCheck;
+            bool worst = !measuring && !string.IsNullOrEmpty(a.WorstId);
             ProjectPoint target = null;
             if (worst) a.TryGetPoint(ProjectAlignment.MarkerPrefix + a.WorstId, out target);
             if (target == null && a.SelectedIndex >= 0 && a.SelectedIndex < a.Points.Count) target = a.Points[a.SelectedIndex];
 
-            string label = a.NeedsCheck ? L.T("ΕΠΙΒΕΒΑΙΩΣΗ ΘΕΣΗΣ", "CONFIRM POSITION")
+            string label = measuring ? L.T("ΜΕΤΡΗΣΗ ΑΚΡΙΒΕΙΑΣ", "ACCURACY CHECK")
+                : a.NeedsCheck ? L.T("ΕΠΙΒΕΒΑΙΩΣΗ ΘΕΣΗΣ", "CONFIRM POSITION")
                 : worst ? L.T("ΞΑΝΑ-ΑΓΓΙΞΕ", "TOUCH AGAIN")
                 : n == 0 ? L.T("ΠΡΩΤΟ ΣΗΜΕΙΟ", "FIRST POINT")
                 : n == 1 ? L.T("ΕΠΟΜΕΝΟ ΣΗΜΕΙΟ", "NEXT POINT") : L.T("ΣΗΜΕΙΟ ΕΛΕΓΧΟΥ (ΠΡΟΑΙΡΕΤΙΚΟ)", "CONTROL POINT (OPTIONAL)");
             targetLabel.text = label;
-            targetLabel.color = worst ? Brand.Danger : a.NeedsCheck ? Brand.Warning : Brand.FgSubtle;
+            targetLabel.color = worst ? Brand.Danger : a.NeedsCheck || measuring ? Brand.Warning : Brand.FgSubtle;
 
             if (target != null)
             {
@@ -448,13 +453,15 @@ namespace QuestMarkerApp.UI
                 targetMeta.text = "";
             }
 
-            targetInstr.text = a.NeedsCheck
+            targetInstr.text = measuring
+                ? L.T("Μύτη στο σημείο και Trigger· η ευθυγράμμιση δεν αλλάζει", "Tip on the point, then Trigger; the alignment does not change")
+                : a.NeedsCheck
                 ? L.T("Ακούμπησε ένα γνωστό σημείο και πάτα Trigger", "Touch a known point and press Trigger")
                 : L.T("Ροζ μύτη στο σημείο και Trigger", "Pink tip on the point, then Trigger");
 
             // Gauge, or a short reason, under the instruction.
             ProjectAlignment.LiveGuide g = a.Live;
-            bool gauge = g.Valid && !a.NeedsCheck && !worst && target != null && !a.IsPlaced(target.id);
+            bool gauge = !measuring && g.Valid && !a.NeedsCheck && !worst && target != null && !a.IsPlaced(target.id);
             gaugeBlock.gameObject.SetActive(gauge);
             float extra = 0f;
             if (gauge)
@@ -463,7 +470,10 @@ namespace QuestMarkerApp.UI
                 extra = 60f;
             }
 
-            string why = a.NeedsCheck
+            string why = measuring
+                ? L.T($"Καταγραφή σε CSV. {Hands.SecondaryName}: αναίρεση μέτρησης. Μενού › Ευθυγράμμιση για τερματισμό.",
+                      $"Logged to CSV. {Hands.SecondaryName}: undo measurement. Menu › Alignment to stop.")
+                : a.NeedsCheck
                 ? L.T("Η ευθυγράμμιση είναι από προηγούμενη φορά. Κατά προτίμηση ένα από τα σημεία ελέγχου.",
                       "This alignment is from an earlier session. Preferably touch one of the control points.")
                 : worst ? (L.En

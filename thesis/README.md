@@ -4,7 +4,7 @@
 
 *From Sensor to Field of View: An End-to-End IoT and Mixed Reality System for Visualizing Measurements in Place*
 
-Ό,τι αφορά τη διπλωματική μπαίνει σε αυτόν τον φάκελο. Η εφαρμογή είναι στο `../QuestMarkerApp/`. Η έκδοση της εφαρμογής για τα πειράματα είναι το git tag **`thesis-v1`**.
+Ό,τι αφορά τη διπλωματική μπαίνει σε αυτόν τον φάκελο. Η εφαρμογή είναι στο `../QuestMarkerApp/`. Η έκδοση της εφαρμογής για τα πειράματα είναι το git tag **`thesis-v2`**.
 
 | Αρχείο / φάκελος | Περιεχόμενο |
 |---|---|

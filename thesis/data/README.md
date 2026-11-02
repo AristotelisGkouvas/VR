@@ -5,7 +5,7 @@
 | Φάκελος | Περιεχόμενο | Πηγή |
 |---|---|---|
 | `fieldtest/` | CSV της «Δοκιμής πεδίου anchors» | `GET /api/fieldtest` ή `analysis/fieldtest_anchors.py --download` |
-| `alignment/` | Μετρήσεις ακρίβειας ευθυγράμμισης | (θα οριστεί) |
+| `accuracy/` | CSV της μέτρησης ακρίβειας ευθυγράμμισης | `GET /api/accuracy` ή `analysis/alignment_accuracy.py --download` |
 | `performance/` | CSV του OVR Metrics Tool | OVR Metrics Tool |
 | `user-study/` | Ερωτηματολόγια και χρόνοι, **ανωνυμοποιημένα** (Σ01, Σ02, …) | Μελέτη χρηστών |
 
@@ -15,4 +15,4 @@
 
 | Ημερομηνία | Πείραμα | Χώρος | Συνθήκες | Έκδοση εφαρμογής | Σημειώσεις |
 |---|---|---|---|---|---|
-| | | | | thesis-v1 | |
+| | | | | thesis-v2 | |

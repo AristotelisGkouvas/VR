@@ -112,7 +112,8 @@ namespace QuestMarkerApp.API
             "/api/coordinates", "/api/status", "/api/logs", "/api/clear", "/api/undo", "/api/calibrate",
             "/api/calibrate/start", "/api/calibrate/status", "/api/calibrate/reset", "/api/session",
             "/api/session/new", "/api/gps-origin", "/api/anchors", "/api/layer", "/api/project",
-            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest", "/api/fieldnotes", "/api/reports"
+            "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest", "/api/fieldnotes", "/api/reports",
+            "/api/accuracy"
         };
         private long requestCount;
         private DateTime startedAtUtc;
@@ -122,6 +123,7 @@ namespace QuestMarkerApp.API
         // Application.persistentDataPath is main-thread only: cached in Awake for the HTTP workers.
         private string modelsDirectory = "";
         private string fieldTestDirectory = "";
+        private string accuracyDirectory = "";
         private string fieldNotesFile = "";
         private string reportsDirectory = "";
 
@@ -144,6 +146,7 @@ namespace QuestMarkerApp.API
             security = new ApiSecurity(securityConfig);
             modelsDirectory = Path.Combine(Application.persistentDataPath, "models");
             fieldTestDirectory = Path.Combine(Application.persistentDataPath, FieldTestLog.FolderName);
+            accuracyDirectory = Path.Combine(Application.persistentDataPath, AlignmentAccuracy.FolderName);
             fieldNotesFile = FieldNotes.FilePath;
             reportsDirectory = Path.Combine(Application.persistentDataPath, "reports");
             if (markerManager == null) markerManager = FindAnyObjectByType<MarkerManager>();
@@ -555,6 +558,13 @@ namespace QuestMarkerApp.API
             }
 
             if (path == "/api/fieldtest" && method == "GET") return HandleFieldTestList(response);
+            if (path == "/api/accuracy" && method == "GET") return HandleFileList(CsvFiles(accuracyDirectory), response);
+            if (path.StartsWith("/api/accuracy/") && method == "GET")
+            {
+                string rawPath = request.Url.AbsolutePath.TrimEnd('/');
+                string name = Uri.UnescapeDataString(rawPath.Substring(rawPath.LastIndexOf('/') + 1));
+                return HandleFileDownload(CsvFiles(accuracyDirectory), name, "text/csv; charset=utf-8", response);
+            }
             if (path == "/api/reports" && method == "GET") return HandleReportList(response);
             if (path.StartsWith("/api/reports/") && method == "GET")
             {
@@ -579,7 +589,7 @@ namespace QuestMarkerApp.API
             }
 
             if (KnownPaths.Contains(path) || path.StartsWith("/api/coordinates/") || path.StartsWith("/api/model/")
-                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/reports/"))
+                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/reports/") || path.StartsWith("/api/accuracy/"))
             {
                 SendJson(response, 405, "{\"error\":\"Method not allowed\",\"method\":\"" + EscapeJson(method) +
                                         "\",\"path\":\"" + EscapeJson(path) + "\"}");
@@ -1678,18 +1688,21 @@ namespace QuestMarkerApp.API
         }
 
         // Only *.csv directly in the field test folder (the per-project anchor JSONs are not served).
-        private string[] FieldTestFiles()
+        private string[] FieldTestFiles() => CsvFiles(fieldTestDirectory);
+
+        // *.csv directly in a log folder (field test, accuracy), sorted; none when it does not exist yet.
+        private static string[] CsvFiles(string directory)
         {
             try
             {
-                if (string.IsNullOrEmpty(fieldTestDirectory) || !Directory.Exists(fieldTestDirectory)) return Array.Empty<string>();
-                string[] files = Directory.GetFiles(fieldTestDirectory, "*.csv", SearchOption.TopDirectoryOnly);
+                if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory)) return Array.Empty<string>();
+                string[] files = Directory.GetFiles(directory, "*.csv", SearchOption.TopDirectoryOnly);
                 Array.Sort(files, StringComparer.Ordinal);
                 return files;
             }
             catch (Exception e)
             {
-                UnityEngine.Debug.LogWarning($"[LocalAPIServer] Field test folder unreadable: {e.Message}");
+                UnityEngine.Debug.LogWarning($"[LocalAPIServer] Log folder unreadable ({directory}): {e.Message}");
                 return Array.Empty<string>();
             }
         }

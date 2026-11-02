@@ -11,6 +11,7 @@ pip install -r requirements.txt
 | Script | Πείραμα (κεφ. 6) | Είσοδος | Έξοδος |
 |---|---|---|---|
 | `fieldtest_anchors.py` | Σταθερότητα και επανεντοπισμός anchors | `../data/fieldtest/*.csv` | `anchors_by_condition.tex`, `anchors_offset_by_condition.pdf`, `anchors_offset_vs_age.pdf` |
+| `alignment_accuracy.py` | Ακρίβεια ευθυγράμμισης | `../data/accuracy/*.csv` | `alignment_by_k.tex`, `alignment_numbers.tex`, `alignment_error_vs_distance.pdf`, `alignment_pred_vs_meas.pdf` |
 
 ## fieldtest_anchors.py
 
@@ -34,7 +35,16 @@ python fieldtest_anchors.py
 ## Επόμενα scripts
 
 Ακολουθούν το ίδιο μοτίβο (είσοδος στο `../data/<πείραμα>/`, έξοδος στο `../figures/generated/`):
-- `alignment_accuracy.py`: σφάλμα στα ανεξάρτητα σημεία συναρτήσει απόστασης, προβλεπόμενο έναντι μετρημένου.
 - `performance.py`: CSV του OVR Metrics Tool → `fps_vs_triangles.pdf`.
 - `interpolation_loocv.py`: Delaunay έναντι IDW με leave-one-out.
 - `user_study.py`: SUS, NASA-TLX, χρόνοι, Wilcoxon.
+
+## alignment_accuracy.py
+
+Τα CSV της λειτουργίας «Σημεία ελέγχου ακρίβειας» (README της εφαρμογής). Λήψη και ανάλυση μαζί:
+
+```bash
+python alignment_accuracy.py --download --quest-ip 192.168.1.30 --api-key ΚΛΕΙΔΙ
+```
+
+Τι μετρά: ανά k, το σφάλμα των ανεξάρτητων σημείων (διάμεσος, 95%), τον λόγο μετρημένου/προβλεπόμενου, και την επαναληψιμότητα του αγγίγματος σ από επαναλαμβανόμενα αγγίγματα του ίδιου σημείου. Οι αριθμοί περνούν στο κείμενο ως μακροεντολές (`\AccSigmaHcm` κ.λπ.) από το `alignment_numbers.tex`. Αγνοεί τις αναιρεμένες μετρήσεις και το έργο εξάσκησης (εκτός με `--include-practice`).

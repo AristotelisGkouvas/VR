@@ -586,6 +586,24 @@ namespace QuestMarkerApp.UI
                 Enabled = () => false
             });
 
+            // Accuracy measurement (README › Μέτρηση ακρίβειας ευθυγράμμισης): touches are compared
+            // with the frozen solution and logged, never placed. Off at every start.
+            y = Section(y + 8f, L.T("ΜΕΤΡΗΣΗ ΑΚΡΙΒΕΙΑΣ", "ACCURACY CHECK"));
+            y = Row(y, new Item
+            {
+                Label = L.T("Σημεία ελέγχου ακρίβειας", "Accuracy check points"),
+                Value = () => AlignmentAccuracy.Active || AlignmentAccuracy.Unavailable(project) == null
+                    ? AlignmentAccuracy.Summary : AlignmentAccuracy.Unavailable(project),
+                Enabled = () => AlignmentAccuracy.Active || AlignmentAccuracy.Unavailable(project) == null,
+                Run = () =>
+                {
+                    bool on = !AlignmentAccuracy.Active;
+                    AlignmentAccuracy.SetActive(on, project);
+                    // Straight to the touching: the panel shows the target and each result.
+                    if (on && AlignmentAccuracy.Active) { Close(); project.SetMode(true); }
+                }
+            });
+
             // Phase 0 measurement (README › Δοκιμή πεδίου anchors): logs only, never aligns.
             y = Section(y + 8f, L.T("ΔΟΚΙΜΗ ΠΕΔΙΟΥ", "FIELD TEST"));
             y = Row(y, new Item
@@ -600,7 +618,8 @@ namespace QuestMarkerApp.UI
                 // The app cannot see the light: set by hand, written into every CSV row.
                 Label = L.T("Συνθήκες", "Conditions"),
                 Value = () => AnchorFieldTest.ConditionName,
-                Enabled = () => AnchorFieldTest.Enabled,
+                // Also written into the accuracy CSV.
+                Enabled = () => AnchorFieldTest.Enabled || AlignmentAccuracy.Active,
                 Run = () => AnchorFieldTest.Condition++
             });
             y = Row(y, new Item

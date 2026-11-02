@@ -25,8 +25,9 @@ namespace QuestMarkerApp.Core
         public const string MarkerPrefix = "prj:";
         private const string LegacySaveFile = "project_alignment.json";
         private const string LastProjectFile = "project_last.txt";
-        /// <summary>Placement error assumed per touched point, for the predicted-error readout.</summary>
-        private const float TouchSigma = 0.02f;
+        /// <summary>Placement error assumed per touched point, for the predicted-error readout.
+        /// Measured in the field with <see cref="AlignmentAccuracy"/> (repeated control-point touches).</summary>
+        public const float TouchSigma = 0.02f;
         /// <summary>A re-touched control point within this of its predicted spot confirms a restored alignment.</summary>
         private const float RecheckTolerance = 0.10f;
 
@@ -294,6 +295,44 @@ namespace QuestMarkerApp.Core
         public string LastMessage => lastMessage;
         /// <summary>The last message is good news (check OK, position restored), in either language.</summary>
         public bool LastMessageIsGood => lastMessage != null && ReferenceEquals(lastMessage, goodMessage);
+
+        /// <summary>A point's project-local position (x = East, y = Up, z = North, minus the origin).</summary>
+        public Vector3 PointLocal(ProjectPoint p) => ProjectLocal(p);
+
+        /// <summary>Project-local centre of the placed control points (zero when none).</summary>
+        public Vector3 ControlCentroid
+        {
+            get
+            {
+                Vector3 sum = Vector3.zero;
+                int n = 0;
+                if (HasProject)
+                    foreach (ProjectPoint pt in project.points)
+                        if (pt != null && placements.ContainsKey(pt.id)) { sum += ProjectLocal(pt); n++; }
+                return n > 0 ? sum / n : Vector3.zero;
+            }
+        }
+
+        /// <summary>
+        /// A touch carried back into the project's grid through the current solution: its offset
+        /// from <paramref name="point"/> (project-local metres: x = ΔE, y = ΔH, z = ΔN), its
+        /// position in the anchor frame, and its absolute E/N/H. False without an alignment.
+        /// </summary>
+        public bool TryTouchInProject(ProjectPoint point, Vector3 worldTouch, out Vector3 delta, out Vector3 touchLocal,
+            out double e, out double n, out double h)
+        {
+            delta = touchLocal = Vector3.zero;
+            e = n = h = 0;
+            Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
+            if (!isAligned || point == null || reference == null) return false;
+            touchLocal = reference.InverseTransformPoint(worldTouch);
+            Vector3 inProject = Quaternion.Inverse(solvedRotation) * (touchLocal - solvedTranslation);
+            delta = inProject - ProjectLocal(point);
+            e = originE + inProject.x;
+            n = originN + inProject.z;
+            h = originH + inProject.y;
+            return true;
+        }
 
         private static string DataPath(string file) => Path.Combine(Application.persistentDataPath, file);
 
@@ -676,7 +715,22 @@ namespace QuestMarkerApp.Core
                 }
             }
 
-            if (Hands.DominantSecondaryDown() && UndoLastPlacement())
+            if (AlignmentAccuracy.Active && isAligned)
+            {
+                // Measuring: B withdraws the last measurement, never a control point.
+                if (Hands.DominantSecondaryDown())
+                {
+                    string undone = AlignmentAccuracy.UndoLast();
+                    if (undone != null)
+                    {
+                        lastMessage = undone;
+                        RefreshPanel();
+                        Feedback.Play(Feedback.Sound.Undo);
+                        Feedback.Buzz(Hands.Dominant, 0.25f, 0.06f);
+                    }
+                }
+            }
+            else if (Hands.DominantSecondaryDown() && UndoLastPlacement())
             {
                 Feedback.Play(Feedback.Sound.Undo);
                 Feedback.Buzz(Hands.Dominant, 0.25f, 0.06f);
@@ -707,6 +761,16 @@ namespace QuestMarkerApp.Core
             var point = SelectedPoint;
             Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
             if (point == null || reference == null) return false;
+
+            // Accuracy measurement: the touch is compared with the frozen solution and logged;
+            // nothing is placed and the alignment does not move (AlignmentAccuracy).
+            if (AlignmentAccuracy.Active && isAligned && !needsCheck)
+            {
+                lastMessage = AlignmentAccuracy.Record(this, point, worldPosition, out bool good);
+                goodMessage = good ? lastMessage : null;
+                RefreshPanel();
+                return lastMessage != null;
+            }
 
             Vector3 local = reference.InverseTransformPoint(worldPosition);
             lastMessage = null;
@@ -897,6 +961,8 @@ namespace QuestMarkerApp.Core
                 }
             }
 
+            // A new solution is a new accuracy series; no solution switches the measurement off.
+            AlignmentAccuracy.OnSolved(this);
             Render();
             RefreshPanel();
             OnAlignmentChanged?.Invoke();
