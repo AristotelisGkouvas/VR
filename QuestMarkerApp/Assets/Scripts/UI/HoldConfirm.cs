@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -77,7 +78,7 @@ namespace QuestMarkerApp.UI
             if (canvas.gameObject.activeSelf != show) canvas.gameObject.SetActive(show);
             if (!show) return;
             fill.fillAmount = Mathf.Clamp01((Time.unscaledTime - started) / Seconds);
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             Vector3 at = cam.transform.position + cam.transform.forward * 0.5f;
 #if !MOBILE_PREVIEW

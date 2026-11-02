@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -18,7 +19,7 @@ namespace QuestMarkerApp.UI
         public static bool SoundOn
         {
             get => soundOn ?? (bool)(soundOn = PlayerPrefs.GetInt("ui.sound", 1) == 1);
-            set { soundOn = value; PlayerPrefs.SetInt("ui.sound", value ? 1 : 0); PlayerPrefs.Save(); }
+            set { soundOn = value; PlayerPrefs.SetInt("ui.sound", value ? 1 : 0); Prefs.Save(); }
         }
         private static bool? soundOn;
 

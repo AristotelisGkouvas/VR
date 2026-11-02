@@ -386,7 +386,7 @@ namespace QuestMarkerApp.Core
 
             lastResidualRms = 0f;
             PlayerPrefs.DeleteKey("CalibrationData");
-            PlayerPrefs.Save();
+            Prefs.Save();
 
             SetStep("Calibration reset");
             OnCalibrationReset?.Invoke();
@@ -566,7 +566,7 @@ namespace QuestMarkerApp.Core
             }
 #endif
 
-            return Camera.main != null ? Camera.main.transform : null;
+            return Headset.Camera != null ? Headset.Camera.transform : null;
         }
 
         private void SetupLaserPointer()
@@ -614,7 +614,7 @@ namespace QuestMarkerApp.Core
             currentCalibration.frameVersion = CalibrationData.ReferenceFrameVersion;
             string json = JsonUtility.ToJson(currentCalibration);
             PlayerPrefs.SetString("CalibrationData", json);
-            PlayerPrefs.Save();
+            Prefs.Save();
         }
 
         private void LoadSavedCalibration()
@@ -635,7 +635,7 @@ namespace QuestMarkerApp.Core
                                      "discarded; calibrate again");
                     currentCalibration = null;
                     PlayerPrefs.DeleteKey("CalibrationData");
-                    PlayerPrefs.Save();
+                    Prefs.Save();
                     SetStep("Saved calibration was from an older version — please calibrate again");
                     return;
                 }

@@ -202,7 +202,7 @@ namespace QuestMarkerApp.UI
         private void LateUpdate()
         {
             if (!IsActive) return;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || markers == null) return;
 
             // A re-solve or reload can recycle the pooled marker for another sensor: re-check.

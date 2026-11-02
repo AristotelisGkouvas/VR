@@ -1,4 +1,5 @@
 using UnityEngine;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -22,7 +23,7 @@ namespace QuestMarkerApp.UI
 
         private void LateUpdate()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || Time.unscaledDeltaTime <= 0f) return;
             Vector3 p = cam.transform.position;
             if (primed)

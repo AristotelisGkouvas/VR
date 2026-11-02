@@ -4,6 +4,7 @@ using UnityEngine;
 using TMPro;
 using UnityEngine.Rendering;
 using QuestMarkerApp.API;
+using QuestMarkerApp.Core;
 using QuestMarkerApp.UI;
 
 namespace QuestMarkerApp.Markers
@@ -75,6 +76,8 @@ namespace QuestMarkerApp.Markers
         private float fittedScale = -1f;
         private int lastDistKey = int.MinValue;
         private string lastDistBase, lastDistStatus;
+        // Past the LOD range a non-icon marker is a small static scale: skip the rest of Tick.
+        private bool parkedFar;
         // Inspector default of pulseAnimation, restored when a pooled marker is re-initialised.
         private bool defaultPulse;
 
@@ -145,7 +148,7 @@ namespace QuestMarkerApp.Markers
         public static bool LabelsVisible
         {
             get => labelsVisible ?? (bool)(labelsVisible = PlayerPrefs.GetInt("ui.labels", 1) == 1);
-            set { labelsVisible = value; PlayerPrefs.SetInt("ui.labels", value ? 1 : 0); PlayerPrefs.Save(); }
+            set { labelsVisible = value; PlayerPrefs.SetInt("ui.labels", value ? 1 : 0); Prefs.Save(); }
         }
         private static bool? labelsVisible;
 
@@ -169,11 +172,28 @@ namespace QuestMarkerApp.Markers
 
         /// <summary>
         /// Per-frame work, driven by MarkerManager in one loop (hundreds of separate Update()
-        /// calls each re-fetching Camera.main cost ~1–2 ms a frame on Quest).
+        /// calls each re-fetching Headset.Camera cost ~1–2 ms a frame on Quest).
+        /// <paramref name="sqrDist"/> is the squared distance from the eye, so the manager
+        /// does not take a square root for markers that park immediately.
         /// </summary>
-        public void Tick(Camera cam, float dist)
+        public void Tick(Camera cam, float sqrDist)
         {
             if (cam == null) return;
+
+            float hide = lodHideLabelDistance * 1.5f;
+            if (currentType != MarkerType.Icon && !isHighlighted && !pulseAnimation && sqrDist > hide * hide)
+            {
+                if (!parkedFar)
+                {
+                    parkedFar = true;
+                    if (labelText != null && labelText.gameObject.activeSelf)
+                        labelText.gameObject.SetActive(false);
+                    transform.localScale = originalScale * lodMinScaleFactor;
+                }
+                return;
+            }
+            parkedFar = false;
+            float dist = Mathf.Sqrt(sqrDist);
 
             UpdateLabelContent(dist);
             FitPlate();
@@ -203,10 +223,7 @@ namespace QuestMarkerApp.Markers
             // After the LOD / icon pass has decided visibility: only a shown label is turned to
             // the viewer (most of 200 labels are hidden at any time; two transform writes each).
             if (faceCamera && labelText != null && labelText.gameObject.activeSelf)
-            {
-                labelText.transform.LookAt(cam.transform);
-                labelText.transform.Rotate(0, 180, 0);
-            }
+                Face(labelText.transform, cam);
         }
 
         private void CacheComponents()
@@ -247,6 +264,7 @@ namespace QuestMarkerApp.Markers
             labelShown = true;
             pulseAnimation = defaultPulse;
             introStart = waveStart = -1f;
+            parkedFar = false;
             // Markers used to be SortingGroups (one unit each, back to front), which made every
             // quad its own draw call. Depth-writing sprites (Brand.MarkerSpriteMaterial) now keep
             // near over far, and all halos / discs / glyphs batch across markers.
@@ -596,15 +614,22 @@ namespace QuestMarkerApp.Markers
             return r;
         }
 
+        // +Z away from the viewer. A heading that moved less than about a degree is left alone:
+        // a still head was rewriting every label and icon rotation every frame.
+        private static void Face(Transform t, Camera cam)
+        {
+            Vector3 dir = t.position - cam.transform.position;
+            if (dir.sqrMagnitude < 1e-8f) return;
+            dir.Normalize();
+            if (Vector3.Dot(t.forward, dir) > 0.9998f) return;
+            t.rotation = Quaternion.LookRotation(dir, cam.transform.up);
+        }
+
         // Constant on-screen size, like the plan view's scaleByDistance: a fixed-size icon
         // would vanish across a 100 m site and swamp the view up close.
         private void UpdateIcon(Camera cam, float dist)
         {
-            if (iconBillboard != null)
-            {
-                iconBillboard.rotation = Quaternion.LookRotation(
-                    iconBillboard.position - cam.transform.position, cam.transform.up);
-            }
+            if (iconBillboard != null) Face(iconBillboard, cam);
 
             float size = Mathf.Max(baseScale, dist * iconAngularSize) * (isHighlighted ? 1.3f : 1f);
             if (alertRing != null)

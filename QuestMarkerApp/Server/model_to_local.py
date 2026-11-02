@@ -205,8 +205,9 @@ def transform_tiles(src: Path, out: Path, name: str, shift: tuple[float, float, 
 def package(folder: Path, zip_path: Path) -> None:
     with zipfile.ZipFile(zip_path, "w") as z:
         for f in sorted(folder.iterdir()):
-            if f.suffix.lower() in (".obj", ".mtl", ".jpg", ".jpeg", ".png"):
-                kind = zipfile.ZIP_STORED if f.suffix.lower() in (".jpg", ".jpeg", ".png") else zipfile.ZIP_DEFLATED
+            # .astc is already compressed (astcenc). The headset extractor accepts it next to jpg/png.
+            if f.suffix.lower() in (".obj", ".mtl", ".jpg", ".jpeg", ".png", ".astc"):
+                kind = zipfile.ZIP_STORED if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".astc") else zipfile.ZIP_DEFLATED
                 z.write(f, f.name, compress_type=kind)
 
 

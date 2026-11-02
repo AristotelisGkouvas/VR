@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using QuestMarkerApp.Core;
 using QuestMarkerApp.Markers;
 
 namespace QuestMarkerApp.UI
@@ -22,7 +23,7 @@ namespace QuestMarkerApp.UI
         public static bool Enabled
         {
             get => PlayerPrefs.GetInt(EnabledKey, 1) == 1;
-            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         private MarkerManager markers;
@@ -35,7 +36,7 @@ namespace QuestMarkerApp.UI
 
         private void LateUpdate()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             bool on = Enabled && markers != null && cam != null && !UiState.AnyModal;
             if (on && Time.unscaledTime >= nextScan)
             {

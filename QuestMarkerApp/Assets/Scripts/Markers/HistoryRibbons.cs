@@ -26,8 +26,9 @@ namespace QuestMarkerApp.Markers
         private const int WindowDays = 30;
         private const int FallbackSamples = 10;
         private const int MaxPoints = 40;
-        /// <summary>Metres beyond which ribbons are hidden (icons are already specks there).</summary>
-        private const float HideDistance = 80f;
+        /// <summary>Metres beyond which ribbons are hidden. Past this the icon is already a speck
+        /// and a LineRenderer per sensor is pure cost.</summary>
+        private const float HideDistance = 25f;
         // Marker's icon rule, repeated here so the ribbon sizes exactly like the icon it follows.
         private const float IconAngularSize = 0.03f, IconMinSize = 0.06f;
 
@@ -52,7 +53,7 @@ namespace QuestMarkerApp.Markers
             {
                 enabledPref = value;
                 PlayerPrefs.SetInt(PrefKey, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
             }
         }
 
@@ -73,6 +74,8 @@ namespace QuestMarkerApp.Markers
             public bool HasData;
             // Current SetActive state, so it is only toggled on change.
             public bool On;
+            public Vector3 LastPos;
+            public Quaternion LastRot;
         }
 
         private ProjectAlignment project;
@@ -176,7 +179,7 @@ namespace QuestMarkerApp.Markers
             }
             if (dirty) Rebuild();
 
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || items.Count == 0) return;
             if (!markers.MarkersVisible || Unavailable() != null)
             {
@@ -209,10 +212,16 @@ namespace QuestMarkerApp.Markers
                 shown = true;
 
                 // Same orientation as the icon's billboard (+Z away from the viewer) and the
-                // same constant-angle size, so ribbon and icon move as one piece.
+                // same constant-angle size, so ribbon and icon move as one piece. A marker
+                // that has not moved and a head that has barely turned do not rewrite the transform.
+                Quaternion rot = Quaternion.LookRotation(toMarker, camUp);
                 float baseScale = m.Data != null && m.Data.scale > 0f ? m.Data.scale : IconMinSize;
                 float size = Mathf.Max(baseScale, dist * IconAngularSize);
-                r.Root.SetPositionAndRotation(pos, Quaternion.LookRotation(toMarker, camUp));
+                bool still = (pos - r.LastPos).sqrMagnitude < 1e-6f && Quaternion.Angle(rot, r.LastRot) < 0.4f;
+                r.LastPos = pos;
+                r.LastRot = rot;
+                if (still) continue;
+                r.Root.SetPositionAndRotation(pos, rot);
                 r.Root.localScale = new Vector3(size, size, size);
             }
             anyShown = shown;

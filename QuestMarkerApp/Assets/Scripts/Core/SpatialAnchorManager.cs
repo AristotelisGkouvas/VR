@@ -85,7 +85,7 @@ namespace QuestMarkerApp.Core
 
         public void CreateReferenceAnchorAtCurrentPosition()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null)
             {
                 CreateReferenceAnchor(Vector3.zero, Quaternion.identity);
@@ -160,7 +160,7 @@ namespace QuestMarkerApp.Core
                 && previous != Guid.Empty && previous != anchor.Uuid)
                 OVRSpatialAnchor.EraseAnchorsAsync(Array.Empty<OVRSpatialAnchor>(), new[] { previous });
             PlayerPrefs.SetString(PrefUuid, referenceUuid);
-            PlayerPrefs.Save();
+            Prefs.Save();
             Debug.Log($"[SpatialAnchor] Saved reference anchor {referenceUuid}");
         }
 #endif
@@ -266,7 +266,7 @@ namespace QuestMarkerApp.Core
             string F(float v) => v.ToString("R", CultureInfo.InvariantCulture);
             PlayerPrefs.SetString(PrefPose,
                 $"{F(position.x)},{F(position.y)},{F(position.z)},{F(rotation.x)},{F(rotation.y)},{F(rotation.z)},{F(rotation.w)}");
-            PlayerPrefs.Save();
+            Prefs.Save();
         }
 
         private static bool TryParsePose(string data, out Vector3 position, out Quaternion rotation)

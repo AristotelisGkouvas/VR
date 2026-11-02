@@ -45,9 +45,9 @@ namespace QuestMarkerApp.UI
 
         private void Start()
         {
-            if (Camera.main != null)
+            if (Headset.Camera != null)
             {
-                headTransform = Camera.main.transform;
+                headTransform = Headset.Camera.transform;
             }
 
             FindReferences();

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using QuestMarkerApp.API;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.Markers
 {
@@ -93,7 +94,7 @@ namespace QuestMarkerApp.Markers
             {
                 alarmsOnly = value;
                 PlayerPrefs.SetInt("ui.alarmsOnly", value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 ApplyLayerVisibility();
             }
         }
@@ -437,7 +438,7 @@ namespace QuestMarkerApp.Markers
         // re-ranked 5x a second rather than every frame.
         private void Update()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || activeMarkers.Count == 0) return;
             Vector3 eye = cam.transform.position;
             bool rank = Time.unscaledTime >= nextLabelPass;
@@ -450,9 +451,9 @@ namespace QuestMarkerApp.Markers
             foreach (Marker m in activeMarkers.Values)
             {
                 if (m == null || !m.gameObject.activeInHierarchy) continue;
-                float d = Vector3.Distance(eye, m.transform.position);
-                if (rank) byDistance.Add((d, m));
-                m.Tick(cam, d);
+                float sqr = (m.transform.position - eye).sqrMagnitude;
+                if (rank) byDistance.Add((sqr, m));
+                m.Tick(cam, sqr);
             }
 
             if (!rank) return;

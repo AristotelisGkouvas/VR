@@ -36,13 +36,13 @@ namespace QuestMarkerApp.Core
         public static bool Enabled
         {
             get => PlayerPrefs.GetInt(EnabledKey, 0) == 1;
-            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         public static int Condition
         {
             get => Mathf.Clamp(PlayerPrefs.GetInt(ConditionKey, 0), 0, Conditions.Length - 1);
-            set { PlayerPrefs.SetInt(ConditionKey, ((value % Conditions.Length) + Conditions.Length) % Conditions.Length); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(ConditionKey, ((value % Conditions.Length) + Conditions.Length) % Conditions.Length); Prefs.Save(); }
         }
 
         public static string ConditionTag => Conditions[Condition];
@@ -52,7 +52,7 @@ namespace QuestMarkerApp.Core
         public static bool SiteChanged
         {
             get => PlayerPrefs.GetInt(SiteChangedKey, 0) == 1;
-            set { PlayerPrefs.SetInt(SiteChangedKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(SiteChangedKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         // One saved anchor in this visit's measurement.
@@ -577,7 +577,7 @@ namespace QuestMarkerApp.Core
 
         private static double? HeadsetDistance(Vector3 world)
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             return cam != null ? (cam.transform.position - world).magnitude : (double?)null;
         }
 

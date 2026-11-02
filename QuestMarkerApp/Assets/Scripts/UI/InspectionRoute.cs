@@ -190,7 +190,7 @@ namespace QuestMarkerApp.UI
                 return;
             }
 
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             Vector3 from = cam != null ? cam.transform.position : Vector3.zero;
             stops.Clear();
             from = OrderNearestFirst(groupA, from, stops);
@@ -396,7 +396,7 @@ namespace QuestMarkerApp.UI
         private void LateUpdate()
         {
             if (!IsActive || index >= stops.Count) return;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || markers == null || hud == null) return;
             RouteStop stop = stops[index];
 

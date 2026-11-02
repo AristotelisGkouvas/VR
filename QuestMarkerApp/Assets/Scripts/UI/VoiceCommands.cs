@@ -46,7 +46,7 @@ namespace QuestMarkerApp.UI
         public static bool Enabled
         {
             get => enabledPref ?? (bool)(enabledPref = PlayerPrefs.GetInt(PrefEnabled, 1) == 1);
-            set { enabledPref = value; PlayerPrefs.SetInt(PrefEnabled, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { enabledPref = value; PlayerPrefs.SetInt(PrefEnabled, value ? 1 : 0); Prefs.Save(); }
         }
 
         /// <summary>
@@ -693,7 +693,7 @@ namespace QuestMarkerApp.UI
         /// <summary>Above the off-hand controller, facing the viewer; in front of the head without one.</summary>
         private void Place()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             Transform t = tag.transform;
 #if !MOBILE_PREVIEW

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Rendering;
+using QuestMarkerApp.Core;
 using QuestMarkerApp.Models;
 
 namespace QuestMarkerApp.UI
@@ -44,7 +45,7 @@ namespace QuestMarkerApp.UI
             bool show = alpha > 0.001f;
             if (quad.gameObject.activeSelf != show) quad.gameObject.SetActive(show);
             if (!show) return;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             quad.SetPositionAndRotation(cam.transform.position + cam.transform.forward * Distance, cam.transform.rotation);
             material.color = new Color(0f, 0f, 0f, alpha);

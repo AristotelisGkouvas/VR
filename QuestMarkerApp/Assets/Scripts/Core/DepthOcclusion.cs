@@ -19,7 +19,7 @@ namespace QuestMarkerApp.Core
         public static bool Enabled
         {
             get => PlayerPrefs.GetInt(EnabledKey, 0) == 1;
-            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         /// <summary>One line for the menu.</summary>

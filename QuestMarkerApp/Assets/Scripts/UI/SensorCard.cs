@@ -324,7 +324,7 @@ namespace QuestMarkerApp.UI
 
         private void PlaceInFront()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             gliding = false;
             transform.position = VrUi.InFront(cam.transform, Distance, Drop);
@@ -335,7 +335,7 @@ namespace QuestMarkerApp.UI
         {
             if (!IsOpen) return;
             // Like the menu and lists: a card left behind by turning away glides back in front.
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam != null && !VrPointer.IsDragging && !PanelPin.IsPinned(this))
                 VrUi.LazyFollow(transform, cam.transform, Distance, Drop, ref gliding);
             WalkFade.Apply(root, ref walkFade);
@@ -384,7 +384,7 @@ namespace QuestMarkerApp.UI
 
         private void UpdateWhere()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || point == null) return;
             // The transform belongs to a pooled marker: after a project reload it may carry
             // another sensor, so resolve the marker by id each time and close if it is gone.

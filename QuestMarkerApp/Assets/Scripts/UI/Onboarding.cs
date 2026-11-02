@@ -210,7 +210,7 @@ namespace QuestMarkerApp.UI
             if (s == Step.Safety) safetyShown = safetyDone = false;
             PlayerPrefs.SetInt(Key("state"), (int)State.Running);
             PlayerPrefs.SetInt(Key("step"), (int)s);
-            PlayerPrefs.Save();
+            Prefs.Save();
             ControllerHints.Spotlight = SpotFor(s);
 
             // Steps the app's state already satisfies pass silently on the next frame.
@@ -255,7 +255,7 @@ namespace QuestMarkerApp.UI
             running = started = false;
             ControllerHints.Spotlight = ControllerHints.Spot.None;
             PlayerPrefs.SetInt(Key("state"), (int)state);
-            PlayerPrefs.Save();
+            Prefs.Save();
             if (cardRoot != null) cardRoot.gameObject.SetActive(false);
         }
 
@@ -336,7 +336,7 @@ namespace QuestMarkerApp.UI
                 }
             }
 
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             if (cardRoot.gameObject.activeSelf)
                 Place(cardRoot, cam.transform, CardLift, CardDistance, CardDrop, step != Step.Hand, ref cardPlaced, ref cardGliding);
@@ -527,7 +527,7 @@ namespace QuestMarkerApp.UI
         {
             if (Time.unscaledTime < nextNearest || markers == null) return;
             nextNearest = Time.unscaledTime + 0.5f;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             nearestName = null;
             nearestDist = float.MaxValue;
             if (cam == null) return;
@@ -677,7 +677,7 @@ namespace QuestMarkerApp.UI
         // Never walk with the eyes on text: the card goes while the head moves at walking pace.
         private void TrackWalking()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             float dt = Time.unscaledDeltaTime;
             if (cam == null || dt <= 0f) return;
             Vector3 p = cam.transform.position;

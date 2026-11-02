@@ -114,7 +114,7 @@ namespace QuestMarkerApp.UI
         // The readout over the middle of the span, facing the eyes, readable at any distance.
         private void Place(Vector3 from, Vector3 to)
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             Vector3 mid = (from + to) * 0.5f + Vector3.up * 0.06f;
             float dist = Mathf.Max(0.3f, Vector3.Distance(cam.transform.position, mid));

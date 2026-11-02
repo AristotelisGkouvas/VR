@@ -56,7 +56,7 @@ namespace QuestMarkerApp.UI
             {
                 enabledPref = value;
                 PlayerPrefs.SetInt(PrefKey, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
             }
         }
 
@@ -159,7 +159,7 @@ namespace QuestMarkerApp.UI
             }
             if (dirty) Rebuild();
 
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null || items.Count == 0) return;
             if (!markers.MarkersVisible || Unavailable() != null)
             {

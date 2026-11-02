@@ -277,7 +277,7 @@ namespace QuestMarkerApp.UI
 
         private void PlaceInFront()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             gliding = false;
             transform.position = VrUi.InFront(cam.transform, Distance, Drop);
@@ -293,7 +293,7 @@ namespace QuestMarkerApp.UI
             if (!IsOpen) return;
 
             // Turned away: glide back in front (not a jump), unless the user parked it.
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam != null && !VrPointer.IsDragging && !PanelPin.IsPinned(this))
                 VrUi.LazyFollow(transform, cam.transform, Distance, Drop, ref gliding);
             WalkFade.Apply(root, ref walkFade);

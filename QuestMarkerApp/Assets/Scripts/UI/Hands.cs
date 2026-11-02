@@ -22,7 +22,7 @@ namespace QuestMarkerApp.UI
                 bool changed = LeftHanded != value;
                 leftHanded = value;
                 PlayerPrefs.SetInt(PrefLeftHanded, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 if (changed) OnChanged?.Invoke();
             }
         }

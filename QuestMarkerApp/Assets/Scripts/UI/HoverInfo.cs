@@ -45,7 +45,7 @@ namespace QuestMarkerApp.UI
 
         private void LateUpdate()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             Transform hand = null;
 #if !MOBILE_PREVIEW
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();

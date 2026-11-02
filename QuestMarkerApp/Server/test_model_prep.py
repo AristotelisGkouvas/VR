@@ -100,6 +100,28 @@ def test_mtl_textures_and_rewrite(tmp_path: Path):
     assert "map_Bump" not in text and "Kd 0.5" in text
 
 
+def test_encode_astc_without_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mp, "astcenc_path", lambda: None)
+    src = tmp_path / "a.jpg"
+    src.write_bytes(b"not-a-jpeg")
+    assert mp.encode_astc(src, tmp_path / "a.astc") is False
+    assert not (tmp_path / "a.astc").exists()
+
+
+def test_package_keeps_astc_stored(tmp_path: Path):
+    (tmp_path / "m.obj").write_text("v 0 0 0\n", encoding="utf-8")
+    (tmp_path / "m.mtl").write_text("newmtl a\nmap_Kd t.astc\n", encoding="utf-8")
+    (tmp_path / "t.astc").write_bytes(b"\x13\xab\xa1\x5c" + b"\x00" * 20)
+    (tmp_path / "t.png").write_bytes(b"png")
+    (tmp_path / "notes.txt").write_text("no", encoding="utf-8")
+    names = {p.name: kind for p, kind in mp.package_files(tmp_path)}
+    assert set(names) == {"m.obj", "m.mtl", "t.astc", "t.png"}
+    assert names["t.astc"] == zipfile.ZIP_STORED
+    assert names["t.png"] == zipfile.ZIP_STORED
+    assert names["m.obj"] == zipfile.ZIP_DEFLATED
+    assert ".astc" not in mp.IMAGE_EXTENSIONS
+
+
 def test_convert_image_downscales(tmp_path: Path):
     PIL = pytest.importorskip("PIL.Image")
     src = tmp_path / "big.png"
@@ -149,13 +171,13 @@ def test_prepare_pipeline(tmp_path: Path):
     assert info.fit is not None and info.fit.rms < 1e-6
     with zipfile.ZipFile(info.package) as z:
         names = set(z.namelist())
-        assert {"grid.obj", "gImage1.jpg"} <= names
+        assert "grid.obj" in names and any(n.startswith("gImage1.") for n in names)
         mtl_names = [n for n in names if n.endswith(".mtl")]  # MeshLab writes grid.obj.mtl
         assert len(mtl_names) == 1
         objtext = z.read("grid.obj").decode()
         assert f"mtllib {mtl_names[0]}" in objtext or f"mtllib ./{mtl_names[0]}" in objtext
         mtl = z.read(mtl_names[0]).decode()
-        assert "map_Kd gImage1.jpg" in mtl
+        assert "map_Kd gImage1.jpg" in mtl or "map_Kd gImage1.astc" in mtl
         obj = z.read("grid.obj").decode().splitlines()
     vs = [tuple(map(float, l.split()[1:4])) for l in obj if l.startswith("v ")]
     assert any(l.startswith("vt ") for l in obj)

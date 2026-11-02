@@ -290,7 +290,7 @@ namespace QuestMarkerApp.UI
         private void LateUpdate()
         {
             if (!IsActive) return;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
 
             // Between the model and the site the sizes differ ~100-fold: re-pick the scale, or a

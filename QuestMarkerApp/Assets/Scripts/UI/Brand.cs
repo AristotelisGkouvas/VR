@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -25,7 +27,7 @@ namespace QuestMarkerApp.UI
         public static bool HighContrastNext
         {
             get => PlayerPrefs.GetInt(ContrastKey, 0) == 1;
-            set { PlayerPrefs.SetInt(ContrastKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(ContrastKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         public static readonly Color Canvas = Hex(HighContrast ? 0x050807 : 0x0f1716);
@@ -166,6 +168,8 @@ namespace QuestMarkerApp.UI
                 shader = Shader.Find("Sprites/Default");
             }
             var m = new Material(shader) { name = writesDepth ? "MarkerSprite" : "MarkerSpriteFade" };
+            // After the transparent model fill, so the heatmap cannot tint the icon.
+            m.renderQueue = (int)RenderQueue.Transparent + 10;
             if (m.HasProperty("_ZWrite")) m.SetFloat("_ZWrite", writesDepth ? 1f : 0f);
             if (m.HasProperty("_AlphaToMask"))
             {
@@ -192,6 +196,7 @@ namespace QuestMarkerApp.UI
                 labelMaterial.EnableKeyword(ShaderUtilities.Keyword_Outline);
                 labelMaterial.SetFloat(ShaderUtilities.ID_OutlineWidth, 0.12f);
                 labelMaterial.SetColor(ShaderUtilities.ID_OutlineColor, Canvas);
+                labelMaterial.renderQueue = (int)RenderQueue.Transparent + 10;
                 return labelMaterial;
             }
         }

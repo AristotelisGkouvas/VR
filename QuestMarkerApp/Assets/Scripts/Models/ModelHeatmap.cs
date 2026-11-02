@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 using QuestMarkerApp.API;
 using QuestMarkerApp.Core;
@@ -47,7 +48,7 @@ namespace QuestMarkerApp.Models
         public static Measure Shown
         {
             get => (Measure)Mathf.Clamp(PlayerPrefs.GetInt(MeasureKey, 0), 0, 2);
-            set { PlayerPrefs.SetInt(MeasureKey, (int)value); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(MeasureKey, (int)value); Prefs.Save(); }
         }
 
         public static string MeasureName => (L.En ? MeasureNamesEn : MeasureNamesEl)[(int)Shown];
@@ -63,7 +64,7 @@ namespace QuestMarkerApp.Models
         public static int ReachSetting
         {
             get => Mathf.Clamp(PlayerPrefs.GetInt(ReachKey, 0), 0, 2);
-            set { PlayerPrefs.SetInt(ReachKey, Mathf.Clamp(value, 0, 2)); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(ReachKey, Mathf.Clamp(value, 0, 2)); Prefs.Save(); }
         }
 
         public static string ReachName => (L.En ? ReachNamesEn : ReachNamesEl)[ReachSetting];
@@ -74,11 +75,15 @@ namespace QuestMarkerApp.Models
         private static readonly int HeatTexId = Shader.PropertyToID("_ModelHeatTex");
         private static readonly int HeatRectId = Shader.PropertyToID("_ModelHeatRect");
         private static readonly int HeatOpacityId = Shader.PropertyToID("_ModelHeatOpacity");
+        // Global, matching ModelTextured's multi_compile: off, the heatmap sample is not in the shader.
+        private static readonly GlobalKeyword HeatKeyword = GlobalKeyword.Create("_MODELHEAT");
+
+        private static void SetHeatKeyword(bool on) => Shader.SetKeyword(HeatKeyword, on);
 
         public static bool Enabled
         {
             get => PlayerPrefs.GetInt(EnabledKey, 0) == 1;
-            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         /// <summary>One line for the menu: how many sensors feed it, or why it is empty.</summary>
@@ -126,6 +131,7 @@ namespace QuestMarkerApp.Models
             overlay = modelOverlay;
             sensors = modelSensors;
             Shader.SetGlobalFloat(HeatOpacityId, 0f);
+            SetHeatKeyword(false);
         }
 
         private void Update()
@@ -134,7 +140,7 @@ namespace QuestMarkerApp.Models
                       && overlay.Root != null && overlay.Root.gameObject.activeInHierarchy;
             if (!on)
             {
-                if (shown) { Shader.SetGlobalFloat(HeatOpacityId, 0f); shown = false; }
+                if (shown) { Shader.SetGlobalFloat(HeatOpacityId, 0f); SetHeatKeyword(false); shown = false; }
                 Status = Enabled ? L.T("Χωρίς μοντέλο", "No model") : L.T("Όχι", "Off");
                 ShowUi(false);
                 key = null; // shown again: computed again (the texture is zeroed out of view)
@@ -196,6 +202,7 @@ namespace QuestMarkerApp.Models
             if (samples.Count == 0)
             {
                 Shader.SetGlobalFloat(HeatOpacityId, 0f);
+                SetHeatKeyword(false);
                 shown = false;
                 Status = L.T("Χωρίς μετακινήσεις στο μοντέλο", "No displacements on the model");
                 Count = 0;
@@ -239,6 +246,7 @@ namespace QuestMarkerApp.Models
             Shader.SetGlobalTexture(HeatTexId, tex);
             Shader.SetGlobalVector(HeatRectId, new Vector4(minX, minZ, 1f / size, 1f / size));
             Shader.SetGlobalFloat(HeatOpacityId, Opacity);
+            SetHeatKeyword(true);
             shown = true;
             Count = samples.Count;
             lastVals = vals;
@@ -424,7 +432,7 @@ namespace QuestMarkerApp.Models
                 if (probe.gameObject.activeSelf) probe.gameObject.SetActive(false);
                 return;
             }
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             // Low on the left of the view (the time machine's bar takes the middle).
             Vector3 fwd = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
@@ -538,6 +546,7 @@ namespace QuestMarkerApp.Models
         private void OnDestroy()
         {
             Shader.SetGlobalFloat(HeatOpacityId, 0f);
+            SetHeatKeyword(false);
             if (tex != null) Destroy(tex);
             if (legendSprite != null) Destroy(legendSprite);
             if (legendTex != null) Destroy(legendTex);

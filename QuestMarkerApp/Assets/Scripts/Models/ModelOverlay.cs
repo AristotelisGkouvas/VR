@@ -62,8 +62,14 @@ namespace QuestMarkerApp.Models
         /// upload fits a frame, and at 1:1 the pieces behind the user are culled.
         /// </summary>
         private const int ChunkVertices = ushort.MaxValue;
-        /// <summary>Beyond this a group's wireframe is skipped: the lines mesh would dwarf the fill.</summary>
-        private const int MaxEdgesPerGroup = 300_000;
+        /// <summary>
+        /// Beyond this a group's wireframe is skipped and the fill uses a cheap rim instead.
+        /// A line on Quest is a quad; 300k of them cost more than the building.
+        /// </summary>
+        private const int MaxEdgesPerGroup = 50_000;
+        /// <summary>A piece with at least this many triangles also gets a clustered quarter-mesh for distance.</summary>
+
+        private const int CullOff = 0;
         private const float EdgeAlpha = 0.6f;
         /// <summary>At or above this the fill is drawn opaque (depth-writing, no blending).</summary>
         private const float OpaqueFrom = 0.99f;
@@ -103,7 +109,7 @@ namespace QuestMarkerApp.Models
             {
                 walkSpeedCache = Mathf.Clamp(value, 0.1f, 20f);
                 PlayerPrefs.SetFloat(WalkSpeedKey, walkSpeedCache.Value);
-                PlayerPrefs.Save();
+                Prefs.Save();
             }
         }
 
@@ -124,7 +130,7 @@ namespace QuestMarkerApp.Models
             {
                 enabledCache = value;
                 PlayerPrefs.SetInt(ShowKey, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
             }
         }
 
@@ -264,13 +270,16 @@ namespace QuestMarkerApp.Models
         private readonly List<GameObject> groupObjects = new List<GameObject>();
         private readonly List<GameObject> edgeObjects = new List<GameObject>();
         private readonly List<Mesh> meshes = new List<Mesh>();
-        // One untextured fill material per distinct colour, shared by every group with that
-        // colour and kept across models (they hold only the built-in white texture).
-        private readonly Dictionary<Color, Material> fillMaterials = new Dictionary<Color, Material>();
+        private readonly List<Piece> pieces = new List<Piece>();
+        private float nextDetail;
+        private bool edgesApplied = true;
+        // One untextured fill material per colour, cull mode and rim, shared by every group
+        // with that key and kept across models (they hold only the built-in white texture).
+        private readonly Dictionary<FillKey, Material> fillMaterials = new Dictionary<FillKey, Material>();
         // Per loaded model: decoded diffuse maps by file path and one material per (map, tint).
         // Both are destroyed with the model's visuals; a texture is tens of MB of GPU memory.
         private readonly Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
-        private readonly Dictionary<(string, Color), Material> texturedMaterials = new Dictionary<(string, Color), Material>();
+        private readonly Dictionary<TexKey, Material> texturedMaterials = new Dictionary<TexKey, Material>();
         private bool hasTextures;
         private Material edgeMaterial;
         private static Shader texturedShader;
@@ -293,21 +302,33 @@ namespace QuestMarkerApp.Models
         /// </summary>
         public float Opacity
         {
-            get
-            {
-                if (opacity < 0f) opacity = Mathf.Clamp(PlayerPrefs.GetFloat(AlphaKey, 0.35f), 0.05f, 1f);
-                return opacity;
-            }
+            get => AlphaFor();
             set
             {
                 float v = Mathf.Clamp(value, 0.05f, 1f);
                 if (Mathf.Approximately(v, Opacity)) return;
                 opacity = v;
                 PlayerPrefs.SetFloat(AlphaKey, v);
-                PlayerPrefs.Save();
-                foreach (var kv in fillMaterials) SetFillAlpha(kv.Value, kv.Key, v);
-                foreach (var kv in texturedMaterials) SetFillAlpha(kv.Value, kv.Key.Item2, v);
+                Prefs.Save();
+                foreach (var kv in fillMaterials) SetFillAlpha(kv.Value, kv.Key.Color, v);
+                foreach (var kv in texturedMaterials) SetFillAlpha(kv.Value, kv.Key.Tint, v);
+                PublishLoad();
             }
+        }
+
+        /// <summary>
+        /// Saved slider when the user has set one. Otherwise the fill stays see-through at
+        /// 0.35: the model is an overlay on the real site, and an opaque shell hides the
+        /// passthrough, the markers and the far side of the mesh.
+        /// </summary>
+        private float AlphaFor()
+        {
+            if (PlayerPrefs.HasKey(AlphaKey))
+            {
+                if (opacity < 0f) opacity = Mathf.Clamp(PlayerPrefs.GetFloat(AlphaKey), 0.05f, 1f);
+                return opacity;
+            }
+            return 0.35f;
         }
 
         /// <summary>Edge lines on/off (PlayerPrefs "model.edges").</summary>
@@ -319,7 +340,8 @@ namespace QuestMarkerApp.Models
                 if (value == ShowEdges) return;
                 showEdges = value;
                 PlayerPrefs.SetInt(EdgesKey, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
+                edgesApplied = value;
                 foreach (GameObject go in edgeObjects) if (go != null) go.SetActive(value);
             }
         }
@@ -332,7 +354,7 @@ namespace QuestMarkerApp.Models
             {
                 viewCache = value;
                 PlayerPrefs.SetInt(ViewKey, (int)value);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 placed = null;
             }
         }
@@ -431,6 +453,7 @@ namespace QuestMarkerApp.Models
             if (scaleTag != null && scaleTag.gameObject.activeSelf
                 && (!preview || Time.unscaledTime - scaleShownAt > ScaleReadoutHold))
                 scaleTag.gameObject.SetActive(false);
+            if (show) UpdateDetail();
         }
 
         // Disabling stops BuildRoutine without a word; left alone the status would read
@@ -451,6 +474,7 @@ namespace QuestMarkerApp.Models
                 DestroyVisuals();
                 model = null;
                 loadedName = null;
+                PublishLoad();
             }
             error = L.T("Η φόρτωση διακόπηκε", "Loading was interrupted");
             OnChanged?.Invoke();
@@ -465,6 +489,7 @@ namespace QuestMarkerApp.Models
             fillMaterials.Clear();
             if (edgeMaterial != null) Destroy(edgeMaterial);
             if (root != null) Destroy(root.gameObject);
+            DisplayPerformance.NotifyModel(0, false);
         }
 
         // ------------------------------------------------------------------
@@ -522,7 +547,7 @@ namespace QuestMarkerApp.Models
         // point on a table in front. Life size: the ground at the model's centre under the feet.
         private void PlacePreview(Placement p)
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             Transform head = cam != null ? cam.transform : transform;
             Vector3 forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);
             if (forward.sqrMagnitude < 1e-4f) forward = Vector3.ProjectOnPlane(head.up, Vector3.up); // looking straight down
@@ -687,7 +712,7 @@ namespace QuestMarkerApp.Models
             if (!scaleTag.gameObject.activeSelf) scaleTag.gameObject.SetActive(true);
             scaleText.text = ScaleText(root.localScale.x);
             scaleTag.position = position;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam != null) VrUi.FaceViewer(scaleTag, cam.transform);
         }
 
@@ -717,7 +742,7 @@ namespace QuestMarkerApp.Models
         // so nothing real (anchor, sensors, guardian) is touched: "Νέα θέση μπροστά μου" undoes it.
         private void Walk()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             Transform head = cam.transform;
 
@@ -815,6 +840,7 @@ namespace QuestMarkerApp.Models
             error = null;
             ModelStore.LastLoadedName = null;
             if (root != null) root.gameObject.SetActive(false);
+            PublishLoad();
             OnChanged?.Invoke();
         }
 
@@ -927,6 +953,7 @@ namespace QuestMarkerApp.Models
             Debug.Log($"[Model] '{info.Name}' ready: {model.Groups.Count} groups, {model.TriangleCount} tris, " +
                       $"{model.LineCount} lines, {textures.Count} textures, origin E{model.OriginE} N{model.OriginN} H{model.OriginH}" +
                       (model.Warnings.Count > 0 ? " — " + string.Join(" | ", model.Warnings) : ""));
+            PublishLoad();
             OnChanged?.Invoke();
         }
 
@@ -958,8 +985,41 @@ namespace QuestMarkerApp.Models
             public readonly List<Chunk> Chunks = new List<Chunk>();
             /// <summary>The group's IsTextured, kept: its UV list is released once chunked.</summary>
             public bool Textured;
+            /// <summary>Unity CullMode: 0 off, 1 front, 2 back.</summary>
+            public int Cull = CullOff;
+            /// <summary>Line mesh skipped; the fill shader draws the silhouette.</summary>
+            public bool Rim;
             /// <summary>The fill material, shared by the group's pieces.</summary>
             public Material Fill;
+        }
+
+        private readonly struct FillKey : System.IEquatable<FillKey>
+        {
+            public readonly Color Color;
+            public readonly int Cull;
+            public readonly bool Rim;
+            public FillKey(Color color, int cull, bool rim) { Color = color; Cull = cull; Rim = rim; }
+            public bool Equals(FillKey other) => Cull == other.Cull && Rim == other.Rim && Color.Equals(other.Color);
+            public override bool Equals(object obj) => obj is FillKey k && Equals(k);
+            public override int GetHashCode() => (Color.GetHashCode() * 397) ^ (Cull * 2) ^ (Rim ? 1 : 0);
+        }
+
+        private readonly struct TexKey : System.IEquatable<TexKey>
+        {
+            public readonly string Path;
+            public readonly Color Tint;
+            public TexKey(string path, Color tint) { Path = path; Tint = tint; }
+            public bool Equals(TexKey other) => Path == other.Path && Tint.Equals(other.Tint);
+            public override bool Equals(object obj) => obj is TexKey k && Equals(k);
+            public override int GetHashCode() => (Path != null ? Path.GetHashCode() : 0) * 397 ^ Tint.GetHashCode();
+        }
+
+        /// <summary>One renderer that can swap to a coarser mesh when it covers little of the view.</summary>
+        private sealed class Piece
+        {
+            public MeshFilter Filter;
+            public Mesh Full, Lod;
+            public bool ShowingLod;
         }
 
         /// <summary>One piece of a fill: its own vertices, UVs (or none) and 16-bit triangles.</summary>
@@ -968,6 +1028,9 @@ namespace QuestMarkerApp.Models
             public Vector3[] Vertices;
             public Vector2[] UVs;
             public ushort[] Triangles;
+            public Vector3[] LodVertices;
+            public Vector2[] LodUVs;
+            public ushort[] LodTriangles;
         }
 
         private static Prepared Prepare(ModelData data, CancellationToken token)
@@ -993,11 +1056,19 @@ namespace QuestMarkerApp.Models
                 }
                 else if (g.Triangles.Count > 0)
                 {
-                    // No normals: ModelTextured is unlit (see BuildGroup).
+                    // No normals: ModelTextured is unlit (see BuildGroup). A group past the
+                    // edge cap keeps a rim on the fill instead of a line mesh.
                     gb.EdgeIndices = BuildEdges(g, MaxEdgesPerGroup, token, out bool skipped);
-                    if (skipped) data.Warnings.Add(L.T($"Ομάδα «{g.Name}»: πάρα πολλές ακμές, χωρίς περίγραμμα",
-                        $"Group \u201c{g.Name}\u201d: too many edges, no outline"));
+                    if (skipped)
+                    {
+                        gb.Rim = true;
+                        data.Warnings.Add(L.T($"Ομάδα «{g.Name}»: πάρα πολλές ακμές, περίγραμμα στο γέμισμα",
+                            $"Group \u201c{g.Name}\u201d: too many edges, outline drawn on the fill"));
+                    }
                 }
+                // Both sides. A site model is seen from inside and out; back-face culling
+                // deletes whichever side faces away from the camera.
+                gb.Cull = CullOff;
                 // Fill only (no outline or lines need the shared vertex list): cut it into
                 // pieces here, off the main thread, and let the group's own lists go.
                 if (g.Triangles.Count > 0 && gb.EdgeIndices.Length == 0 && g.LineVertices.Count == 0)
@@ -1138,7 +1209,7 @@ namespace QuestMarkerApp.Models
         /// <summary>
         /// The encoded image at <paramref name="path"/>, or null with a warning when it is
         /// missing, unreadable, or so large that decoding it would exhaust the headset's memory
-        /// (checked from the PNG/JPEG header, before any pixel is decoded). Worker thread.
+        /// (checked from the PNG, JPEG or ASTC header, before any pixel is decoded). Worker thread.
         /// </summary>
         private static byte[] ReadTexture(string path, List<string> warnings)
         {
@@ -1176,11 +1247,17 @@ namespace QuestMarkerApp.Models
             return bytes;
         }
 
-        /// <summary>Width/height from a PNG IHDR or a JPEG SOF marker; false for anything else.</summary>
+        /// <summary>Width/height from an ASTC header, a PNG IHDR or a JPEG SOF marker; false for anything else.</summary>
         private static bool TryImageSize(byte[] b, out int width, out int height)
         {
             width = height = 0;
             if (b == null) return false;
+            if (IsAstc(b) && b.Length >= 16)
+            {
+                width = b[7] | (b[8] << 8) | (b[9] << 16);
+                height = b[10] | (b[11] << 8) | (b[12] << 16);
+                return width > 0 && height > 0;
+            }
             if (b.Length >= 24 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47)
             {
                 width = (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19];
@@ -1326,9 +1403,9 @@ namespace QuestMarkerApp.Models
             go.transform.SetParent(root, false);
             go.SetActive(g.Visible);
             groupObjects.Add(go);
-            if (gb.Textured && textures.TryGetValue(g.TexturePath, out Texture2D tex)) gb.Fill = TexturedMaterial(g.TexturePath, tex, g.Color);
-            else if (gb.Textured) gb.Fill = FillMaterial(PlainColor); // image missing: warned in Prepare / decode
-            else gb.Fill = FillMaterial(g.Color);
+            if (gb.Textured && textures.TryGetValue(g.TexturePath, out Texture2D tex)) gb.Fill = TexturedMaterial(g.TexturePath, tex, g.Color, gb.Cull);
+            else if (gb.Textured) gb.Fill = FillMaterial(PlainColor, gb.Cull, false); // image missing: warned in Prepare / decode
+            else gb.Fill = FillMaterial(g.Color, gb.Cull, gb.Rim);
 
             int work = g.Triangles.Count / 3 + gb.EdgeIndices.Length / 4 + g.LineVertices.Count / 2;
             if (g.Triangles.Count > 0)
@@ -1342,8 +1419,10 @@ namespace QuestMarkerApp.Models
                 // Unity drops its CPU copy, and the group's lists go once it is built.
                 mesh.UploadMeshData(true);
                 meshes.Add(mesh);
-                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var filter = go.AddComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
                 Configure(go.AddComponent<MeshRenderer>(), gb.Fill);
+                pieces.Add(new Piece { Filter = filter, Full = mesh });
             }
 
             int edgeCount = gb.EdgeIndices.Length / 2;
@@ -1397,8 +1476,20 @@ namespace QuestMarkerApp.Models
             mesh.SetIndices(chunk.Triangles, MeshTopology.Triangles, 0, true);
             mesh.UploadMeshData(true);
             meshes.Add(mesh);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            Mesh lod = null;
+            if (chunk.LodVertices != null && chunk.LodTriangles != null && chunk.LodTriangles.Length >= 3)
+            {
+                lod = new Mesh { name = gb.Group.Name + " lod", indexFormat = IndexFormat.UInt16 };
+                lod.SetVertices(chunk.LodVertices);
+                if (chunk.LodUVs != null) lod.SetUVs(0, chunk.LodUVs);
+                lod.SetIndices(chunk.LodTriangles, MeshTopology.Triangles, 0, true);
+                lod.UploadMeshData(true);
+                meshes.Add(lod);
+            }
+            var filter = go.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
             Configure(go.AddComponent<MeshRenderer>(), gb.Fill);
+            pieces.Add(new Piece { Filter = filter, Full = mesh, Lod = lod });
             return chunk.Triangles.Length / 3;
         }
 
@@ -1417,11 +1508,56 @@ namespace QuestMarkerApp.Models
             r.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
         }
 
+        private void PublishLoad()
+        {
+            int tris = model != null && !loading ? model.TriangleCount : 0;
+            DisplayPerformance.NotifyModel(tris, tris > 0 && AlphaFor() < OpaqueFrom);
+        }
+
+        // Distance LOD and edge culling, a few times a second. Swapping a mesh or toggling
+        // a renderer every frame would hitch more than it saves.
+        private void UpdateDetail()
+        {
+            if (Time.unscaledTime < nextDetail) return;
+            nextDetail = Time.unscaledTime + 0.25f;
+            Camera cam = Headset.Camera;
+            if (cam == null) return;
+            Vector3 eye = cam.transform.position;
+
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                Piece p = pieces[i];
+                if (p.Lod == null || p.Filter == null) continue;
+                Bounds b = p.Filter.GetComponent<Renderer>().bounds;
+                float rad = b.extents.magnitude;
+                float ang2 = rad * rad / Mathf.Max((b.center - eye).sqrMagnitude, 1e-4f);
+                bool want = p.ShowingLod ? ang2 < 0.04f : ang2 < 0.02f;
+                if (want == p.ShowingLod) continue;
+                p.ShowingLod = want;
+                p.Filter.sharedMesh = want ? p.Lod : p.Full;
+            }
+
+            bool near = true;
+            if (root != null)
+            {
+                Vector3 c = root.TransformPoint(modelBounds.center);
+                float reach = Mathf.Max(12f, modelBounds.extents.magnitude * Mathf.Max(root.lossyScale.x, 0.01f) * 6f);
+                near = (c - eye).sqrMagnitude < reach * reach;
+            }
+            bool edges = ShowEdges && near;
+            if (edges == edgesApplied) return;
+            edgesApplied = edges;
+            foreach (GameObject go in edgeObjects)
+                if (go != null) go.SetActive(edges);
+        }
+
         private void DestroyVisuals()
         {
             foreach (GameObject go in groupObjects) if (go != null) Destroy(go);
             groupObjects.Clear();
             edgeObjects.Clear();
+            pieces.Clear();
+            edgesApplied = true;
             foreach (Mesh m in meshes) if (m != null) Destroy(m);
             meshes.Clear();
             foreach (var kv in texturedMaterials) if (kv.Value != null) Destroy(kv.Value);
@@ -1436,12 +1572,14 @@ namespace QuestMarkerApp.Models
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// Encoded PNG/JPG to a mipmapped GPU texture. Compressed at runtime when the platform
-        /// can (a 2048 px RGBA32 atlas is 22 MB with mips; ETC2/DXT a quarter of that) and made
-        /// non-readable so the CPU copy is freed. Null when the bytes are not an image.
+        /// An ASTC file written by astcenc (or a PNG/JPG) to a GPU texture. Precompressed ASTC
+        /// skips the runtime Compress hitch. JPG/PNG is still compressed on device when the
+        /// platform can, then made non-readable. Bilinear and aniso 2: trilinear plus aniso 4
+        /// was extra taps the eye buffer does not pay back. Null when the bytes are not an image.
         /// </summary>
         private static Texture2D DecodeTexture(string path, byte[] bytes)
         {
+            if (IsAstc(bytes)) return LoadAstc(path, bytes);
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, true)
             {
                 name = System.IO.Path.GetFileNameWithoutExtension(path)
@@ -1460,8 +1598,8 @@ namespace QuestMarkerApp.Models
                 return null;
             }
             tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Trilinear;
-            tex.anisoLevel = 4; // terrain seen at a low angle
+            tex.filterMode = FilterMode.Bilinear;
+            tex.anisoLevel = 2;
             bool compressed = false;
             try
             {
@@ -1475,6 +1613,43 @@ namespace QuestMarkerApp.Models
             // Compress already compressed every mip level LoadImage generated; recomputing mips
             // is only possible (and only needed) on the uncompressed fallback.
             tex.Apply(!compressed, true);
+            return tex;
+        }
+
+        /// <summary>astcenc file: magic 13 AB A1 5C, then block size and dimensions.</summary>
+        private static bool IsAstc(byte[] b) =>
+            b != null && b.Length > 16 && b[0] == 0x13 && b[1] == 0xAB && b[2] == 0xA1 && b[3] == 0x5C;
+
+        private static Texture2D LoadAstc(string path, byte[] b)
+        {
+            int bx = b[4], by = b[5];
+            if (bx != 6 || by != 6) 
+            {
+                Debug.LogWarning($"[Model] {path}: ASTC block {bx}x{by} is not 6x6");
+                return null;
+            }
+            int w = b[7] | (b[8] << 8) | (b[9] << 16);
+            int h = b[10] | (b[11] << 8) | (b[12] << 16);
+            if (w < 1 || h < 1 || w > MaxTextureSize || h > MaxTextureSize) return null;
+            int blocks = ((w + bx - 1) / bx) * ((h + by - 1) / by);
+            if (b.Length < 16 + blocks * 16) return null;
+            var raw = new byte[blocks * 16];
+            System.Buffer.BlockCopy(b, 16, raw, 0, raw.Length);
+            var tex = new Texture2D(w, h, TextureFormat.ASTC_6x6, false)
+            {
+                name = System.IO.Path.GetFileNameWithoutExtension(path),
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                anisoLevel = 2
+            };
+            try { tex.LoadRawTextureData(raw); }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Model] ASTC upload failed for {path}: {e.Message}");
+                Destroy(tex);
+                return null;
+            }
+            tex.Apply(false, true);
             return tex;
         }
 
@@ -1506,32 +1681,35 @@ namespace QuestMarkerApp.Models
             return s != null ? s : Shader.Find("Hidden/InternalErrorShader");
         }
 
-        private Material FillMaterial(Color color)
+        private Material FillMaterial(Color color, int cull, bool rim)
         {
-            Color key = new Color(color.r, color.g, color.b, 1f);
+            var key = new FillKey(new Color(color.r, color.g, color.b, 1f), cull, rim);
             if (fillMaterials.TryGetValue(key, out Material m) && m != null) return m;
             // Same shader as the textured groups, with the built-in white texture: one code
             // path for blending and opacity, the colour comes from _Color alone.
-            m = NewFillMaterial("ModelFill", Texture2D.whiteTexture, key);
+            m = NewFillMaterial("ModelFill", Texture2D.whiteTexture, key.Color, false, cull, rim);
             fillMaterials[key] = m;
             return m;
         }
 
-        private Material TexturedMaterial(string path, Texture2D tex, Color tint)
+        private Material TexturedMaterial(string path, Texture2D tex, Color tint, int cull)
         {
-            var key = (path, new Color(tint.r, tint.g, tint.b, 1f));
+            var key = new TexKey(path, new Color(tint.r, tint.g, tint.b, 1f));
             if (texturedMaterials.TryGetValue(key, out Material m) && m != null) return m;
-            m = NewFillMaterial("ModelTextured " + tex.name, tex, key.Item2);
+            m = NewFillMaterial("ModelTextured " + tex.name, tex, key.Tint, true, cull, false);
             texturedMaterials[key] = m;
             return m;
         }
 
-        private Material NewFillMaterial(string name, Texture tex, Color tint)
+        private Material NewFillMaterial(string name, Texture tex, Color tint, bool textured, int cull, bool rim)
         {
-            float alpha = Opacity;
+            float alpha = AlphaFor();
             Shader shader = TexturedShader() ?? FallbackShader(alpha >= OpaqueFrom);
             var m = new Material(shader) { name = name, mainTexture = tex };
             SetFillAlpha(m, tint, alpha);
+            if (m.HasProperty("_Cull")) m.SetFloat("_Cull", cull);
+            if (rim) m.EnableKeyword("_RIM");
+            else m.DisableKeyword("_RIM");
             return m;
         }
 

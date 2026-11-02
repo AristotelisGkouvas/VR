@@ -304,7 +304,7 @@ namespace QuestMarkerApp.Core
         public void OpenSensorPicker()
         {
             if (projectAlignment == null || !projectAlignment.HasProject || flowPanel == null) return;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             Vector3 here = cam != null ? cam.transform.position : Vector3.zero;
 
             var entries = new System.Collections.Generic.List<(float dist, FlowItem item)>();
@@ -509,8 +509,8 @@ namespace QuestMarkerApp.Core
             if (cachedCameraRig == null) cachedCameraRig = FindAnyObjectByType<OVRCameraRig>();
             if (cachedCameraRig != null && Hands.DominantConnected) controller = Hands.DominantAnchor(cachedCameraRig);
 #endif
-            if (controller == null && Camera.main != null)
-                controller = Camera.main.transform;
+            if (controller == null && Headset.Camera != null)
+                controller = Headset.Camera.transform;
             if (controller == null) return;
 
             markerManager.HighlightAlongRay(new Ray(controller.position, controller.forward));

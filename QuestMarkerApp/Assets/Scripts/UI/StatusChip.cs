@@ -23,7 +23,7 @@ namespace QuestMarkerApp.UI
         public static bool Enabled
         {
             get => PlayerPrefs.GetInt(EnabledKey, 1) == 1;
-            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
         }
 
         private ProjectAlignment project;
@@ -42,7 +42,7 @@ namespace QuestMarkerApp.UI
         // the watch swam a frame behind the hand.
         private void LatePose()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (chip == null || !chip.gameObject.activeSelf || watchHand == null || cam == null) return;
             chip.position = watchHand.position + Vector3.up * 0.07f;
             VrUi.FaceViewer(chip, cam.transform);
@@ -87,7 +87,7 @@ namespace QuestMarkerApp.UI
 
         private void LateUpdate()
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             Transform hand = null;
 #if !MOBILE_PREVIEW
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();

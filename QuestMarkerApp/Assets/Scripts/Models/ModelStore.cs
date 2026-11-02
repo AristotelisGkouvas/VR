@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.Models
 {
@@ -67,7 +68,7 @@ namespace QuestMarkerApp.Models
             {
                 if (string.IsNullOrEmpty(value)) PlayerPrefs.DeleteKey(LastKey);
                 else PlayerPrefs.SetString(LastKey, value);
-                PlayerPrefs.Save();
+                Prefs.Save();
             }
         }
 

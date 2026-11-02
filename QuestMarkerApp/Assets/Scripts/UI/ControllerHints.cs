@@ -97,7 +97,7 @@ namespace QuestMarkerApp.UI
         {
             cache = value;
             PlayerPrefs.SetInt(key, value ? 1 : 0);
-            PlayerPrefs.Save();
+            Prefs.Save();
         }
 
         public static bool Enabled
@@ -243,7 +243,7 @@ namespace QuestMarkerApp.UI
 
 #if !MOBILE_PREVIEW
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (rig == null || cam == null) return;
             Place(left, rig.leftControllerAnchor, cam.transform, OVRInput.Controller.LTouch);
             Place(right, rig.rightControllerAnchor, cam.transform, OVRInput.Controller.RTouch);

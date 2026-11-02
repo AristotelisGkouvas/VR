@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -29,7 +30,7 @@ namespace QuestMarkerApp.UI
         public static int TextSizeNext
         {
             get => Mathf.Clamp(PlayerPrefs.GetInt(TextSizeKey, 2), 0, 2);
-            set { PlayerPrefs.SetInt(TextSizeKey, Mathf.Clamp(value, 0, 2)); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt(TextSizeKey, Mathf.Clamp(value, 0, 2)); Prefs.Save(); }
         }
 
         public static RectTransform CreateCanvas(string name, Transform parent, Vector2 sizePx, float metersPerPixel)

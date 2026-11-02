@@ -10,7 +10,9 @@ dozen 16k textures — tens of times what the headset can draw. This module:
 2. optionally moves it into the sensors' survey grid from 3+ matching points (model x y z ->
    grid E N H), by a horizontal rotation + translation (+ optional scale) or a full 3D fit,
 3. downsizes every texture to at most --texture-size pixels and stores it as JPEG,
-4. packs .obj + .mtl + images into one zip that the headset unpacks (X-Model-Format: zip).
+   or as ASTC 6x6 when the `astcenc` tool is on PATH (the headset uploads that directly),
+4. packs .obj + .mtl + images (and .astc, stored as-is) into one zip that the headset
+   unpacks (X-Model-Format: zip).
 
 The output is always Z-up and in metres; when matching points are given its vertices are
 relative to an origin (E, N, H rounded down to 100 m) that travels in the X-Model-Origin header,
@@ -27,6 +29,7 @@ import csv
 import math
 import re
 import shutil
+import subprocess
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +39,9 @@ DEFAULT_FACES = 400_000
 DEFAULT_TEXTURE = 2048
 JPEG_QUALITY = 85
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp")
+# Already compressed, so the zip stores them. .astc stays out of IMAGE_EXTENSIONS:
+# that tuple is the list of source images, and PIL must not be asked to open an ASTC file.
+PACKAGE_STORED = IMAGE_EXTENSIONS + (".astc",)
 # Minimum horizontal spread of matching points (sum of squared offsets from their centroid, m²).
 MIN_SPREAD = 0.25 * 0.25
 
@@ -229,6 +235,45 @@ def convert_image(src: Path, dst: Path, max_size: int) -> tuple[int, int]:
         return im.size
 
 
+def astcenc_path() -> str | None:
+    """The ARM astcenc CLI, if it is installed. The Quest build reads its .astc files."""
+    for name in ("astcenc", "astcenc-avx2", "astcenc-sse2", "astcenc-neon"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def encode_astc(src: Path, dst: Path) -> bool:
+    """Compress src (PNG or JPEG) to an astcenc .astc file, 6x6. False when the tool is absent or fails."""
+    enc = astcenc_path()
+    if enc is None:
+        return False
+    try:
+        subprocess.run([enc, "-cl", str(src), str(dst), "6x6", "-medium"], check=True, capture_output=True)
+    except (OSError, subprocess.CalledProcessError):
+        if dst.exists():
+            dst.unlink()
+        return False
+    return dst.is_file() and dst.stat().st_size > 16
+
+
+def package_files(out_dir: Path) -> list[tuple[Path, int]]:
+    """Files the headset package keeps, with their zip method.
+
+    OBJ and MTL are deflated. Images and ASTC are stored: they are already compressed,
+    and the headset extractor only accepts these suffixes.
+    """
+    stored = {s.lower() for s in PACKAGE_STORED}
+    chosen: list[tuple[Path, int]] = []
+    for f in sorted(p for p in out_dir.iterdir() if p.is_file()):
+        suf = f.suffix.lower()
+        if suf in (".obj", ".mtl") or suf in stored:
+            kind = zipfile.ZIP_STORED if suf in stored else zipfile.ZIP_DEFLATED
+            chosen.append((f, kind))
+    return chosen
+
+
 # ----------------------------------------------------------------------------------------
 # The pipeline
 # ----------------------------------------------------------------------------------------
@@ -359,10 +404,16 @@ def prepare(
             info.notes.append(f"Texture not found next to the OBJ: {tex}")
             continue
         jpg = Path(tex).with_suffix(".jpg").name
-        size = convert_image(source, out_dir / jpg, texture_size)
-        renames[tex] = jpg
+        jpg_path = out_dir / jpg
+        size = convert_image(source, jpg_path, texture_size)
+        written = jpg
+        astc_path = jpg_path.with_suffix(".astc")
+        if encode_astc(jpg_path, astc_path):
+            jpg_path.unlink()
+            written = astc_path.name
+        renames[tex] = written
         info.textures += 1
-        log(f"    {Path(tex).name}: {source.stat().st_size / 1e6:.0f} MB -> {jpg} {size[0]}x{size[1]}")
+        log(f"    {Path(tex).name}: {source.stat().st_size / 1e6:.0f} MB -> {written} {size[0]}x{size[1]}")
     if mtl_out.is_file():
         rewrite_mtl(mtl_out, renames)
 
@@ -370,11 +421,8 @@ def prepare(
     if package.exists():
         package.unlink()
     with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for f in sorted(out_dir.iterdir()):
-            if f.suffix.lower() in (".obj", ".mtl") or f.suffix.lower() in IMAGE_EXTENSIONS:
-                # Images are already compressed: store them, deflate only the text.
-                kind = zipfile.ZIP_STORED if f.suffix.lower() in IMAGE_EXTENSIONS else zipfile.ZIP_DEFLATED
-                z.write(f, f.name, compress_type=kind)
+        for f, kind in package_files(out_dir):
+            z.write(f, f.name, compress_type=kind)
     info.package = package
     info.package_bytes = package.stat().st_size
     log(f"  Package {package.name}: {info.faces_out:,} faces, {info.textures} textures, "

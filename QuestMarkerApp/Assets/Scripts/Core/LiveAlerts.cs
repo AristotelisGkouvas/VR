@@ -46,7 +46,7 @@ namespace QuestMarkerApp.Core
                 if (enabled == value) return;
                 enabled = value;
                 PlayerPrefs.SetInt(PrefEnabled, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 // Switched back on: catch up now rather than at the next scheduled poll.
                 if (value && instance != null) instance.pollRequested = true;
             }
@@ -415,7 +415,7 @@ namespace QuestMarkerApp.Core
         {
             if (!toastVisible && toastQueue.Count == 0) return;
             if (toastVisible && Time.unscaledTime - toastShownAt >= ToastSeconds) HideToast();
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return;
             if (!toastVisible && toastQueue.Count > 0) ShowToast(toastQueue.Dequeue(), cam);
             if (toastVisible) Place(cam, false);

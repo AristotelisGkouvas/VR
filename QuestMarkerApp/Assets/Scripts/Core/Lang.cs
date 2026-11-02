@@ -30,7 +30,7 @@ namespace QuestMarkerApp.Core
                 if (Current == value) return;
                 current = value;
                 PlayerPrefs.SetInt(Key, (int)value);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 Changed?.Invoke();
             }
         }

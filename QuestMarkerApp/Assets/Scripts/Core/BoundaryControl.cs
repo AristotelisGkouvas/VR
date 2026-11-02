@@ -22,7 +22,7 @@ namespace QuestMarkerApp.Core
         public static bool Suppress
         {
             get => PlayerPrefs.GetInt("ui.noBoundary", 1) == 1;
-            set { PlayerPrefs.SetInt("ui.noBoundary", value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt("ui.noBoundary", value ? 1 : 0); Prefs.Save(); }
         }
 
         public static bool IsSuppressed
@@ -53,7 +53,7 @@ namespace QuestMarkerApp.Core
         {
 #if !MOBILE_PREVIEW
             bool want = ModelOverlay.LifeSizeShown;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (want != immersive)
             {
                 immersive = want;
@@ -99,7 +99,7 @@ namespace QuestMarkerApp.Core
             passthroughOn = on;
             if (!on && blackedCamera == null)
             {
-                blackedCamera = Camera.main;
+                blackedCamera = Headset.Camera;
                 if (blackedCamera != null) savedBackground = blackedCamera.backgroundColor;
             }
             if (on) ShowLayers(true);

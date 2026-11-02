@@ -51,3 +51,14 @@ QuestMarkerApp/Server/.venv/
 # ---- OS ----
 .DS_Store
 Thumbs.db
+
+# ---- Local tooling / generated (not project source) ----
+.claude/skills/
+.agents/
+skills-lock.json
+QuestMarkerApp/.utmp/
+*_BurstDebugInformation_DoNotShip/
+QuestMarkerApp/Assets/_Recovery/
+QuestMarkerApp/Assets/_Recovery.meta
+_removed_*/
+*.slnx

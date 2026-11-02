@@ -3,4 +3,7 @@
      for every marker and panel primitive. -->
 <linker>
   <assembly fullname="UnityEngine.PhysicsModule" preserve="all" />
+  <!-- High managed stripping. JsonUtility reads these types by reflection, so the
+       linker must keep every field. The Meta packages ship their own link.xml. -->
+  <assembly fullname="QuestMarkerApp.Runtime" preserve="all" />
 </linker>

@@ -12,6 +12,9 @@
 // pier or wall turns faint (_XrayAlpha) instead of floating solid in front of the concrete.
 // Meta's EnvironmentDepthManager sets HARD_/SOFT_OCCLUSION globally; without it the
 // occlusion macros compile to 1 and nothing changes.
+//
+// Queue is after the model fill. The fill is transparent, so at AlphaTest it drew first and
+// the heatmap blended over every sensor. Transparent+10 keeps the icon's own colour.
 Shader "QuestMarker/MarkerSprite"
 {
     Properties
@@ -40,7 +43,7 @@ Shader "QuestMarker/MarkerSprite"
     {
         Tags
         {
-            "Queue" = "AlphaTest"
+            "Queue" = "Transparent+10"
             "IgnoreProjector" = "True"
             "RenderType" = "TransparentCutout"
             "PreviewType" = "Plane"

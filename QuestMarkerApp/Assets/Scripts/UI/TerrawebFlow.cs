@@ -103,7 +103,7 @@ namespace QuestMarkerApp.UI
             PlayerPrefs.SetString(PrefLastArea, areaId ?? "");
             PlayerPrefs.SetString(PrefLastAreaName, areaName ?? "");
             PlayerPrefs.SetString(PrefLastLoaded, lastLoaded.Ticks.ToString());
-            PlayerPrefs.Save();
+            Prefs.Save();
         }
 
         private void RestoreLoaded()

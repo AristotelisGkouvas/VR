@@ -75,7 +75,7 @@ namespace QuestMarkerApp.Core
                 PlayerPrefs.DeleteKey(PrefRefresh);
                 PlayerPrefs.DeleteKey(PrefUntrusted);
                 PlayerPrefs.DeleteKey(PinKey(LegacyServer));
-                PlayerPrefs.Save();
+                Prefs.Save();
             }
             AllowUntrustedCertificate = PlayerPrefs.GetInt(PrefUntrusted, NeedsUntrusted(Server) ? 1 : 0) == 1;
         }
@@ -113,7 +113,7 @@ namespace QuestMarkerApp.Core
             AllowUntrustedCertificate = allowUntrusted;
             PlayerPrefs.SetString(PrefServer, Server);
             PlayerPrefs.SetInt(PrefUntrusted, allowUntrusted ? 1 : 0);
-            PlayerPrefs.Save();
+            Prefs.Save();
         }
 
         /// <summary>Credentials never travel in the clear: a typed http:// server becomes https://.</summary>
@@ -149,7 +149,7 @@ namespace QuestMarkerApp.Core
             CurrentProjectName = null;
             typeCache.Clear();
             PlayerPrefs.DeleteKey(PrefRefresh);
-            PlayerPrefs.Save();
+            Prefs.Save();
             if (revoke && !string.IsNullOrEmpty(refresh) && isActiveAndEnabled)
                 StartCoroutine(RevokeOnServer(server, access, refresh));
         }
@@ -204,7 +204,7 @@ namespace QuestMarkerApp.Core
             Username = username;
             PlayerPrefs.SetString(PrefUser, username);
             PlayerPrefs.SetString(PrefRefresh, Protect(refreshToken));
-            PlayerPrefs.Save();
+            Prefs.Save();
             onDone();
         }
 
@@ -244,7 +244,7 @@ namespace QuestMarkerApp.Core
                 {
                     refreshToken = rotated;
                     PlayerPrefs.SetString(PrefRefresh, Protect(rotated));
-                    PlayerPrefs.Save();
+                    Prefs.Save();
                 }
                 // Only a rejected refresh token (expired after 7 days) logs out; a dropped
                 // network on site must not throw the session away. Waiters never log out:
@@ -482,7 +482,7 @@ namespace QuestMarkerApp.Core
                     {
                         // First contact with this host: remember the certificate it showed.
                         PlayerPrefs.SetString(pinKey, pin.ObservedHash);
-                        PlayerPrefs.Save();
+                        Prefs.Save();
                         Debug.Log($"[Terraweb] Pinned certificate of {Server} on first use");
                     }
                 }

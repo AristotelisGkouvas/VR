@@ -4,10 +4,11 @@ namespace QuestMarkerApp.Core
 {
     /// <summary>
     /// Refresh rate and fixed foveated rendering, chosen in Μενού › Ρυθμίσεις so they can be
-    /// compared on the headset without a rebuild. Defaults keep the old behaviour (72 Hz, no
-    /// foveation): 90 Hz is smoother for passthrough overlays and stick walking, but if the
-    /// app cannot hold it the judder is worse than a steady 72, and it costs battery and heat.
-    /// Measure with OVR Metrics Tool before leaving it on.
+    /// compared on the headset without a rebuild. 90 Hz is smoother for passthrough overlays
+    /// and stick walking, but if the app cannot hold it the judder is worse than a steady 72.
+    /// Foveation defaults to medium (dynamic: the runtime lowers it while the GPU is idle).
+    /// A heavy model drops the requested rate to 72 and the eye buffer from 1.3 to 1.15 until
+    /// it unloads. Measure with OVR Metrics Tool.
     /// </summary>
     public class DisplayPerformance : MonoBehaviour
     {
@@ -24,14 +25,14 @@ namespace QuestMarkerApp.Core
         public static float RefreshRate
         {
             get => PlayerPrefs.GetFloat(RateKey, 90f); // ~5 ms GPU leaves room in 11.1 ms
-            set { PlayerPrefs.SetFloat(RateKey, value); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetFloat(RateKey, value); Prefs.Save(); }
         }
 
         /// <summary>0 off, 1 low, 2 medium, 3 high (dynamic: the runtime lowers it while the GPU is idle).</summary>
         public static int Foveation
         {
-            get => Mathf.Clamp(PlayerPrefs.GetInt(FoveationKey, 0), 0, FoveationNames.Length - 1);
-            set { PlayerPrefs.SetInt(FoveationKey, Mathf.Clamp(value, 0, FoveationNames.Length - 1)); PlayerPrefs.Save(); }
+            get => Mathf.Clamp(PlayerPrefs.GetInt(FoveationKey, 2), 0, FoveationNames.Length - 1);
+            set { PlayerPrefs.SetInt(FoveationKey, Mathf.Clamp(value, 0, FoveationNames.Length - 1)); Prefs.Save(); }
         }
 
         /// <summary>The rate the display actually runs at (0 when unknown, e.g. in the editor).</summary>
@@ -73,19 +74,49 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>
-        /// Eye buffer resolution over the default. At 1.0 the photogrammetry texture and the
-        /// icon edges broke into pixels with every slight head movement; the app runs in ~5 of
-        /// its 13.8 ms at 72 Hz, so 1.3 (Meta's suggestion for Quest 3) is affordable.
+        /// Eye buffer over the default when the scene is light. At 1.0 the photogrammetry
+        /// texture and the icon edges broke into pixels with every slight head movement.
         /// </summary>
-        private const float EyeResolution = 1.3f;
+        private const float EyeSharp = 1.3f;
+        /// <summary>Eye buffer while a heavy model is up. 1.15 keeps the centre sharp; foveation covers the edge.</summary>
+        private const float EyeHeavy = 1.15f;
+        /// <summary>Triangles at which the model is heavy on its own, opaque or not.</summary>
+        private const int HeavyTriangles = 150_000;
+        /// <summary>A see-through mesh overdraws the whole building, so the bar is lower.</summary>
+        private const int HeavyTransparentTriangles = 50_000;
+
+        private static int loadedTriangles;
+        private static bool loadedTransparent;
+        private static float appliedEye = -1f;
+
+        /// <summary>True while the loaded model is large enough to force 72 Hz and the smaller eye buffer.</summary>
+        public static bool HeavyLoad =>
+            loadedTriangles >= HeavyTriangles
+            || (loadedTransparent && loadedTriangles >= HeavyTransparentTriangles);
+
+        /// <summary>Called when a model finishes loading, unloads, or its opacity crosses opaque.</summary>
+        public static void NotifyModel(int triangles, bool transparent)
+        {
+            loadedTriangles = Mathf.Max(0, triangles);
+            loadedTransparent = transparent && triangles > 0;
+            ApplyEye();
+        }
+
+        /// <summary>The rate to ask the runtime for: the menu choice, capped at 72 while <see cref="HeavyLoad"/>.</summary>
+        public static float AppliedRate => HeavyLoad ? Mathf.Min(RefreshRate, 72f) : RefreshRate;
+
+        private static void ApplyEye()
+        {
+            float eye = HeavyLoad ? EyeHeavy : EyeSharp;
+            if (Mathf.Abs(appliedEye - eye) < 0.001f) return;
+            appliedEye = eye;
+            UnityEngine.XR.XRSettings.eyeTextureResolutionScale = eye;
+            Debug.Log($"[Display] Eye resolution x{eye}" + (HeavyLoad ? " (heavy model)" : ""));
+        }
 
         private float nextCheck;
 
-        private void Start()
-        {
-            UnityEngine.XR.XRSettings.eyeTextureResolutionScale = EyeResolution;
-            Debug.Log($"[Display] Eye resolution x{EyeResolution}");
-        }
+        private void Start() => ApplyEye();
 
         private void Update()
         {
@@ -96,7 +127,7 @@ namespace QuestMarkerApp.Core
             nextCheck = Time.unscaledTime + 1f;
 
             OVRDisplay display = OVRManager.display;
-            float rate = RefreshRate;
+            float rate = AppliedRate;
             if (display != null && IsAvailable(rate) && Mathf.Abs(display.displayFrequency - rate) > 0.5f)
             {
                 display.displayFrequency = rate;

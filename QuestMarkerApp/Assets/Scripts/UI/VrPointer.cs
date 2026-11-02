@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using QuestMarkerApp.Core;
 
 namespace QuestMarkerApp.UI
 {
@@ -18,7 +19,7 @@ namespace QuestMarkerApp.UI
             set
             {
                 pinned = value;
-                Camera cam = Camera.main;
+                Camera cam = Headset.Camera;
                 if (value && cam != null) pinnedEyeHeight = cam.transform.position.y;
             }
         }
@@ -36,7 +37,7 @@ namespace QuestMarkerApp.UI
         public static bool IsPinned(Component panel)
         {
             if (panel == null || !panel.TryGetComponent(out PanelPin pin) || !pin.pinned) return false;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam == null) return true;
             bool heightChanged = Mathf.Abs(cam.transform.position.y - pin.pinnedEyeHeight) > 0.4f;
             bool tooFar = Vector3.Distance(cam.transform.position, panel.transform.position) > 4f;
@@ -328,7 +329,7 @@ namespace QuestMarkerApp.UI
             dragDistance = Mathf.Clamp(dragDistance + StickY() * 1.2f * Time.unscaledDeltaTime, 0.25f, 4f);
             Vector3 point = ray.GetPoint(dragDistance);
             dragging.Panel.position = point + dragOffset;
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (cam != null) VrUi.FaceViewer(dragging.Panel, cam.transform);
 
             cursor.gameObject.SetActive(true);
@@ -396,7 +397,7 @@ namespace QuestMarkerApp.UI
                 return true;
             }
 #endif
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             ray = cam != null ? new Ray(cam.transform.position, cam.transform.forward) : default;
             return cam != null;
         }

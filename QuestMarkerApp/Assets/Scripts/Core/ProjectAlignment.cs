@@ -60,7 +60,7 @@ namespace QuestMarkerApp.Core
             {
                 panelOnHandPref = value;
                 PlayerPrefs.SetInt(PanelOnHandPref, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 panelPlaced = false;
                 panelGliding = false;
             }
@@ -1126,7 +1126,7 @@ namespace QuestMarkerApp.Core
         // after a touch the ones already standing get a light wave rolling out from it.
         private void Animate(List<string> fresh, HashSet<string> shown)
         {
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             Vector3 from = waveFrom ?? (cam != null ? cam.transform.position : Vector3.zero);
             bool wave = waveFrom.HasValue;
             waveFrom = null;
@@ -1190,7 +1190,7 @@ namespace QuestMarkerApp.Core
             if (cameraRig == null) cameraRig = FindAnyObjectByType<OVRCameraRig>();
             if (cameraRig != null && Hands.DominantConnected) return Hands.DominantAnchor(cameraRig).TransformPoint(tipOffset);
 #endif
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             return cam != null ? cam.transform.position + cam.transform.forward * 0.5f : Vector3.zero;
         }
 
@@ -1209,7 +1209,7 @@ namespace QuestMarkerApp.Core
             if (!lateHooked) { Application.onBeforeRender += LatePose; lateHooked = true; }
             if (tipCursor != null) tipCursor.position = TipWorldPosition();
 
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (panel == null || cam == null) return;
             // Once dragged off the left hand it stays where it was left. While the grip drags it,
             // VrPointer (earlier in the frame) owns the pose; snapping it back to the hand here

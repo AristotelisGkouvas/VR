@@ -51,7 +51,7 @@ namespace QuestMarkerApp.Models
             {
                 enabledCache = value;
                 PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 if (value) refreshNow = true; // switched on: fetch the positions at once
             }
         }
@@ -237,7 +237,7 @@ namespace QuestMarkerApp.Models
                            && overlay.CurrentPlacement != ModelOverlay.Placement.Project;
             if (markers != null)
                 markers.HideProjectLayer = preview && (project == null || !project.IsModeActive);
-            Camera cam = Camera.main;
+            Camera cam = Headset.Camera;
             if (!show || cam == null)
             {
                 SetAimed(null);
@@ -375,7 +375,7 @@ namespace QuestMarkerApp.Models
                 if (key == null) return;
                 if (value.HasValue) PlayerPrefs.SetFloat(key, value.Value);
                 else PlayerPrefs.DeleteKey(key);
-                PlayerPrefs.Save();
+                Prefs.Save();
                 dirty = true;
             }
         }

@@ -36,7 +36,7 @@ namespace QuestMarkerApp.API
         private const string PackageFormat = "zip";
         private const long MaxPackageExtractBytes = 1024L * 1024 * 1024;
         private const int MaxPackageEntries = 500;
-        private static readonly string[] PackageExtensions = { ".obj", ".mtl", ".png", ".jpg", ".jpeg" };
+        private static readonly string[] PackageExtensions = { ".obj", ".mtl", ".png", ".jpg", ".jpeg", ".astc" };
         // Each upload can hold 300 MB of temp file plus 1 GB unpacked and a worker for 15 min:
         // a third one at once is a 503, so a client loop cannot fill the disk or the pool.
         private const int MaxConcurrentModelUploads = 2;
@@ -337,7 +337,7 @@ namespace QuestMarkerApp.API
             foreach (byte b in bytes) sb.Append(alphabet[b % alphabet.Length]);
             key = sb.ToString();
             PlayerPrefs.SetString(pref, key);
-            PlayerPrefs.Save();
+            Prefs.Save();
             return key;
         }
 
@@ -1350,7 +1350,7 @@ namespace QuestMarkerApp.API
         /// <summary>
         /// Extract the model files of <paramref name="zipPath"/> into <paramref name="destDir"/>
         /// and return the bytes written. Rules: at most 500 entries and 1 GB unpacked (counted
-        /// while copying, not trusted from the headers); only .obj .mtl .png .jpg .jpeg are
+        /// while copying, not trusted from the headers); only .obj .mtl .png .jpg .jpeg .astc are
         /// kept, anything else is skipped; an entry with "..", a rooted path or a drive that
         /// would land outside the folder rejects the whole archive (zip-slip). A single
         /// top-level folder that holds everything (what "compress folder" produces) is

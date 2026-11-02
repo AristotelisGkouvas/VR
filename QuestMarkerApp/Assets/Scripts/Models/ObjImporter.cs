@@ -550,15 +550,17 @@ namespace QuestMarkerApp.Models
             if (current != null) st.Materials[current] = new MaterialDef { Color = color, Texture = texture };
         }
 
-        private static readonly string[] ImageFallbackExtensions = { ".jpg", ".jpeg", ".png" };
+        private static readonly string[] ImageFallbackExtensions = { ".jpg", ".jpeg", ".png", ".astc" };
 
         /// <summary>
         /// The image a map_Kd statement names, as an absolute path. Options such as
         /// "-s 1 1 1" or "-bm 0.5" come before the file name, so the last token is taken.
-        /// The PC tool converts textures to JPG and flattens folders before sending, so when
-        /// the named file is missing, the same name with another image extension, and then
-        /// the bare file name next to the MTL, are tried. Returns the as-written path when
-        /// nothing matches, so the overlay can name the missing image in its warning.
+        /// The PC tool converts textures to JPG, or to ASTC 6x6 when astcenc is installed,
+        /// and flattens folders before sending, so when the named file is missing, the same
+        /// name with another image extension, and then the bare file name next to the MTL,
+        /// are tried. A map_Kd that already names the .astc is used as-is when that file
+        /// exists. Returns the as-written path when nothing matches, so the overlay can
+        /// name the missing image in its warning.
         /// </summary>
         // mtllib / map_Kd names come from the uploaded file: "../../x" must stay in the model's folder.
         private static bool IsInside(string dir, string path)
