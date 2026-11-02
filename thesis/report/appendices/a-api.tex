@@ -1,15 +1,79 @@
 \chapter{Αναφορά τοπικού API}
 \label{app:api}
 
-\guide{Πλήρης πίνακας endpoints (μέθοδος, διαδρομή, σώμα, απάντηση, κωδικοί) από τις ενότητες «Χρήση API» και «API v1.2» του \code{QuestMarkerApp/README.md}, με ένα παράδειγμα JSON ανά ομάδα.}
+Ο ενσωματωμένος εξυπηρετητής ακούει στη θύρα 8080 της συσκευής. Κάθε αίτημα, εκτός από το \code{/api/health}, απαιτεί το κλειδί της συσκευής στην επικεφαλίδα \code{X-Api-Key} ή \code{Authorization: Bearer}. Σώματα και απαντήσεις είναι JSON, εκτός αν σημειώνεται διαφορετικά.
+
+\section{Endpoints}
+
+\begin{longtable}{@{}p{4.6cm}p{1.6cm}p{8cm}@{}}
+  \caption{Endpoints του τοπικού API.}\label{tab:api-full}\\
+  \toprule
+  Διαδρομή & Μέθοδος & Λειτουργία \\
+  \midrule
+  \endfirsthead
+  \toprule
+  Διαδρομή & Μέθοδος & Λειτουργία \\
+  \midrule
+  \endhead
+  \code{/api/health} & GET & Κατάσταση και χρόνος λειτουργίας (χωρίς κλειδί) \\
+  \code{/api/status} & GET & Σημεία, ευθυγράμμιση, συνεδρία \\
+  \code{/api/logs} & GET & Πρόσφατα αιτήματα (κυκλικός buffer) \\
+  \code{/api/coordinates} & GET, POST & Λίστα / προσθήκη σημείων \\
+  \code{/api/coordinates/{id}} & DELETE & Διαγραφή ενός σημείου \\
+  \code{/api/clear} & POST & Διαγραφή όλων των σημείων \\
+  \code{/api/undo} & POST & Αναίρεση της τελευταίας αλλαγής σημείων \\
+  \code{/api/layer} & POST & Φίλτρο ορατού στρώματος \\
+  \code{/api/project} & POST & Φόρτωση έργου ευθυγράμμισης \\
+  \code{/api/project/reset} & POST & Επαναφορά της ευθυγράμμισης του έργου \\
+  \code{/api/calibrate/start} & POST & Έναρξη βαθμονόμησης με σημεία \\
+  \code{/api/calibrate} & POST & Αποστολή πραγματικών συντεταγμένων σημείου \\
+  \code{/api/calibrate/status} & GET & Κατάσταση βαθμονόμησης και υπόλοιπο RMS \\
+  \code{/api/calibrate/reset} & POST & Επαναφορά βαθμονόμησης \\
+  \code{/api/gps-origin} & POST & Ορισμός γεωγραφικής αρχής \\
+  \code{/api/anchors} & GET & Κατάσταση του anchor αναφοράς \\
+  \code{/api/session} & GET, POST & Εξαγωγή / εισαγωγή συνεδρίας \\
+  \code{/api/session/new} & POST & Νέα ονομασμένη συνεδρία \\
+  \code{/api/model} & POST & Μεταφόρτωση μοντέλου (OBJ, DXF ή zip) \\
+  \code{/api/models} & GET & Λίστα μοντέλων στη συσκευή \\
+  \code{/api/fieldnotes} & GET & Σημειώσεις πεδίου \\
+  \code{/api/reports}, \code{/api/reports/{file}} & GET & Αναφορές διαδρομών επιθεώρησης \\
+  \code{/api/fieldtest}, \code{/api/fieldtest/{file}} & GET & Αρχεία CSV της δοκιμής anchors \\
+  \bottomrule
+\end{longtable}
+
+\review{Ο πίνακας είναι από το README και τη λίστα διαδρομών του \code{LocalAPIServer.cs}. Έλεγξε τις μεθόδους του \code{/api/model} (μεταφόρτωση, διαγραφή) και του \code{/api/project} στον κώδικα, και αν υπάρχουν endpoints που λείπουν.}
+
+\section{Κωδικοί απάντησης}
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Κωδικοί σφάλματος.}
+  \label{tab:api-errors}
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    Κωδικός & Πότε \\
+    \midrule
+    400 & Κενό ή μη έγκυρο JSON, μη έγκυρες τιμές (NaN, εκτός ορίων) \\
+    401 & Λείπει ή είναι λάθος το κλειδί \\
+    405 & Γνωστή διαδρομή με λάθος μέθοδο \\
+    408 & Το σώμα δεν διαβάστηκε εγκαίρως \\
+    413 & Σώμα JSON πάνω από 512\,KB ή μοντέλο πάνω από 300\,MB \\
+    429 & Υπέρβαση ορίου ρυθμού (60/λεπτό χωρίς κλειδί, 600/λεπτό με κλειδί) ή αποκλεισμός μετά από 10 λάθος κλειδιά· επικεφαλίδα \code{Retry-After} \\
+    503 & Η εφαρμογή δεν απάντησε εγκαίρως (π.χ. συσκευή σε αναμονή) ή η ουρά εντολών είναι γεμάτη· επικεφαλίδα \code{Retry-After} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
 
 \section{Παράδειγμα: αποστολή σημείων}
 
-\begin{lstlisting}[language=bash,caption={Αποστολή σημείου με cURL.}]
+\begin{lstlisting}[language=bash,caption={Αποστολή σημείων με cURL.}]
 curl -X POST http://<quest-ip>:8080/api/coordinates \
      -H "Content-Type: application/json" \
      -H "X-Api-Key: <key>" \
      -d '{"coordinates":[{"id":"K5","x":12.4,"y":1.2,"z":-3.8,
-          "label":"K5","color":"#FF0000","scale":0.1}],
-          "clearExisting":false}'
+          "label":"K5","color":"#FF0000","scale":0.1,
+          "markerType":"pin","layer":"hazards"}],
+          "clearExisting":false,"removeMissing":false}'
 \end{lstlisting}
+
+Τα πεδία \code{x}, \code{y}, \code{z} είναι σε μέτρα, με το \code{y} προς τα πάνω. Το \code{clearExisting} διαγράφει όλα τα σημεία πριν από την εισαγωγή, και το \code{removeMissing} διαγράφει όσα λείπουν από το αίτημα (συγχρονισμός). Αντί για \code{x/y/z}, ένα σημείο μπορεί να δοθεί με \code{latitude}, \code{longitude}, \code{altitude} και \code{"crs":"gps"}, αφού οριστεί πρώτα αρχή με \code{/api/gps-origin}.

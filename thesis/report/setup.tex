@@ -149,13 +149,26 @@
 % \guide{...}   : τι γράφεται σε αυτή την ενότητα (μπλε πλαίσιο)
 % \todo{...}    : κάτι που λείπει (πορτοκαλί πλαίσιο)
 % \fillin{...}  : στοιχείο που πρέπει να συμπληρωθεί (κόκκινο κείμενο)
+% \review{...}  : το κείμενο γύρω είναι πρόχειρο· έλεγξε/ξαναγράψε όσα λέει (μωβ πλαίσιο)
+%                 Συγκεντρωτική λίστα: thesis/ΕΛΕΓΧΟΣ.md
 % \code{...}    : όνομα αρχείου / κλάσης του project
 \usepackage{tcolorbox}
 \ifFinalVersion
   \newcommand{\guide}[1]{}
   \newcommand{\todo}[1]{}
+  \newcommand{\review}[1]{}
   \newcommand{\fillin}[1]{#1}
 \else
+  % Αριθμημένα, με \label rev:N ώστε το thesis/tools/review_list.py να βρίσκει τη σελίδα.
+  % \review[!]{...} = υψηλή προτεραιότητα (κόκκινο πλαίσιο, πρώτο στη λίστα).
+  \newcounter{reviewnum}
+  \newtcolorbox{reviewbox}[2]{colback=#1!6,colframe=#1!70!black,boxrule=0.6pt,
+    left=4pt,right=4pt,top=2pt,bottom=2pt,fontupper=\small\sffamily\raggedright,
+    title={\scriptsize\sffamily ΕΛΕΓΞΕ \#\thereviewnum#2},fonttitle=\bfseries,coltitle=white}
+  \NewDocumentCommand{\review}{o m}{\refstepcounter{reviewnum}\label{rev:\thereviewnum}%
+    \IfNoValueTF{#1}%
+      {\begin{reviewbox}{violet}{}#2\end{reviewbox}}%
+      {\begin{reviewbox}{red}{\ · ΣΗΜΑΝΤΙΚΟ}#2\end{reviewbox}}}
   \newtcolorbox{guidebox}{colback=blue!4,colframe=blue!45!black,boxrule=0.4pt,
     left=4pt,right=4pt,top=2pt,bottom=2pt,fontupper=\small\sffamily\raggedright,
     title={\scriptsize\sffamily ΟΔΗΓΙΑ},fonttitle=\bfseries,coltitle=white}

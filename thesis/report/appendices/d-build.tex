@@ -1,4 +1,32 @@
 \chapter{Εγκατάσταση και αναπαραγωγή}
 \label{app:build}
 
-\guide{Σύντομες οδηγίες από το \code{QuestMarkerApp/README.md}: Unity 6000.5, Meta XR SDK, ρυθμίσεις Android, build στο Quest· εργαλεία Python (\code{pip install -r requirements.txt}). Πώς αναπαράγονται τα πειράματα: \code{git checkout thesis-v1}, scripts του \code{thesis/analysis/}.}
+\section{Εφαρμογή συσκευής}
+
+\begin{enumerate}
+  \item Unity 6 (6000.5) με υποστήριξη Android. Άνοιγμα του φακέλου \code{QuestMarkerApp/} από το Unity Hub.
+  \item Το Meta XR Core SDK και τα υπόλοιπα πακέτα κατεβαίνουν αυτόματα από το \code{Packages/manifest.json}.
+  \item Από το μενού \code{Quest Marker App} του Editor εφαρμόζονται οι ρυθμίσεις build για Quest (ελάχιστο API 32, στόχος API 34, IL2CPP, ARM64).
+  \item Σύνδεση του Quest~3 με USB σε λειτουργία προγραμματιστή και \code{Build and Run}.
+  \item Προαιρετικά, για φωνητικές εντολές: πακέτο \code{com.meta.xr.sdk.voice}, ρύθμιση Wit.ai και σύμβολο \code{META_VOICE_SDK}.
+\end{enumerate}
+
+\section{Εργαλεία υπολογιστή}
+
+\begin{lstlisting}[language=bash,caption={Εγκατάσταση και έλεγχος των εργαλείων Python.}]
+cd QuestMarkerApp/Server
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+pip install -r requirements.txt
+pip install pymeshlab pillow pytest   # προετοιμασία μοντέλων, tests
+python -m pytest -q                   # 127 tests
+\end{lstlisting}
+
+\section{Αναπαραγωγή των πειραμάτων}
+
+\begin{enumerate}
+  \item \code{git checkout thesis-v1} για την έκδοση της εφαρμογής που χρησιμοποιήθηκε στα πειράματα.
+  \item Τα ακατέργαστα δεδομένα βρίσκονται στο \code{thesis/data/}.
+  \item Τα σενάρια ανάλυσης στο \code{thesis/analysis/} (\code{pip install -r requirements.txt}) γράφουν πίνακες και γραφήματα στο \code{thesis/figures/generated/}.
+  \item Η αναφορά μεταγλωττίζεται με \code{latexmk} (XeLaTeX + Biber) στον φάκελο \code{thesis/report/}.
+\end{enumerate}
