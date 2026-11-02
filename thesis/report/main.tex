@@ -54,6 +54,8 @@
 
 % ---------------- Παραρτήματα ----------------------------------------
 \appendix
+% Τα παραρτήματα αριθμούνται Α, Β, … (ελληνικά) στο κείμενο· οι εσωτερικοί σύνδεσμοι του PDF θέλουν λατινικούς.
+\renewcommand{\theHchapter}{app.\arabic{chapter}}% \Alph δίνει κι αυτό ελληνικά με το polyglossia
 \input{appendices/a-api}
 \input{appendices/b-user-study}
 \input{appendices/c-raw-results}

@@ -26,10 +26,14 @@
 
 \begin{table}[htbp]
   \centering
-  \small
+  \footnotesize
   \caption{Σύγκριση σχετικών εργασιών.}
   \label{tab:rw-comparison}
-  \begin{tabularx}{\textwidth}{@{}Xccccc@{}}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}p{1.5cm} >{\raggedright\arraybackslash}p{1.9cm}
+      >{\raggedright\arraybackslash}p{2.3cm} >{\raggedright\arraybackslash}p{1.8cm}
+      >{\raggedright\arraybackslash}p{1.5cm}@{}}
     \toprule
     Εργασία & Συσκευή & Ζωντανά δεδομένα & Ευθυγράμμιση & Μοντέλο 3Δ & Αξιολόγηση πεδίου \\
     \midrule
@@ -37,7 +41,7 @@
     \fillin{Συγγραφέας, έτος} & & & & & \\
     \fillin{Συγγραφέας, έτος} & & & & & \\
     \midrule
-    \textbf{Παρούσα εργασία} & Quest 3 & Ναι (REST, push) & Σημεία ελέγχου + anchors & OBJ/DXF/IFC & Ναι \\
+    \textbf{Παρούσα εργασία} & Quest 3 & Ναι (REST, push) & Σημεία ελέγχου + anchors & OBJ / DXF / IFC & Ναι \\
     \bottomrule
   \end{tabularx}
 \end{table}

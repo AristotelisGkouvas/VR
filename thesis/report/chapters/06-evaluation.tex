@@ -7,11 +7,11 @@
 \newcommand{\genfig}[2][\linewidth]{%
   \IfFileExists{../figures/generated/#2}%
     {\includegraphics[width=#1]{#2}}%
-    {\fbox{\parbox[c][4cm][c]{0.8\linewidth}{\centering\sffamily\small Θα παραχθεί από \code{thesis/analysis/}\\\texttt{figures/generated/#2}}}}}
+    {\fbox{\parbox[c][4cm][c]{0.8\linewidth}{\centering\sffamily\small Θα παραχθεί από \code{thesis/analysis/}\\{\scriptsize\code{#2}}}}}}
 \newcommand{\gentable}[1]{%
   \IfFileExists{../figures/generated/#1}%
     {\begin{adjustbox}{max width=\linewidth}\input{../figures/generated/#1}\end{adjustbox}}%
-    {\fillin{πίνακας \texttt{#1} από το analysis/}}}
+    {\fillin{πίνακας \code{#1} από το analysis/}}}
 
 \section{Πειραματική διάταξη}
 \label{sec:exp-setup}
@@ -42,7 +42,7 @@
 
 \paragraph{Στόχος.} Αν τα spatial anchors ανά σημείο ελέγχου ξαναβρίσκονται σε επόμενες επισκέψεις, πόσο γρήγορα και πόσο έχουν μετακινηθεί.
 
-\paragraph{Διαδικασία.} Το πρωτόκολλο της ``Δοκιμής πεδίου anchors'' (README της εφαρμογής): 3 σημεία ελέγχου σε απόσταση \SIrange{5}{30}{m}· επιστροφή μετά από 10 λεπτά, μία ημέρα και μία εβδομάδα· διαφορετικός φωτισμός· μετά από αλλαγές στο εργοτάξιο· απομάκρυνση \SI{50}{m} και επιστροφή. Τα δεδομένα λαμβάνονται από το \code{GET /api/fieldtest} και αναλύονται με το \code{analysis/fieldtest_anchors.py}.
+\paragraph{Διαδικασία.} Το πρωτόκολλο της «Δοκιμής πεδίου anchors» (README της εφαρμογής): 3 σημεία ελέγχου σε απόσταση \SIrange{5}{30}{m}· επιστροφή μετά από 10 λεπτά, μία ημέρα και μία εβδομάδα· διαφορετικός φωτισμός· μετά από αλλαγές στο εργοτάξιο· απομάκρυνση \SI{50}{m} και επιστροφή. Τα δεδομένα λαμβάνονται από το \code{GET /api/fieldtest} και αναλύονται με το \code{analysis/fieldtest_anchors.py}.
 
 \begin{table}[htbp]
   \centering\small

@@ -1,61 +1,63 @@
 % Διάγραμμα αρχιτεκτονικής (TikZ). Χρήση: \input{../figures/architecture} μέσα σε figure.
 % Τα ονόματα κλάσεων/αρχείων είναι τα πραγματικά του QuestMarkerApp.
+% Πλέγμα: 4 στήλες (c0..c3) × 5 γραμμές. Οι κάθετες ροές περνούν από ελεύθερες στήλες.
 \begin{tikzpicture}[
   font=\sffamily\scriptsize,
-  node distance=4mm and 6mm,
-  comp/.style={draw, rounded corners=2pt, fill=white, align=center, minimum width=27mm, minimum height=7mm, inner sep=2pt},
-  tier/.style={draw=#1!60!black, fill=#1!8, rounded corners=4pt, inner sep=3mm},
-  tiertitle/.style={font=\sffamily\small\bfseries, anchor=south west},
+  comp/.style={draw, rounded corners=2pt, fill=white, align=center,
+               minimum width=30mm, minimum height=8mm, inner sep=2pt},
+  tier/.style={draw=#1!60!black, fill=#1!7, rounded corners=4pt, inner sep=3mm},
+  tiertitle/.style={rotate=90, anchor=south, font=\sffamily\footnotesize\bfseries},
   flow/.style={-{Stealth[length=2mm]}, thick},
-  lbl/.style={font=\sffamily\tiny, fill=white, inner sep=1pt, align=center},
+  lbl/.style={font=\sffamily\tiny, fill=white, inner sep=1.5pt, align=center},
 ]
+\def\cA{0} \def\cB{3.7} \def\cC{7.4} \def\cD{11.1}
 
-% ---------------- Cloud -------------------------------------------------
-\node[comp] (tw) {Terraweb\\(REST, JWT)};
-\node[comp, right=of tw] (wit) {Wit.ai\\(φωνή, προαιρετικό)};
+% ---------------- Νέφος ---------------------------------------------------
+\node[comp] (tw)  at (\cC, 0)    {Terraweb\\(REST, JWT)};
+\node[comp] (wit) at (\cD, 0)    {Wit.ai\\(φωνή, προαιρετικό)};
 
-% ---------------- PC ----------------------------------------------------
-\node[comp, below=14mm of tw, xshift=-16mm] (bridge) {\texttt{terraweb\_bridge.py}\\\texttt{send\_project.py}};
-\node[comp, right=of bridge] (models) {\texttt{send\_model.py}\\\texttt{model\_prep.py}};
-\node[comp, right=of models] (cserver) {\texttt{coordinate\_server.py}\\(long-poll \texttt{/api/events})};
+% ---------------- PC στο LAN ----------------------------------------------
+\node[comp] (bridge)  at (\cA, -2.6) {\texttt{terraweb\_bridge.py}\\\texttt{send\_project.py}};
+\node[comp] (models)  at (\cB, -2.6) {\texttt{send\_model.py}\\\texttt{model\_prep.py}};
+\node[comp] (cserver) at (\cD, -2.6) {\texttt{coordinate\_server.py}\\long-poll \texttt{/api/events}};
 
-% ---------------- Quest: network ------------------------------------------
-\node[comp, below=16mm of bridge] (api) {\texttt{LocalAPIServer}\\HTTP :8080};
-\node[comp, right=of api] (twc) {\texttt{TerrawebClient}\\\texttt{LiveAlerts}};
-\node[comp, right=of twc] (push) {\texttt{WebSocketPushClient}\\\texttt{NetworkDiscovery}};
-\node[comp, below=3mm of api, minimum width=27mm] (sec) {\texttt{ApiSecurity}\\κλειδί, rate limit};
+% ---------------- Quest ---------------------------------------------------
+\node[comp] (api)   at (\cA, -5.2) {\texttt{LocalAPIServer} :8080\\\texttt{ApiSecurity}};
+\node[comp] (twc)   at (\cC, -5.2) {\texttt{TerrawebClient}\\\texttt{LiveAlerts}};
+\node[comp] (push)  at (\cD, -5.2) {\texttt{WebSocketPushClient}\\\texttt{NetworkDiscovery}};
 
-% ---------------- Quest: core ---------------------------------------------
-\node[comp, below=8mm of sec] (align) {\texttt{ProjectAlignment}\\\texttt{CoordinateTransform}};
-\node[comp, right=of align] (anch) {\texttt{SpatialAnchorManager}\\\texttt{AnchorFieldTest}};
-\node[comp, right=of anch] (sess) {\texttt{SessionManager}\\\texttt{OfflineCache}};
+\node[comp] (align) at (\cA, -6.8) {\texttt{ProjectAlignment}\\\texttt{CoordinateTransform}};
+\node[comp] (anch)  at (\cB, -6.8) {\texttt{SpatialAnchorManager}\\\texttt{AnchorFieldTest}};
+\node[comp] (sess)  at (\cC, -6.8) {\texttt{SessionManager}\\\texttt{OfflineCache}};
 
-% ---------------- Quest: visualization / UI -------------------------------
-\node[comp, below=of align] (mark) {\texttt{MarkerManager}\\\texttt{HistoryRibbons}};
-\node[comp, right=of mark] (model) {\texttt{ModelOverlay}\\\texttt{ModelHeatmap}};
-\node[comp, right=of model] (ui) {\texttt{MainMenu}, \texttt{SensorCard}\\\texttt{VoiceCommands}, \texttt{InspectionRoute}};
+\node[comp] (mark)  at (\cA, -8.4) {\texttt{MarkerManager}\\\texttt{HistoryRibbons}};
+\node[comp] (model) at (\cB, -8.4) {\texttt{ModelOverlay}\\\texttt{ModelHeatmap}};
+\node[comp] (ui)    at (\cD, -8.4) {\texttt{MainMenu}, \texttt{SensorCard}\\\texttt{VoiceCommands}};
 
-% ---------------- Tiers ---------------------------------------------------
+% ---------------- Επίπεδα ---------------------------------------------------
 \begin{scope}[on background layer]
-  \node[tier=gray, fit=(tw)(wit)] (cloudT) {};
-  \node[tier=green, fit=(bridge)(models)(cserver)] (pcT) {};
-  \node[tier=blue, fit=(api)(push)(sec)(align)(sess)(mark)(ui)] (questT) {};
+  \node[tier=gray,  fit=(bridge.west |- tw.north)(wit)] (cloudT) {};
+  \node[tier=green, fit=(bridge)(cserver)] (pcT) {};
+  \node[tier=blue,  fit=(api)(push)(mark)(ui)] (questT) {};
 \end{scope}
-\node[tiertitle] at (cloudT.north west) {Νέφος};
-\node[tiertitle] at (pcT.north west) {PC στο LAN (Python)};
-\node[tiertitle] at (questT.north west) {Meta Quest 3 (Unity, C\#)};
+\node[tiertitle] at (cloudT.west) {Νέφος};
+\node[tiertitle] at (pcT.west)    {PC (Python)};
+\node[tiertitle] at (questT.west) {Meta Quest 3 (Unity, C\#)};
 
-% ---------------- Flows ---------------------------------------------------
-\draw[flow] (tw) -- node[lbl]{αισθητήρες} (bridge);
-\draw[flow] (bridge) -- node[lbl]{POST /api/project} (api);
-\draw[flow] (models) -- node[lbl, pos=0.35]{POST /api/model\\(zip)} (api);
-\draw[flow] (cserver) -- node[lbl]{push} (push);
-\draw[flow, <->] (tw.east) -| ++(4mm,-20mm) -| node[lbl, pos=0.75]{HTTPS: μετρήσεις,\\ιστορικό, συναγερμοί} (twc.north);
-\draw[flow, <->, dashed] (wit.south) |- ($(ui.north east)+(3mm,8mm)$) -- ($(ui.north east)+(3mm,0)$);
-\draw[flow] (api) -- (sec);
-\draw[flow] (sec) -- (align);
-\draw[flow] (align) -- (mark);
+% ---------------- Ροές -----------------------------------------------------
+% Νέφος → PC / Quest (οι ετικέτες στο κενό ανάμεσα στα επίπεδα)
+\draw[flow] (tw.south west) -- node[lbl, pos=0.35]{αισθητήρες έργου} (bridge.north east);
+\draw[flow, <->] (tw) -- node[lbl, pos=0.18]{HTTPS: μετρήσεις,\\ιστορικό, συναγερμοί} (twc);
+% PC → Quest
+\draw[flow] (bridge) -- node[lbl, pos=0.5]{POST /api/project} (api);
+\draw[flow] (models.south) -- node[lbl, pos=0.45]{POST /api/model\\(zip)} (api.north east);
+\draw[flow] (cserver) -- node[lbl, pos=0.5]{push} (push);
+% Φωνή: γύρω από τα επίπεδα, από δεξιά
+\draw[flow, <->, dashed] (wit.east) -- ++(0.9,0) |- (ui.east);
+% Μέσα στο Quest
+\draw[flow] (api) -- (align);
 \draw[flow] (align) -- (anch);
-\draw[flow] (align.south east) -- (model);
-\draw[flow] (twc) -- ++(0,-8mm) -| (sess);
+\draw[flow] (align) -- (mark);
+\draw[flow] (align.south east) -- (model.north west);
+\draw[flow] (twc) -- (sess);
 \end{tikzpicture}
