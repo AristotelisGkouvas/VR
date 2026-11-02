@@ -1,0 +1,5 @@
+# latexmk -> XeLaTeX + Biber, έξοδος στο build/ (το main.pdf αντιγράφεται δίπλα στο main.tex)
+$pdf_mode = 5;            # xelatex
+$bibtex_use = 2;          # biber
+$out_dir = 'build';
+$success_cmd = 'cp build/main.pdf main.pdf || copy build\\main.pdf main.pdf';

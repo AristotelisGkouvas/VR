@@ -1,0 +1,110 @@
+\chapter{Πειραματική αξιολόγηση}
+\label{ch:evaluation}
+
+\guide{Έκταση 15--20 σελίδες. Για κάθε πείραμα: \textbf{στόχος} (ποιο ΕΕ) → \textbf{διάταξη} → \textbf{διαδικασία} → \textbf{αποτελέσματα} (πίνακας + γράφημα) → \textbf{συζήτηση}. Όλοι οι αριθμοί βγαίνουν από τα scripts του \code{thesis/analysis/}, όχι με αντιγραφή. Όλα τα πειράματα με την έκδοση \code{thesis-v1} της εφαρμογής.}
+
+% Εικόνα από το analysis/ αν υπάρχει, αλλιώς πλαίσιο-υπενθύμιση.
+\newcommand{\genfig}[2][\linewidth]{%
+  \IfFileExists{../figures/generated/#2}%
+    {\includegraphics[width=#1]{#2}}%
+    {\fbox{\parbox[c][4cm][c]{0.8\linewidth}{\centering\sffamily\small Θα παραχθεί από \code{thesis/analysis/}\\\texttt{figures/generated/#2}}}}}
+\newcommand{\gentable}[1]{%
+  \IfFileExists{../figures/generated/#1}%
+    {\begin{adjustbox}{max width=\linewidth}\input{../figures/generated/#1}\end{adjustbox}}%
+    {\fillin{πίνακας \texttt{#1} από το analysis/}}}
+
+\section{Πειραματική διάταξη}
+\label{sec:exp-setup}
+\guide{Συσκευή (Quest~3, έκδοση λογισμικού), έκδοση εφαρμογής (git tag \code{thesis-v1}), εργοτάξιο/χώρος (περιγραφή, φωτογραφία, αριθμός αισθητήρων, έκταση), τοπογραφική αποτύπωση σημείων αναφοράς (όργανο, ακρίβεια), δίκτυο (Wi-Fi).}
+
+% ---------------------------------------------------------------------
+\section{Ακρίβεια ευθυγράμμισης (ΕΕ1)}
+\label{sec:exp-alignment}
+
+\paragraph{Στόχος.} Πόσο απέχει ένας αισθητήρας από τη σωστή του θέση μετά την ευθυγράμμιση, συναρτήσει του πλήθους και της γεωμετρίας των σημείων ελέγχου, και πόσο καλά το προβλέπει η \cref{eq:predicted-error}.
+
+\paragraph{Διάταξη.} 6--10 σημεία με γνωστές συντεταγμένες. Για $k \in \{2, 3, 4\}$, $k$ σημεία χρησιμοποιούνται για την ευθυγράμμιση και τα υπόλοιπα ως ανεξάρτητα σημεία ελέγχου ακρίβειας.
+
+\paragraph{Μέτρα.} Οριζόντιο/κατακόρυφο RMS στα σημεία ευθυγράμμισης· σφάλμα στα ανεξάρτητα σημεία συναρτήσει της απόστασης $D$ από το κέντρο τους· προβλεπόμενο έναντι μετρημένου σφάλματος.
+
+\begin{figure}[htbp]
+  \centering
+  \genfig[0.8\linewidth]{alignment_error_vs_distance.pdf}
+  \caption{Οριζόντιο σφάλμα στα ανεξάρτητα σημεία συναρτήσει της απόστασης από τα σημεία ελέγχου.}
+  \label{fig:alignment-error}
+\end{figure}
+
+\todo{Αποτελέσματα και συζήτηση. Αναμένεται γραμμική αύξηση με $D/b$.}
+
+% ---------------------------------------------------------------------
+\section{Σταθερότητα και επανεντοπισμός anchors (ΕΕ2)}
+\label{sec:exp-anchors}
+
+\paragraph{Στόχος.} Αν τα spatial anchors ανά σημείο ελέγχου ξαναβρίσκονται σε επόμενες επισκέψεις, πόσο γρήγορα και πόσο έχουν μετακινηθεί.
+
+\paragraph{Διαδικασία.} Το πρωτόκολλο της ``Δοκιμής πεδίου anchors'' (README της εφαρμογής): 3 σημεία ελέγχου σε απόσταση \SIrange{5}{30}{m}· επιστροφή μετά από 10 λεπτά, μία ημέρα και μία εβδομάδα· διαφορετικός φωτισμός· μετά από αλλαγές στο εργοτάξιο· απομάκρυνση \SI{50}{m} και επιστροφή. Τα δεδομένα λαμβάνονται από το \code{GET /api/fieldtest} και αναλύονται με το \code{analysis/fieldtest_anchors.py}.
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Επανεντοπισμός και μετατόπιση anchors ανά συνθήκη.}
+  \label{tab:anchors-by-condition}
+  \gentable{anchors_by_condition.tex}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}{0.49\linewidth}
+    \genfig{anchors_offset_by_condition.pdf}
+    \caption{Οριζόντια μετατόπιση ανά συνθήκη.}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.49\linewidth}
+    \genfig{anchors_offset_vs_age.pdf}
+    \caption{Μετατόπιση συναρτήσει ηλικίας anchor.}
+  \end{subfigure}
+  \caption{Σταθερότητα των spatial anchors.}
+  \label{fig:anchors}
+\end{figure}
+
+\todo{Αποτελέσματα και συζήτηση.}
+
+% ---------------------------------------------------------------------
+\section{Απόδοση γραφικών (ΕΕ3)}
+\label{sec:exp-performance}
+
+\paragraph{Διάταξη.} OVR Metrics Tool με καταγραφή CSV. Σενάρια: (α) 50/200/1000 σημεία, (β) + ετικέτες και κορδέλες, (γ) + μοντέλο 100k/300k/500k/1M τριγώνων, (δ) + χάρτης θερμότητας. Συνθήκες: \SI{72}{Hz} χωρίς foveation, \SI{90}{Hz} χωρίς, \SI{90}{Hz} με υψηλό foveation.
+
+\paragraph{Μέτρα.} Μέσος ρυθμός καρέ και 1\% χαμηλότερος, χρόνος καρέ GPU/CPU, θερμοκρασία, κατανάλωση μπαταρίας ανά 10 λεπτά, χρόνος φόρτωσης μοντέλου.
+
+\begin{figure}[htbp]
+  \centering
+  \genfig[0.8\linewidth]{fps_vs_triangles.pdf}
+  \caption{Ρυθμός καρέ συναρτήσει του πλήθους τριγώνων του μοντέλου.}
+  \label{fig:fps-triangles}
+\end{figure}
+
+\todo{Αποτελέσματα και συζήτηση.}
+
+% ---------------------------------------------------------------------
+\section{Προετοιμασία μοντέλων φωτογραμμετρίας}
+\label{sec:exp-modelprep}
+\guide{Ένα μοντέλο φωτογραμμετρίας απλοποιημένο σε 1M/400k/200k/100k τρίγωνα με \code{model_prep.py}. Μέτρα: απόσταση Hausdorff από το αρχικό (pymeshlab), μέγεθος πακέτου, χρόνος μεταφοράς και φόρτωσης, ρυθμός καρέ. Καμπύλη ποιότητας--απόδοσης που δικαιολογεί την προεπιλογή των 400k.}
+
+% ---------------------------------------------------------------------
+\section{Καθυστέρηση από άκρο σε άκρο}
+\label{sec:exp-latency}
+\guide{Χρόνος από \code{POST /api/coordinates} έως την εμφάνιση του σημείου (1/100/1000 σημεία ανά αίτημα), push (long-poll) έναντι polling, Wi-Fi 5\,GHz έναντι hotspot κινητού. Εργαλεία: \code{Server/test_clients.py}, \code{fake_scenarios.py}, \code{/api/logs}.}
+
+% ---------------------------------------------------------------------
+\section{Σύγκριση μεθόδων παρεμβολής}
+\label{sec:exp-interpolation}
+\guide{Leave-one-out cross-validation offline σε Python με μετρήσεις από το Terraweb: γραμμική σε Delaunay, IDW με $p = 1, 2, 3$, πλησιέστερος γείτονας (baseline). RMSE και MAE για ομοιόμορφη και ανομοιόμορφη κατανομή αισθητήρων.}
+
+% ---------------------------------------------------------------------
+\section{Μελέτη χρηστών (ΕΕ4)}
+\label{sec:exp-userstudy}
+\guide{Within-subjects, 8--15 συμμετέχοντες, αντιστάθμιση σειράς. Συνθήκη Α: χάρτης/tablet· Β: εφαρμογή. Εργασίες: εντοπισμός 3 αισθητήρων, ποιοι είναι σε συναγερμό και πού, περιοχή μέγιστης μετακίνησης. Μέτρα: χρόνος, λάθη, SUS \cite{brooke1996sus}, NASA-TLX \cite{hart1988nasatlx}, SSQ \cite{kennedy1993ssq}, συνέντευξη. Στατιστική: Wilcoxon signed-rank \cite{wilcoxon1945}. Πρωτόκολλο και ερωτηματολόγια στο \cref{app:userstudy}.}
+
+% ---------------------------------------------------------------------
+\section{Ποιότητα λογισμικού}
+\label{sec:exp-quality}
+\guide{127 unit tests (pytest) στα εργαλεία Python, τι καλύπτουν· build χωρίς προειδοποιήσεις στον κώδικα C\#· προαιρετικά κάλυψη κώδικα με \code{pytest --cov}.}

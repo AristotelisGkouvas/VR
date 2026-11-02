@@ -1,0 +1,47 @@
+# Διπλωματική εργασία
+
+**Από τον αισθητήρα στο οπτικό πεδίο: Ένα end-to-end σύστημα IoT και μικτής πραγματικότητας για την απεικόνιση μετρήσεων στον φυσικό τους χώρο**
+
+*From Sensor to Field of View: An End-to-End IoT and Mixed Reality System for Visualizing Measurements in Place*
+
+Ό,τι αφορά τη διπλωματική μπαίνει σε αυτόν τον φάκελο. Η εφαρμογή είναι στο `../QuestMarkerApp/`. Η έκδοση της εφαρμογής για τα πειράματα είναι το git tag **`thesis-v1`**.
+
+| Αρχείο / φάκελος | Περιεχόμενο |
+|---|---|
+| `Οδηγός_Διπλωματικής.md` | Δομή κεφαλαίων, πειράματα, βιβλιογραφία, πλάνο εργασιών |
+| `report/` | Το κείμενο σε LaTeX (XeLaTeX + Biber) |
+| `bibliography/references.bib` | Βιβλιογραφία (κατά προτίμηση auto-export από Zotero) |
+| `figures/` | Διαγράμματα (TikZ), στιγμιότυπα από τα γυαλιά |
+| `figures/generated/` | Γραφήματα και πίνακες που παράγουν τα scripts ανάλυσης. Δεν διορθώνονται με το χέρι |
+| `analysis/` | Scripts ανάλυσης πειραμάτων (Python) |
+| `data/` | Ακατέργαστα δεδομένα πειραμάτων + ημερολόγιο μετρήσεων |
+| `presentation/` | Διαφάνειες και βίντεο επίδειξης (όταν χρειαστεί) |
+
+## Μεταγλώττιση του report
+
+**Overleaf (το πιο εύκολο):** ανέβασε ολόκληρο τον φάκελο `thesis/` ως zip, άνοιξε το `report/main.tex` και διάλεξε Menu › Compiler › **XeLaTeX**.
+
+**Τοπικά** (χρειάζεται TeX Live ή MiKTeX):
+
+```bash
+cd thesis/report
+latexmk main.tex          # XeLaTeX + Biber, βγάζει report/main.pdf
+```
+
+**Με Docker** (χωρίς εγκατάσταση LaTeX):
+
+```bash
+cd thesis
+docker run --rm -v "$PWD":/thesis -w /thesis/report texlive/texlive:latest latexmk main.tex
+```
+
+## Σημειώσεις μέσα στο κείμενο
+
+- `\guide{...}` (μπλε πλαίσιο): τι γράφεται σε κάθε ενότητα.
+- `\todo{...}` (πορτοκαλί): κάτι που λείπει.
+- `\fillin{...}` (κόκκινο): στοιχείο που πρέπει να συμπληρωθεί (ΑΜ, επιβλέπων, αριθμοί).
+- `\code{...}`: όνομα αρχείου ή κλάσης του project.
+
+Για την τελική έκδοση: `\FinalVersiontrue` στο `report/setup.tex` κρύβει όλες τις σημειώσεις.
+
+Τα στοιχεία εργασίας (τίτλος, όνομα, επιβλέπων, τμήμα) αλλάζουν μόνο στην αρχή του `report/main.tex`.

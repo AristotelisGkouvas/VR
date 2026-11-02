@@ -1,0 +1,15 @@
+\chapter{Αναφορά τοπικού API}
+\label{app:api}
+
+\guide{Πλήρης πίνακας endpoints (μέθοδος, διαδρομή, σώμα, απάντηση, κωδικοί) από τις ενότητες ``Χρήση API'' και ``API v1.2'' του \code{QuestMarkerApp/README.md}, με ένα παράδειγμα JSON ανά ομάδα.}
+
+\section{Παράδειγμα: αποστολή σημείων}
+
+\begin{lstlisting}[language=bash,caption={Αποστολή σημείου με cURL.}]
+curl -X POST http://<quest-ip>:8080/api/coordinates \
+     -H "Content-Type: application/json" \
+     -H "X-Api-Key: <key>" \
+     -d '{"coordinates":[{"id":"K5","x":12.4,"y":1.2,"z":-3.8,
+          "label":"K5","color":"#FF0000","scale":0.1}],
+          "clearExisting":false}'
+\end{lstlisting}

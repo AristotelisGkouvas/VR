@@ -1,0 +1,128 @@
+% =====================================================================
+%  Προοίμιο: γλώσσες, γραμματοσειρές, σελίδα, εικόνες, κώδικας, βιβλιογραφία
+% =====================================================================
+
+% ---------------- Λειτουργία final -----------------------------------
+% \FinalVersiontrue κρύβει τις σημειώσεις καθοδήγησης. Άλλαξέ το στο τέλος.
+\newif\ifFinalVersion
+\FinalVersionfalse
+
+% ---------------- Γλώσσες και γραμματοσειρές (XeLaTeX) ----------------
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{greek}
+\setotherlanguage{english}
+% Libertinus: πλήρη ελληνικά, μαθηματικά που ταιριάζουν, διαθέσιμη σε TeX Live και Overleaf.
+\setmainfont{Libertinus Serif}
+\setsansfont{Libertinus Sans}
+\setmonofont{DejaVu Sans Mono}[Scale=MatchLowercase]
+\newfontfamily\greekfont{Libertinus Serif}
+\newfontfamily\greekfontsf{Libertinus Sans}
+\newfontfamily\greekfonttt{DejaVu Sans Mono}[Scale=MatchLowercase]
+
+% ---------------- Μαθηματικά -----------------------------------------
+\usepackage{amsmath,amssymb}
+\usepackage{unicode-math}
+\setmathfont{Libertinus Math}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,}, group-separator={.}, detect-all}
+
+% ---------------- Σελίδα ---------------------------------------------
+\usepackage[a4paper,top=2.5cm,bottom=2.5cm,left=3cm,right=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0pt}}
+\usepackage{titlesec}
+\titleformat{\chapter}[display]{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{16pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{0pt}{30pt}
+
+% ---------------- Εικόνες, πίνακες, διαγράμματα ----------------------
+\usepackage{graphicx}
+\graphicspath{{../figures/}{../figures/generated/}}
+\usepackage{float}
+\usepackage{booktabs,tabularx,multirow,longtable}
+\usepackage{adjustbox}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc,shapes.geometric}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{xcolor}
+
+% ---------------- Κώδικας --------------------------------------------
+\usepackage{listings}
+\lstdefinestyle{code}{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue!70!black}\bfseries,
+  commentstyle=\color{green!40!black}\itshape,
+  stringstyle=\color{red!60!black},
+  numbers=left, numberstyle=\tiny\color{gray}, numbersep=6pt,
+  frame=single, rulecolor=\color{gray!40},
+  breaklines=true, showstringspaces=false, tabsize=4,
+  captionpos=b, xleftmargin=1.5em, framexleftmargin=1.5em
+}
+\lstset{style=code}
+\renewcommand{\lstlistingname}{Απόσπασμα}
+\renewcommand{\lstlistlistingname}{Κατάλογος αποσπασμάτων κώδικα}
+
+% ---------------- Αλγόριθμοι -----------------------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\floatname{algorithm}{Αλγόριθμος}
+\renewcommand{\listalgorithmname}{Κατάλογος αλγορίθμων}
+
+% ---------------- Βιβλιογραφία ---------------------------------------
+\usepackage{csquotes}
+\usepackage[backend=biber,style=numeric-comp,sorting=none,maxbibnames=6,giveninits=true]{biblatex}
+\addbibresource{../bibliography/references.bib}
+
+% ---------------- Υπερσύνδεσμοι (τελευταίο) --------------------------
+\usepackage[hidelinks,unicode]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\crefname{chapter}{κεφάλαιο}{κεφάλαια}
+\Crefname{chapter}{Κεφάλαιο}{Κεφάλαια}
+\crefname{section}{ενότητα}{ενότητες}
+\Crefname{section}{Ενότητα}{Ενότητες}
+\crefname{subsection}{ενότητα}{ενότητες}
+\Crefname{subsection}{Ενότητα}{Ενότητες}
+\crefname{figure}{σχήμα}{σχήματα}
+\Crefname{figure}{Σχήμα}{Σχήματα}
+\crefname{table}{πίνακας}{πίνακες}
+\Crefname{table}{Πίνακας}{Πίνακες}
+\crefname{equation}{εξίσωση}{εξισώσεις}
+\Crefname{equation}{Εξίσωση}{Εξισώσεις}
+\crefname{lstlisting}{απόσπασμα}{αποσπάσματα}
+\Crefname{lstlisting}{Απόσπασμα}{Αποσπάσματα}
+\crefname{algorithm}{αλγόριθμος}{αλγόριθμοι}
+\Crefname{algorithm}{Αλγόριθμος}{Αλγόριθμοι}
+
+% ---------------- Σημειώσεις καθοδήγησης -----------------------------
+% \guide{...}   : τι γράφεται σε αυτή την ενότητα (μπλε πλαίσιο)
+% \todo{...}    : κάτι που λείπει (πορτοκαλί πλαίσιο)
+% \fillin{...}  : στοιχείο που πρέπει να συμπληρωθεί (κόκκινο κείμενο)
+% \code{...}    : όνομα αρχείου / κλάσης του project
+\usepackage{tcolorbox}
+\ifFinalVersion
+  \newcommand{\guide}[1]{}
+  \newcommand{\todo}[1]{}
+  \newcommand{\fillin}[1]{#1}
+\else
+  \newtcolorbox{guidebox}{colback=blue!4,colframe=blue!45!black,boxrule=0.4pt,
+    left=4pt,right=4pt,top=2pt,bottom=2pt,fontupper=\small\sffamily,
+    title={\scriptsize\sffamily ΟΔΗΓΙΑ},fonttitle=\bfseries,coltitle=white}
+  \newtcolorbox{todobox}{colback=orange!8,colframe=orange!70!black,boxrule=0.4pt,
+    left=4pt,right=4pt,top=2pt,bottom=2pt,fontupper=\small\sffamily,
+    title={\scriptsize\sffamily ΕΚΚΡΕΜΕΙ},fonttitle=\bfseries,coltitle=white}
+  \newcommand{\guide}[1]{\begin{guidebox}#1\end{guidebox}}
+  \newcommand{\todo}[1]{\begin{todobox}#1\end{todobox}}
+  \newcommand{\fillin}[1]{\textcolor{red}{[#1]}}
+\fi
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\en}[1]{\textenglish{#1}}

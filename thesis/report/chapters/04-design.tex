@@ -1,0 +1,95 @@
+\chapter{Απαιτήσεις και σχεδίαση συστήματος}
+\label{ch:design}
+
+\guide{Έκταση 12--15 σελίδες. Καλό σημείο εκκίνησης για τη γραφή: το σύστημα το ξέρεις ήδη. Περιγράφεις \emph{τι} και \emph{γιατί}, όχι \emph{πώς} (αυτό είναι το \cref{ch:implementation}).}
+
+\section{Σενάρια χρήσης}
+\label{sec:usecases}
+
+\guide{Τρία σενάρια, το καθένα σε μία παράγραφο με τα βήματα του χρήστη:
+(α) \textbf{Επιθεώρηση πεδίου}: φόρτωση έργου από Terraweb, ευθυγράμμιση σε 2--4 σημεία ελέγχου, περιήγηση στους αισθητήρες, συναγερμοί, διαδρομή επιθεώρησης, αναφορά.
+(β) \textbf{Προετοιμασία στο γραφείο}: το μοντέλο ως μακέτα πάνω στο τραπέζι, χρονομηχανή, χάρτης θερμότητας.
+(γ) \textbf{Εκπαίδευση}: το εικονικό έργο εξάσκησης (\code{PracticeProject}) και ο οδηγός πρώτης χρήσης (\code{Onboarding}).}
+
+\section{Απαιτήσεις}
+\label{sec:requirements}
+
+\subsection{Λειτουργικές απαιτήσεις}
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Λειτουργικές απαιτήσεις.}
+  \label{tab:functional-req}
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    Κωδ. & Απαίτηση \\
+    \midrule
+    ΛΑ1 & Λήψη έργου (σημεία αισθητήρων με συντεταγμένες κανάβου) από την πλατφόρμα παρακολούθησης ή από αρχείο CSV. \\
+    ΛΑ2 & Ευθυγράμμιση του έργου με τον πραγματικό χώρο με άγγιγμα γνωστών σημείων και επιβεβαίωση από τον χρήστη. \\
+    ΛΑ3 & Διατήρηση της ευθυγράμμισης μεταξύ συνεδριών. \\
+    ΛΑ4 & Απεικόνιση κάθε αισθητήρα στη θέση του με τύπο, όνομα, κατάσταση και τελευταία τιμή. \\
+    ΛΑ5 & Απεικόνιση ιστορικού μετρήσεων και κατάστασης σε παρελθούσα ημερομηνία. \\
+    ΛΑ6 & Ειδοποίηση για αλλαγές κατάστασης συναγερμού σε (σχεδόν) πραγματικό χρόνο. \\
+    ΛΑ7 & Υπέρθεση μοντέλου 3Δ (OBJ, DXF, IFC) στο ίδιο σύστημα συντεταγμένων. \\
+    ΛΑ8 & Καθοδηγούμενη διαδρομή επιθεώρησης με αναφορά. \\
+    ΛΑ9 & Πρόσβαση τρίτων εφαρμογών μέσω τεκμηριωμένου API. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Μη λειτουργικές απαιτήσεις}
+
+\guide{ΜΛΑ: σταθερός ρυθμός καρέ (72\,Hz), λειτουργία χωρίς σύνδεση (\code{OfflineCache}), ασφάλεια σε τοπικό δίκτυο (κλειδί API, όρια μεγέθους, rate limiting), χρήση με λεπτά γάντια εργασίας (μεγάλοι στόχοι, κουμπιά αντί για χειρονομίες), δίγλωσση διεπαφή (ελληνικά/αγγλικά), ανεξαρτησία από συγκεκριμένο CRS, άνεση (αποφυγή ναυτίας στην κίνηση με stick). Για καθεμία: γιατί προκύπτει από το πεδίο.}
+
+\section{Αρχιτεκτονική}
+\label{sec:architecture}
+
+Το σύστημα αποτελείται από τρία επίπεδα (\cref{fig:architecture}): την πλατφόρμα παρακολούθησης στο νέφος, προαιρετικά εργαλεία σε υπολογιστή στο τοπικό δίκτυο, και την εφαρμογή στη συσκευή, η οποία λειτουργεί και αυτόνομα.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{../figures/architecture}}
+  \caption{Αρχιτεκτονική του συστήματος.}
+  \label{fig:architecture}
+\end{figure}
+
+\guide{Περιέγραψε κάθε επίπεδο και κάθε ροή του σχήματος. Τόνισε την επιλογή: ο \emph{εξυπηρετητής} τρέχει στα γυαλιά (αντί η εφαρμογή να είναι μόνο πελάτης), ώστε οποιαδήποτε συσκευή στο LAN να στέλνει δεδομένα χωρίς ενδιάμεσο. Και ότι η εφαρμογή μιλά και απευθείας με το Terraweb, χωρίς PC.}
+
+\section{Επικοινωνία}
+\label{sec:communication}
+
+\subsection{Τοπικό REST API}
+
+\Cref{tab:api-summary} συνοψίζει τα endpoints του ενσωματωμένου εξυπηρετητή (θύρα 8080). Η πλήρης αναφορά βρίσκεται στο \cref{app:api}.
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Ομάδες endpoints του τοπικού API.}
+  \label{tab:api-summary}
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    Ομάδα & Endpoints \\
+    \midrule
+    Σημεία & \code{/api/coordinates}, \code{/api/clear}, \code{/api/undo}, \code{/api/layer} \\
+    Έργο / ευθυγράμμιση & \code{/api/project}, \code{/api/project/reset}, \code{/api/calibrate/*}, \code{/api/gps-origin}, \code{/api/anchors} \\
+    Μοντέλα & \code{/api/model}, \code{/api/models} \\
+    Συνεδρίες & \code{/api/session}, \code{/api/session/new} \\
+    Πεδίο & \code{/api/fieldnotes}, \code{/api/reports}, \code{/api/fieldtest} \\
+    Διάγνωση & \code{/api/health}, \code{/api/status}, \code{/api/logs} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Ανακάλυψη και push}
+\guide{\code{NetworkDiscovery}: εκπομπή UDP στη θύρα 48080 με JSON \{service, port, name\}, ώστε τα εργαλεία PC να βρίσκουν τα γυαλιά χωρίς IP. Push μέσω long-poll στο \code{/api/events} του \code{coordinate_server.py} (\code{WebSocketPushClient}). Γιατί long-poll και όχι WebSocket/MQTT (απλότητα, διέλευση από firewalls, καμία εξάρτηση στη συσκευή).}
+
+\subsection{Σύνδεση με την πλατφόρμα Terraweb}
+\guide{Αυθεντικοποίηση JWT (access 15 λεπτά, refresh 7 ημέρες), επιλογή έργου, λήψη αισθητήρων, ιστορικού και ενεργών συναγερμών (polling ανά 20\,s). Μόνο HTTPS για διαπιστευτήρια· pinning πιστοποιητικού για αυτο-υπογεγραμμένους εξυπηρετητές.}
+
+\section{Ασφάλεια}
+\label{sec:security}
+\guide{Μοντέλο απειλών για LAN: κλειδί API (\code{X-Api-Key} ή \code{Bearer}), όριο ρυθμού αιτημάτων, όρια μεγέθους σώματος, προστασία από zip bomb στα πακέτα μοντέλων, καμία έκθεση εκτός LAN. Τι \emph{δεν} καλύπτεται (cleartext HTTP εντός LAN) και γιατί είναι αποδεκτό εδώ.}
+
+\section{Μοντέλο δεδομένων}
+\label{sec:datamodel}
+\guide{\code{CoordinateData} (σημείο: id, x/y/z, χρώμα, ετικέτα, στρώμα), \code{ProjectData} (σημεία έργου με id, όνομα, τύπο, E/N/H), συνεδρία, εγγραφές ιστορικού. Σχήμα κλάσεων UML με τα κύρια πεδία.}

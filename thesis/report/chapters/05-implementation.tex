@@ -1,0 +1,107 @@
+\chapter{Υλοποίηση}
+\label{ch:implementation}
+
+\guide{Έκταση 20--25 σελίδες. Μία ενότητα ανά υποσύστημα, με το ίδιο μοτίβο: \textbf{πρόβλημα → σχεδιαστική απόφαση και γιατί → (σύντομος) κώδικας ή ψευδοκώδικας → στιγμιότυπο από τα γυαλιά}. \emph{Όχι} περιγραφή κώδικα γραμμή-γραμμή. Αποσπάσματα κώδικα έως 15--20 γραμμές· τα μεγαλύτερα σε ψευδοκώδικα.}
+
+\section{Τεχνολογίες και δομή του έργου}
+\label{sec:impl-stack}
+\guide{Unity 6 (6000.5), C\#, Meta XR SDK, Built-in Render Pipeline με δικούς shaders, Android/IL2CPP/ARM64. Python 3.11 για τα εργαλεία PC (Flask, requests, pymeshlab, ifcopenshell). Πίνακας φακέλων \code{Assets/Scripts/} (API, Core, Markers, Models, UI, Mobile, Editor) με μία γραμμή περιγραφής ο καθένας. Λειτουργία προεπισκόπησης σε κινητό για ανάπτυξη χωρίς headset.}
+
+% ---------------------------------------------------------------------
+\section{Ευθυγράμμιση έργου}
+\label{sec:impl-alignment}
+
+Ο χρήστης ακουμπά με την άκρη του χειριστηρίου σημεία ελέγχου με γνωστές συντεταγμένες έργου. Για κάθε ζεύγος $(\mathbf{p}_i, \mathbf{m}_i)$, όπου $\mathbf{p}_i$ η θέση στο τοπικό σύστημα του έργου (\cref{eq:enh-to-local}) και $\mathbf{m}_i$ η μετρημένη θέση στον χώρο της συσκευής, το σύστημα εκτιμά μετασχηματισμό στερεού σώματος τεσσάρων βαθμών ελευθερίας: στροφή $\theta$ γύρω από τον κατακόρυφο άξονα και μετάθεση $\mathbf{t} \in \mathbb{R}^3$. Η κλίση δεν εκτιμάται, γιατί η συσκευή γνωρίζει ήδη την κατακόρυφο από το αδρανειακό της σύστημα με ακρίβεια καλύτερη από όση θα έδιναν λίγα σημεία.
+
+\subsection{Λύση ελαχίστων τετραγώνων}
+
+Με $\bar{\mathbf{p}}, \bar{\mathbf{m}}$ τα κέντρα βάρους και $\mathbf{p}'_i = \mathbf{p}_i - \bar{\mathbf{p}}$, $\mathbf{m}'_i = \mathbf{m}_i - \bar{\mathbf{m}}$, η γωνία που ελαχιστοποιεί το άθροισμα τετραγώνων των οριζόντιων υπολοίπων είναι
+\begin{equation}
+  \theta = \operatorname{atan2}\!\Big( \sum_i \big(m'_{i,x} p'_{i,z} - m'_{i,z} p'_{i,x}\big),\;
+                                      \sum_i \big(m'_{i,x} p'_{i,x} + m'_{i,z} p'_{i,z}\big) \Big),
+  \label{eq:yaw}
+\end{equation}
+και η μετάθεση
+\begin{equation}
+  \mathbf{t} = \bar{\mathbf{m}} - R_y(\theta)\,\bar{\mathbf{p}} .
+  \label{eq:translation}
+\end{equation}
+Πρόκειται για την ειδική περίπτωση στο επίπεδο της κλειστής λύσης του απόλυτου προσανατολισμού \cite{horn1987closed,arun1987leastsquares}. Η κατακόρυφη συνιστώσα της $\mathbf{t}$ είναι η μέση κατακόρυφη απόκλιση.
+
+\guide{Εξήγησε την παραγωγή της \cref{eq:yaw} σε 4--5 γραμμές (μεγιστοποίηση του $\sum \mathbf{m}'_i \cdot R\mathbf{p}'_i$). Υλοποίηση: \code{ProjectAlignment.Solve} στο \code{Assets/Scripts/Core/ProjectAlignment.cs}.}
+
+\subsection{Ποιότητα και πρόβλεψη σφάλματος}
+
+Μετά από κάθε άγγιγμα υπολογίζονται το οριζόντιο και το κατακόρυφο RMS των υπολοίπων, το μέγιστο υπόλοιπο και το πιθανότερο λανθασμένο σημείο. Επιπλέον, το σύστημα \emph{προβλέπει} το πλευρικό σφάλμα στο πιο απομακρυσμένο σημείο του έργου. Αν κάθε άγγιγμα έχει τυπικό σφάλμα $\sigma$ (στην υλοποίηση $\sigma = \SI{2}{cm}$), η γωνιακή αβεβαιότητα από βάση μήκους $b$ είναι περίπου $\sigma\sqrt{2}/b$, οπότε σε απόσταση $D$ από το κέντρο των σημείων ελέγχου:
+\begin{equation}
+  \varepsilon_{\text{πλευρ.}}(D) \approx \sigma \sqrt{2}\, \frac{D}{b} .
+  \label{eq:predicted-error}
+\end{equation}
+Η \cref{eq:predicted-error} εμφανίζεται στον χρήστη και ελέγχεται πειραματικά στην \cref{sec:exp-alignment}.
+
+\subsection{Καθοδήγηση του χρήστη}
+
+\begin{algorithm}[htbp]
+  \caption{Πρόταση επόμενου σημείου ελέγχου (farthest point).}
+  \label{alg:suggest-next}
+  \begin{algorithmic}[1]
+    \Require σημεία έργου $P$, ήδη τοποθετημένα $T \subset P$
+    \State $best \gets \text{κανένα}$, $score \gets -1$
+    \ForAll{$q \in P \setminus T$}
+      \State $d \gets \min_{p \in T} \lVert q_{xz} - p_{xz} \rVert$
+      \If{$d > score$} $score \gets d$, $best \gets q$ \EndIf
+    \EndFor
+    \State \Return $best$
+  \end{algorithmic}
+\end{algorithm}
+
+\guide{Επιπλέον έλεγχοι: σημεία πολύ κοντά για να οριστεί γωνία ($< \SI{25}{cm}$), δύο αγγίγματα στο ίδιο σημείο, ανίχνευση κατοπτρισμού (αντιμετατεθειμένες στήλες E/N: με $\geq 3$ σημεία και RMS $> \SI{10}{cm}$ ελέγχεται αν η κατοπτρική λύση ταιριάζει πολύ καλύτερα), επανέλεγχος αποθηκευμένης ευθυγράμμισης με ένα άγγιγμα (ανοχή \SI{10}{cm}). Στιγμιότυπο του πίνακα ευθυγράμμισης με τα RMS.}
+
+% ---------------------------------------------------------------------
+\section{Spatial anchors και επαναφορά}
+\label{sec:impl-anchors}
+\guide{\code{SpatialAnchorManager}: κύκλος ζωής anchors. \code{AnchorFieldTest} + \code{FieldTestLog}: ένα anchor ανά σημείο ελέγχου, μέτρηση επανεντοπισμού και μετατόπισης, CSV ανά έργο και ημέρα (στήλες στο \cref{app:raw}). Γιατί η επαναφορά δεν γίνεται αυτόματα χωρίς επιβεβαίωση (εμπιστοσύνη πεδίου).}
+
+% ---------------------------------------------------------------------
+\section{Απόδοση σημείων (markers)}
+\label{sec:impl-markers}
+\guide{\code{MarkerManager}/\code{Marker}: billboard sprites με δικό shader (\code{MarkerSprite}), batching για λίγα draw calls, αποφυγή δεσμεύσεων μνήμης ανά καρέ (GC), single-pass instanced. Κλίμακα που μένει αναγνώσιμη από κοντά και από μακριά. Ετικέτες, ομαδοποίηση, απόκρυψη από πραγματικά αντικείμενα με το depth API (\code{DepthOcclusion}).}
+
+% ---------------------------------------------------------------------
+\section{Οπτικοποίηση δεδομένων}
+\label{sec:impl-vis}
+
+\subsection{Κορδέλες ιστορικού και χρονομηχανή}
+\guide{\code{HistoryRibbons}: διάγραμμα 30 ημερών δίπλα σε κάθε αισθητήρα. \code{SensorHistory}: λήψη/cache χρονοσειρών. Χρονομηχανή: όλη η σκηνή σε παρελθούσα ημερομηνία.}
+
+\subsection{Χάρτης θερμότητας μετακινήσεων}
+Ο χάρτης θερμότητας (\code{ModelHeatmap}) χρωματίζει την επιφάνεια του μοντέλου με την παρεμβαλλόμενη μετακίνηση. Οι αισθητήρες ενώνονται σε τρίγωνα σε κάτοψη με τριγωνοποίηση Delaunay (\code{Delaunay.cs}) και η τιμή σε κάθε σημείο προκύπτει με γραμμική παρεμβολή μέσα στο τρίγωνο. Τρίγωνα με ακμή μεγαλύτερη από δύο φορές την εμβέλεια απορρίπτονται, ώστε να μη ``βάφεται'' κενό χωρίς αισθητήρες. Η εμβέλεια προκύπτει από την τυπική απόσταση των αισθητήρων $s$:
+\begin{equation}
+  r = \operatorname{clamp}(1{,}5\,s,\ \SI{5}{m},\ \SI{30}{m}) \cdot k,
+\end{equation}
+με $k$ τον συντελεστή της ρύθμισης στενό/κανονικό/ευρύ, και το χρώμα σβήνει σταδιακά πέρα από αυτήν.
+
+\guide{Γιατί αντικαταστάθηκε η αρχική IDW (commit \code{fd79f04} → \code{1b0a854}): τα ``μάτια ταύρου'' γύρω από κάθε αισθητήρα. Τα τρία μέτρα (συνολική, κατακόρυφη $dz$, ρυθμός), υπόμνημα, τιμή κάτω από τον δείκτη μέσω πλέγματος υψών του μοντέλου. Σύγκριση των μεθόδων στην \cref{sec:exp-interpolation}.}
+
+\subsection{Συναγερμοί και όρια}
+\guide{\code{LiveAlerts} (polling 20\,s, αλλαγή κατάστασης → εικονίδιο, ήχος, μήνυμα· συμπεριφορά χωρίς σύνδεση), \code{AlarmBeacons}, \code{SensorLimits}/\code{LimitBars} (ποσοστό εξάντλησης ορίου).}
+
+% ---------------------------------------------------------------------
+\section{Μοντέλα 3Δ}
+\label{sec:impl-models}
+\guide{Αλυσίδα: OBJ/DXF/IFC → (PC) \code{model_prep.py}: απλοποίηση QEM με MeshLab \cite{garland1997qem,cignoni2008meshlab} σε 400k τρίγωνα, σμίκρυνση υφών σε 2048\,px, προαιρετική μεταφορά στον κάναβο των αισθητήρων (\code{model_to_local.py}, ευθυγράμμιση με κοινά σημεία) → zip → \code{POST /api/model} → (Quest) αποσυμπίεση με όρια ασφαλείας, ανάλυση σε νήμα παρασκηνίου, τεμαχισμός σε meshes με δείκτες 16 bit (\code{ModelOverlay}), shader \code{ModelTextured}. Προβολή: μακέτα / 1:1 / πάνω στο έργο. Κίνηση μέσα στο 1:1 με stick και vignette άνεσης (\code{ComfortVignette}).}
+
+% ---------------------------------------------------------------------
+\section{Αλληλεπίδραση}
+\label{sec:impl-interaction}
+\guide{Ακτίνα και κλικ (\code{VrPointer}), κύριο μενού, κάρτα αισθητήρα, πληροφορία με hover, μετροταινία (\code{MeasureTool}), διαδρομή επιθεώρησης (\code{InspectionRoute}: βέλη στο δάπεδο, τικ, αναφορά), φωνητικές εντολές (\code{VoiceCommands}/\code{VoiceRecognizers}, Wit.ai, εναλλακτικά πληκτρολόγιο VR), οδηγός πρώτης χρήσης, υποδείξεις χειριστηρίων, αριστερόχειρες. Σχεδιαστικές αρχές: λεπτά γάντια, δύο γλώσσες, επιβεβαίωση κρατώντας πατημένο (\code{HoldConfirm}) για καταστροφικές ενέργειες.}
+
+% ---------------------------------------------------------------------
+\section{Απόδοση της συσκευής}
+\label{sec:impl-performance}
+\guide{\code{DisplayPerformance}: 72/90\,Hz, δυναμικό foveated rendering. Μετρήσεις στην \cref{sec:exp-performance}.}
+
+% ---------------------------------------------------------------------
+\section{Εργαλεία PC και έλεγχοι}
+\label{sec:impl-tools}
+\guide{\code{terraweb_bridge.py}, \code{send_project.py}, \code{send_model.py}, \code{coordinate_server.py}, \code{fake_scenarios.py} (εξομοίωση σεναρίων). 127 unit tests με pytest (μετασχηματισμοί, προετοιμασία μοντέλων, API).}

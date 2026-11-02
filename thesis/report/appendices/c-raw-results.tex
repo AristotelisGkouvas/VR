@@ -1,0 +1,31 @@
+\chapter{Ακατέργαστα αποτελέσματα}
+\label{app:raw}
+
+\section{Αρχεία δοκιμής πεδίου anchors}
+
+Κάθε αρχείο CSV αντιστοιχεί σε ένα έργο και μία ημέρα, με μία γραμμή ανά anchor ανά μέτρηση. Οι στήλες είναι:
+
+\begin{table}[htbp]
+  \centering\small
+  \caption{Στήλες των αρχείων \code{fieldtest/*.csv}.}
+  \label{tab:fieldtest-columns}
+  \begin{tabularx}{\textwidth}{@{}lX@{}}
+    \toprule
+    Στήλη & Σημασία \\
+    \midrule
+    \code{timestamp}, \code{session_id} & Χρονική στιγμή, εκκίνηση της εφαρμογής \\
+    \code{project}, \code{point_id} & Έργο και σημείο ελέγχου \\
+    \code{condition}, \code{site_changed} & Συνθήκη (sunny, cloudy, indoor, morning, noon, evening), αλλαγές εργοταξίου (yes/no) \\
+    \code{app_version} & Έκδοση εφαρμογής \\
+    \code{phase} & load, manual, touch, solution, create, undo, erase \\
+    \code{anchor_uuid}, \code{anchor_age_h} & Anchor και ηλικία του σε ώρες \\
+    \code{localized}, \code{seconds}, \code{tracked} & Επανεντοπίστηκε, σε πόσα δευτερόλεπτα, παρακολουθείται \\
+    \code{dist_from_original_m} & Μετακίνηση σε σχέση με την αρχική θέση \\
+    \code{errH_cm_*}, \code{errV_cm_*} & Οριζόντια/κατακόρυφη απόκλιση από τη λύση ή το νέο άγγιγμα \\
+    \code{pair_errH_cm}, \code{pair_errV_cm} & Χειρότερη διαφορά απόστασης από τα άλλα anchors \\
+    \code{headset_dist_m}, \code{note} & Απόσταση χρήστη, σημείωση \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\todo{Συνοπτικοί πίνακες όλων των μετρήσεων. Τα αρχεία στο \code{thesis/data/}.}

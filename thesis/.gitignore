@@ -1,0 +1,22 @@
+# LaTeX build
+report/build/
+report/*.aux
+report/*.bbl
+report/*.bcf
+report/*.blg
+report/*.fdb_latexmk
+report/*.fls
+report/*.log
+report/*.lof
+report/*.lot
+report/*.out
+report/*.run.xml
+report/*.synctex.gz
+report/*.toc
+report/*.xdv
+# The compiled PDF is regenerated; commit it only for milestones (git add -f).
+report/main.pdf
+
+# Python
+__pycache__/
+.venv/
