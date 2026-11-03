@@ -103,11 +103,21 @@ namespace QuestMarkerApp.Markers
         public static bool IsAlerting(CoordinateData d) => d != null && (d.status == "alarm" || d.status == "alert");
 
         /// <summary>
-        /// "Alarms only" in effect. Never in the office practice: every demo sensor must be on
-        /// show there, since seeing them all where they belong is how the user checks the
-        /// alignment of the printed targets.
+        /// "Alarms only" in effect. Never while aligning (the alignment list is open, in any
+        /// project, measuring accuracy included) nor in the office practice: seeing every sensor
+        /// land where it belongs is how the user judges an alignment.
         /// </summary>
-        public bool AlarmsOnlyApplies => AlarmsOnly && !PracticeProject.IsActive;
+        public bool AlarmsOnlyApplies => AlarmsOnly && !PracticeProject.IsActive && !Aligning;
+
+        private ProjectAlignment alignmentCache;
+        private bool Aligning
+        {
+            get
+            {
+                if (alignmentCache == null) alignmentCache = FindAnyObjectByType<ProjectAlignment>();
+                return alignmentCache != null && alignmentCache.IsModeActive;
+            }
+        }
 
         private bool IsShown(CoordinateData data)
         {
@@ -565,6 +575,9 @@ namespace QuestMarkerApp.Markers
             if (string.IsNullOrEmpty(visibleLayerFilter)) return true;
             return string.Equals(visibleLayerFilter, layer ?? "default", StringComparison.OrdinalIgnoreCase);
         }
+
+        /// <summary>Re-applies the filters (e.g. after the alignment list opens or closes).</summary>
+        public void RefreshVisibility() => ApplyLayerVisibility();
 
         private void ApplyLayerVisibility()
         {

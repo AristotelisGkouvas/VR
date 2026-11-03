@@ -674,7 +674,7 @@ namespace QuestMarkerApp.UI
                 Label = L.T("Μόνο συναγερμοί", "Alarms only"),
                 Value = () => markers == null || !markers.AlarmsOnly ? L.T("Όχι · όλοι", "Off · all")
                     : PracticeProject.IsActive ? L.T("Ναι · όλοι στην εξάσκηση", "On · all in practice")
-                    : L.T("Ναι", "On"),
+                    : L.T("Ναι · όλοι στην ευθυγράμμιση", "On · all while aligning"),
                 Enabled = () => markers != null,
                 Run = () => markers.AlarmsOnly = !markers.AlarmsOnly
             });

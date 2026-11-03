@@ -677,6 +677,8 @@ namespace QuestMarkerApp.Core
             if (panel != null) panel.gameObject.SetActive(modeActive);
             if (tipCursor != null) tipCursor.gameObject.SetActive(modeActive);
             if (modeActive) RefreshPanel();
+            // "Alarms only" is lifted while aligning: every sensor must show to judge the fit.
+            if (markerManager != null) markerManager.RefreshVisibility();
         }
 
         private void HandleModeInput()
