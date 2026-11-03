@@ -102,12 +102,22 @@ namespace QuestMarkerApp.Markers
         /// <summary>Alert or alarm: what "alarms only" keeps and the edge beacons point at.</summary>
         public static bool IsAlerting(CoordinateData d) => d != null && (d.status == "alarm" || d.status == "alert");
 
+        /// <summary>
+        /// "Alarms only" in effect. Never in the office practice: every demo sensor must be on
+        /// show there, since seeing them all where they belong is how the user checks the
+        /// alignment of the printed targets.
+        /// </summary>
+        public bool AlarmsOnlyApplies => AlarmsOnly && !PracticeProject.IsActive;
+
         private bool IsShown(CoordinateData data)
         {
             string layer = data != null ? data.layer : "default";
             if (!IsLayerVisible(layer)) return false;
-            return !AlarmsOnly || !string.Equals(layer, "project", StringComparison.OrdinalIgnoreCase) || IsAlerting(data);
+            return !AlarmsOnlyApplies || !string.Equals(layer, "project", StringComparison.OrdinalIgnoreCase) || IsAlerting(data);
         }
+
+        private void OnPracticeChanged() => ApplyLayerVisibility();
+        private void OnDestroy() => PracticeProject.Changed -= OnPracticeChanged;
 
         /// <summary>
         /// Hides every marker on the site (the aligned sensors, the control points, anything the
@@ -127,6 +137,7 @@ namespace QuestMarkerApp.Markers
 
         private void Awake()
         {
+            PracticeProject.Changed += OnPracticeChanged;
             if (markersContainer == null)
             {
                 GameObject container = new GameObject("MarkersContainer");

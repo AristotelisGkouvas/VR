@@ -403,8 +403,11 @@ namespace QuestMarkerApp.Models
             if (loading) return Status;
             if (error != null) return Status;
             if (model == null) return L.T("Χωρίς μοντέλο", "No model");
+            if (InPractice) return L.T("Κρυφό στην εξάσκηση", "Hidden in practice");
             return null;
         }
+
+        private bool InPractice => alignment != null && alignment.IsPractice;
 
         public void Init(ProjectAlignment projectAlignment, MarkerManager markerManager)
         {
@@ -426,7 +429,10 @@ namespace QuestMarkerApp.Models
         private void Update()
         {
             if (root == null) return;
-            bool show = model != null && !loading && Enabled;
+            // The office practice has its own two printed targets: a loaded design model
+            // (another project's building) would only stand in the way. It stays loaded and
+            // comes back on leaving practice, with no reload.
+            bool show = model != null && !loading && Enabled && !InPractice;
             bool walk = false;
             bool preview = false;
             bool lifeSize = false;
