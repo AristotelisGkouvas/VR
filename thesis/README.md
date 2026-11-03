@@ -1,8 +1,8 @@
 # Διπλωματική εργασία
 
-**Από τον αισθητήρα στο οπτικό πεδίο: Ένα end-to-end σύστημα IoT και μικτής πραγματικότητας για την απεικόνιση μετρήσεων στον φυσικό τους χώρο**
+**Οπτικοποίηση δεδομένων παρακολούθησης κατασκευών σε μικτή πραγματικότητα: γεωαναφερμένη απόδοση αισθητήρων και τρισδιάστατων μοντέλων σε Meta Quest 3**
 
-*From Sensor to Field of View: An End-to-End IoT and Mixed Reality System for Visualizing Measurements in Place*
+*Mixed Reality Visualization of Structural Robustness Monitoring Data: Geo-Registered Rendering of Sensors and 3D Models on Meta Quest 3*
 
 Ό,τι αφορά τη διπλωματική μπαίνει σε αυτόν τον φάκελο. Η εφαρμογή είναι στο `../QuestMarkerApp/`. Η έκδοση της εφαρμογής για τα πειράματα είναι το git tag **`thesis-v2`**.
 
