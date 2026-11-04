@@ -84,6 +84,25 @@ namespace QuestMarkerApp.UI
             LoadSensors(lastAreaId, lastAreaName);
         }
 
+        private float nextHistoryTry;
+
+        // The survey history lives in memory only, so after a restart the heatmap and the time
+        // machine had nothing to draw until a manual reload, and the only automatic refresh ran
+        // with the model's sensor dots on show. Fetch it quietly as soon as the restored project
+        // can be reloaded, in any mode and placement; a failed try waits two minutes.
+        private void Update()
+        {
+            if (Time.unscaledTime < nextHistoryTry) return;
+            nextHistoryTry = Time.unscaledTime + 5f;
+            if (!CanReload || IsRefreshing || FlowPanel.IsOpen) return;
+            if (alignment.IsPractice || alignment.IsModeActive) return;
+            if (SensorHistory.ProjectId == selectedProjectId) return; // loaded (even if empty)
+            if (DisplacementView.IsActive || SensorNavigator.IsActive || InspectionRoute.IsActive) return;
+            nextHistoryTry = Time.unscaledTime + 120f;
+            Debug.Log("[Terraweb] No survey history in memory: fetching it");
+            RefreshQuietly();
+        }
+
         /// <summary>Reload the same project and area from the main menu.</summary>
         public void Reload()
         {

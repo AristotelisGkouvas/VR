@@ -44,6 +44,11 @@ namespace QuestMarkerApp.UI
         private ProjectAlignment project;
         // Opening places the time bar in front at once; afterwards it trails the head smoothly.
         private bool hudSnap;
+        // The HUD's horizontal direction: from the head (site, 1:1) or from the miniature to
+        // the user (tabletop). Changed only past a dead zone, so looking around does not drag it.
+        private Vector3 hudDir;
+        private const float HudDeadZoneDeg = 35f;
+        private ModelOverlay overlay;
         private MarkerManager markers;
         private ModelSensors modelSensors;
         private ModelOverlay modelOverlay;
@@ -682,12 +687,47 @@ namespace QuestMarkerApp.UI
             hud.gameObject.SetActive(false);
         }
 
+        // Tabletop: beside the miniature, never over it. To its right as seen by the user, at the
+        // height of its top, standing in the world; re-placed only when the user has walked a
+        // good way round it. False when there is no miniature in reach (then body-locked).
+        private bool TableHudTarget(Vector3 camPos, out Vector3 target)
+        {
+            target = default;
+            if (!lastOnModel || overlay == null || overlay.Root == null
+                || overlay.CurrentPlacement != ModelOverlay.Placement.Tabletop) return false;
+            Transform r = overlay.Root;
+            Bounds b = overlay.ModelBounds;
+            Vector3 s = r.lossyScale;
+            Vector3 c = r.TransformPoint(b.center);
+            float half = 0.5f * Mathf.Max(b.size.x * Mathf.Abs(s.x), b.size.z * Mathf.Abs(s.z));
+            float top = c.y + 0.5f * b.size.y * Mathf.Abs(s.y);
+            Vector3 toUser = Vector3.ProjectOnPlane(camPos - c, Vector3.up);
+            if (toUser.sqrMagnitude < 1e-4f) return false;
+            toUser.Normalize();
+            if (hudSnap || hudDir.sqrMagnitude < 0.5f || Vector3.Angle(hudDir, toUser) > HudDeadZoneDeg)
+                hudDir = toUser;
+            Vector3 right = Vector3.Cross(hudDir, Vector3.up); // the user's right, facing the model
+            target = c + right * (half + 0.25f) + hudDir * Mathf.Min(half, 0.4f);
+            target.y = Mathf.Min(top + 0.1f, camPos.y - 0.25f);
+            // Zoomed up so far that beside it is out of reach: back to body-locked.
+            return Vector3.Distance(target, camPos) < 1.6f;
+        }
+
         private void UpdateHud(Camera cam, DateTime at, float scale)
         {
-            // Below the line of sight, a little further than the navigation arrow.
+            Vector3 camPos = cam.transform.position;
             Vector3 forward = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
-            if (forward.sqrMagnitude < 1e-4f) forward = Vector3.forward;
-            Vector3 target = cam.transform.position + forward.normalized * 0.75f + Vector3.down * 0.45f;
+            forward = forward.sqrMagnitude < 1e-4f ? Vector3.forward : forward.normalized;
+            if (overlay == null) overlay = FindAnyObjectByType<ModelOverlay>();
+            Vector3 target;
+            if (!TableHudTarget(camPos, out target))
+            {
+                // Site or 1:1: low in front, body-locked. It turns only when the gaze has moved
+                // more than the dead zone away, so a look to the side leaves it where it was.
+                if (hudSnap || hudDir.sqrMagnitude < 0.5f || Vector3.Angle(hudDir, forward) > HudDeadZoneDeg)
+                    hudDir = forward;
+                target = camPos + hudDir * 0.7f + Vector3.down * 0.5f;
+            }
             hud.position = hudSnap ? target : Vector3.Lerp(hud.position, target, 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime));
             hudSnap = false;
             VrUi.FaceViewer(hud, cam.transform);

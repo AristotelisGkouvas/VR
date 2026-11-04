@@ -204,7 +204,9 @@ namespace QuestMarkerApp.Models
                 Shader.SetGlobalFloat(HeatOpacityId, 0f);
                 SetHeatKeyword(false);
                 shown = false;
-                Status = L.T("Χωρίς μετακινήσεις στο μοντέλο", "No displacements on the model");
+                Status = SensorHistory.Count == 0
+                    ? L.T("Χωρίς ιστορικό · σύνδεση Terraweb", "No history · sign in to Terraweb")
+                    : L.T("Χωρίς μετακινήσεις στο μοντέλο", "No displacements on the model");
                 Count = 0;
                 return;
             }
