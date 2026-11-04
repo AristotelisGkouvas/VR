@@ -714,8 +714,18 @@ namespace QuestMarkerApp.UI
             Vector3 right = Vector3.Cross(hudDir, Vector3.up); // the user's right, facing the model
             // The near right corner, a little in front of it: a glance down finds it, and a big
             // miniature does not push it out of view (the offsets are capped).
-            target = c + right * Mathf.Min(half, 0.45f) + hudDir * (Mathf.Min(half, 0.6f) + 0.1f);
-            target.y = Mathf.Min(top, camPos.y - 0.35f);
+            // The model's own extent along each direction (it is rarely square): on the corner
+            // itself, not out in front of it, which brought it into the user's lap.
+            float ex = 0.5f * b.size.x * Mathf.Abs(s.x), ez = 0.5f * b.size.z * Mathf.Abs(s.z);
+            Vector3 mx = Vector3.ProjectOnPlane(r.right, Vector3.up).normalized;
+            Vector3 mz = Vector3.ProjectOnPlane(r.forward, Vector3.up).normalized;
+            float alongRight = ex * Mathf.Abs(Vector3.Dot(right, mx)) + ez * Mathf.Abs(Vector3.Dot(right, mz));
+            float alongUser = ex * Mathf.Abs(Vector3.Dot(hudDir, mx)) + ez * Mathf.Abs(Vector3.Dot(hudDir, mz));
+            target = c + right * Mathf.Min(alongRight * 0.85f, 0.5f) + hudDir * Mathf.Min(alongUser * 0.85f, 0.5f);
+            target.y = Mathf.Min(top + 0.05f, camPos.y - 0.3f);
+            // Never closer than an arm's length: then a little further along the model.
+            Vector3 flat = Vector3.ProjectOnPlane(target - camPos, Vector3.up);
+            if (flat.magnitude < 0.55f) target += -hudDir * (0.55f - flat.magnitude);
             // Zoomed up so far that beside it is out of reach: back to body-locked.
             return Vector3.Distance(target, camPos) < 1.6f;
         }
