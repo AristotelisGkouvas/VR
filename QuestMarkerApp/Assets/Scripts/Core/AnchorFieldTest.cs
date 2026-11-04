@@ -61,7 +61,11 @@ namespace QuestMarkerApp.Core
         }
 
         public static string ConditionTag => Conditions[Condition];
-        public static string ConditionName => (L.En ? ConditionNamesEn : ConditionNamesEl)[Condition];
+        public static string ConditionName => ConditionLabel(Condition);
+
+        /// <summary>The name of condition <paramref name="i"/> in the interface language.</summary>
+        public static string ConditionLabel(int i) =>
+            (L.En ? ConditionNamesEn : ConditionNamesEl)[Mathf.Clamp(i, 0, Conditions.Length - 1)];
 
         /// <summary>Excavation, scaffolding, machines moved since the anchors were made.</summary>
         public static bool SiteChanged

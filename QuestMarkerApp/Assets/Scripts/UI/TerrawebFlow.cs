@@ -185,7 +185,9 @@ namespace QuestMarkerApp.UI
             loginFields[2].Label = L.T("Κωδικός", "Password");
             string login = L.T("Σύνδεση", "Log in");
             string title = error == null ? login : login + " · " + error;
-            panel.ShowForm(Eyebrow, title, loginFields, login, Submit, panel.Close);
+            // Start on the first empty field: the server (and the user) are usually remembered.
+            int first = string.IsNullOrEmpty(loginFields[0].Value) ? 0 : string.IsNullOrEmpty(loginFields[1].Value) ? 1 : 2;
+            panel.ShowForm(Eyebrow, title, loginFields, login, Submit, panel.Close, first);
         }
 
         private void Submit(List<FlowField> fields)
@@ -272,6 +274,9 @@ namespace QuestMarkerApp.UI
 
         private void ShowAreas(JArray areas)
         {
+            // One area, or none: nothing to choose (usage map Ε6).
+            if (areas.Count == 1) { LoadSensors((string)areas[0]["area_id"], (string)areas[0]["name"]); return; }
+            if (areas.Count == 0) { LoadSensors(null, null); return; }
             var items = new List<FlowItem>();
             foreach (JToken a in areas)
                 items.Add(new FlowItem { Label = (string)a["name"], Sub = (string)a["description"], Tag = a });

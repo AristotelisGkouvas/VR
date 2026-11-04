@@ -104,8 +104,9 @@ namespace QuestMarkerApp.UI
             }
         }
 
+        /// <param name="initialSelection">Row to start on, e.g. the first empty field.</param>
         public void ShowForm(string eyebrowText, string titleText, List<FlowField> formFields, string submit,
-            Action<List<FlowField>> submitAction, Action back)
+            Action<List<FlowField>> submitAction, Action back, int initialSelection = 0)
         {
             Build();
             fields = formFields;
@@ -117,6 +118,11 @@ namespace QuestMarkerApp.UI
             onSubmit = submitAction;
             onBack = back;
             Open(eyebrowText, titleText, false, true);
+            if (initialSelection > 0 && items.Count > 0)
+            {
+                selected = Mathf.Clamp(initialSelection, 0, items.Count - 1);
+                Refresh();
+            }
         }
 
         public void ShowMessage(string eyebrowText, string titleText, string heading, string text, bool busy,

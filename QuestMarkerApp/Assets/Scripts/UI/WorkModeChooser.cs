@@ -61,7 +61,9 @@ namespace QuestMarkerApp.UI
             }
             float until = Time.realtimeSinceStartup + AnchorWaitSeconds;
             while (anchors != null && !anchors.IsInitialized && Time.realtimeSinceStartup < until) yield return null;
-            while (UiState.AnyModal || Onboarding.HoldsMenu) yield return null;
+            // First run: right after the guide's "ray and click" step, before it teaches the
+            // menu (usage map Ε5), so the guide knows whether login or practice comes next.
+            while (UiState.AnyModal || (Onboarding.IsRunning && Onboarding.StepNumber < 3)) yield return null;
             Ask(then);
         }
 
@@ -77,8 +79,13 @@ namespace QuestMarkerApp.UI
 
         private void ShowModes()
         {
-            bool found = alignment != null && alignment.HasProject && !alignment.IsPractice
-                         && alignment.IsAligned && !alignment.NeedsCheck;
+            bool real = alignment != null && alignment.HasProject && !alignment.IsPractice;
+            bool found = real && alignment.IsAligned && !alignment.NeedsCheck;
+            // What the field will ask for, so touches never come as a surprise (usage map Ε7).
+            string fieldHint = !real ? null
+                : found ? L.T("βρέθηκε εδώ", "found here")
+                : alignment.NeedsCheck && alignment.PlacedCount >= 2 ? L.T("δεν βρέθηκε · 1 άγγιγμα", "not found · 1 touch")
+                : L.T("2 σημεία ελέγχου", "2 control points");
             string project = alignment != null && alignment.HasProject && !alignment.IsPractice ? alignment.ProjectName : null;
             var items = new List<FlowItem>
             {
@@ -87,7 +94,7 @@ namespace QuestMarkerApp.UI
                     Label = L.T("Πεδίο", "Field"),
                     Sub = L.T("Ευθυγράμμιση · αισθητήρες και heatmap στην κατασκευή · μετρήσεις",
                         "Alignment · sensors and heatmap on the structure · measurements"),
-                    Value = found ? L.T("βρέθηκε εδώ", "found here") : null,
+                    Value = fieldHint,
                     Icon = "target", Color = Brand.Primary, Tag = WorkModeKind.Field
                 },
                 new FlowItem
@@ -125,13 +132,47 @@ namespace QuestMarkerApp.UI
         private void Picked(FlowItem item)
         {
             if (item == null) return;
-            if (Equals(item.Tag, WorkModeKind.Office) && model != null && model.IsLoaded)
+            if (Equals(item.Tag, WorkModeKind.Office) && model != null)
             {
-                ShowOfficeViews();
+                if (model.IsLoaded || model.IsLoading) ShowOfficeViews();
+                else ShowModels();
                 return;
             }
             if (Equals(item.Tag, "practice")) Finish(WorkModeKind.Office, null, practice: true);
             else Finish((WorkModeKind)item.Tag, null);
+        }
+
+        // Office with no model loaded: the models on the headset, this project's first, or how
+        // to send one. Without a model the sensors have nowhere to stand (usage map Ε3).
+        private void ShowModels()
+        {
+            List<ModelStore.ModelInfo> all = ModelStore.List();
+            int projectId = alignment != null ? alignment.TerrawebProjectId : 0;
+            all.Sort((a, b) => (b.ProjectId == projectId && projectId != 0).CompareTo(a.ProjectId == projectId && projectId != 0));
+            if (all.Count == 0)
+            {
+                flow.ShowMessage(L.T("Γραφείο", "Office"), L.T("Δεν υπάρχει μοντέλο", "No model"),
+                    L.T("Δεν υπάρχει μοντέλο στα γυαλιά", "No model on the headset"),
+                    L.T("Στείλε το από το PC:\npython Server/send_model.py μοντέλο.obj --quest-ip <IP> --api-key <κλειδί>\n\nB: συνέχεια χωρίς μοντέλο.",
+                        "Send one from the PC:\npython Server/send_model.py model.obj --quest-ip <IP> --api-key <key>\n\nB: go on without a model."),
+                    false, () => Finish(WorkModeKind.Office, null));
+                return;
+            }
+            var items = new List<FlowItem>();
+            foreach (ModelStore.ModelInfo m in all)
+                items.Add(new FlowItem
+                {
+                    Label = m.Name,
+                    Sub = $"{m.Format.ToUpperInvariant()} · {m.Bytes / (1024f * 1024f):F0} MB",
+                    Value = m.ProjectId == projectId && projectId != 0 ? L.T("αυτού του έργου", "this project") : null,
+                    Icon = "displacement", Color = Brand.Info, Tag = m
+                });
+            items.Add(new FlowItem { Label = L.T("Χωρίς μοντέλο", "No model"), Sub = L.T("Μόνο κάρτες και λίστες αισθητήρων", "Sensor cards and lists only"), Tag = null });
+            flow.ShowList(L.T("Γραφείο", "Office"), L.T("Ποιο μοντέλο;", "Which model?"), items, i =>
+            {
+                if (i.Tag is ModelStore.ModelInfo info) { model.Load(info); ShowOfficeViews(); }
+                else Finish(WorkModeKind.Office, null);
+            }, ShowModes);
         }
 
         private void ShowOfficeViews()
@@ -187,6 +228,7 @@ namespace QuestMarkerApp.UI
             {
                 bool practice = PracticeProject.IsActive;
                 // Office touches must never be logged as site data.
+                if (MeasurementDay.Active && !practice) MeasurementDay.End(alignment);
                 AnchorFieldTest.Enabled = false;
                 if (!practice && alignment != null) AlignmentAccuracy.SetActive(false, alignment);
                 if (model != null)
@@ -207,7 +249,7 @@ namespace QuestMarkerApp.UI
                 nextTouch = Time.unscaledTime + TouchEverySeconds;
                 WorkMode.Touch();
             }
-            if (pendingAsk && !asking && !UiState.AnyModal && !Onboarding.HoldsMenu)
+            if (pendingAsk && !asking && !UiState.AnyModal && !(Onboarding.IsRunning && Onboarding.StepNumber < 3))
             {
                 pendingAsk = false;
                 Ask();

@@ -53,6 +53,8 @@ namespace QuestMarkerApp.UI
         private LimitBars Limits => limitBars != null ? limitBars : (limitBars = FindAnyObjectByType<LimitBars>());
         private AnchorFieldTest fieldTest;
         private AnchorFieldTest FieldTest => fieldTest != null ? fieldTest : (fieldTest = FindAnyObjectByType<AnchorFieldTest>());
+        private FlowPanel flowPanelCache;
+        private FlowPanel Flow => flowPanelCache != null ? flowPanelCache : (flowPanelCache = FindAnyObjectByType<FlowPanel>());
 
         private CanvasGroup walkFade; // WalkFade: faint while the user walks
         private RectTransform root, body;
@@ -259,12 +261,12 @@ namespace QuestMarkerApp.UI
             y = Section(y, L.T("ΚΑΤΗΓΟΡΙΕΣ", "CATEGORIES"));
             if (stage != Stage.Login)
                 y = NavRow(y, L.T("Έργο & σύνδεση", "Project & login"), L.T("Αλλαγή έργου, ανανέωση, λογαριασμός", "Change project, refresh, account"), Page.Project);
-            if (stage == Stage.Unaligned || stage == Stage.Ready)
+            if ((stage == Stage.Unaligned || stage == Stage.Ready) && !OfficeNoSite)
                 y = NavRow(y, L.T("Ευθυγράμμιση", "Alignment"), AlignSub(), Page.Align);
             y = NavRow(y, L.T("Εμφάνιση", "Display"), L.T("Αισθητήρες, ετικέτες, χειριστήρια", "Sensors, labels, controllers"), Page.View);
             if (stage == Stage.Unaligned || stage == Stage.Ready)
                 y = NavRow(y, L.T("Μοντέλο 3D", "3D model"), L.T("Σχέδιο πάνω στην κατασκευή · OBJ, DXF, IFC", "Design over the structure · OBJ, DXF, IFC"), Page.Model);
-            y = NavRow(y, L.T("Ρυθμίσεις", "Settings"), L.T("Ήχος, χέρι, boundary, PC", "Sound, hand, boundary, PC"), Page.Settings);
+            y = NavRow(y, L.T("Ρυθμίσεις", "Settings"), L.T("Ήχος, χέρι, όριο, PC", "Sound, hand, boundary, PC"), Page.Settings);
             y = NavRow(y, L.T("Βοήθεια", "Help"), L.T("Χειρισμός χειριστηρίων", "Using the controllers"), Page.Help);
 
             if (y + 34f <= Height - BodyTop - 40f)
@@ -277,7 +279,7 @@ namespace QuestMarkerApp.UI
             if (project == null) return "";
             int n = project.PlacedCount;
             string pts = L.En ? Count(n, "point", "points") : n == 1 ? "1 σημείο" : $"{n} σημεία";
-            string anchor = anchors != null && anchors.IsPersistentAnchor ? L.T(" · Μόνιμο anchor", " · Persistent anchor") : "";
+            string anchor = anchors != null && anchors.IsPersistentAnchor ? L.T(" · μόνιμο", " · persistent") : "";
             return pts + anchor;
         }
 
@@ -312,6 +314,10 @@ namespace QuestMarkerApp.UI
         private WorkModeChooser modeChooserCache;
         private WorkModeChooser modeChooser => modeChooserCache != null ? modeChooserCache
             : (modeChooserCache = FindAnyObjectByType<WorkModeChooser>());
+
+        // Office without the practice targets: no sensors stand on site, so the rows about
+        // site markers and the field tools are hidden (WorkMode, usage map Ε2).
+        private static bool OfficeNoSite => WorkMode.IsOffice && !PracticeProject.IsActive;
 
         private float PracticeRow(float y) => Row(y, new Item
         {
@@ -398,42 +404,48 @@ namespace QuestMarkerApp.UI
         private float BuildTiles(float y, bool ready)
         {
             y = Section(y, ready ? L.T("ΓΡΗΓΟΡΑ", "QUICK") : L.T("ΕΡΓΑΛΕΙΑ", "TOOLS"));
-            var tiles = new List<(string icon, string label, Func<string> sub, Func<bool> enabled, Action run)>
-            {
-                ("compass", L.T("Πλοήγηση", "Navigation"),
+            var tiles = new List<(string icon, string label, Func<string> sub, Func<bool> enabled, Action run)>();
+            // Navigation and the inspection route walk to sensors on site: not in the office.
+            if (!OfficeNoSite)
+                tiles.Add(("compass", L.T("Πλοήγηση", "Navigation"),
                     () => !ready ? L.T("μετά την ευθυγρ.", "after alignment") : SensorNavigator.IsActive ? L.T("διακοπή", "stop") : L.T("σε αισθητήρα", "to a sensor"),
                     () => SensorNavigator.IsActive || (project != null && project.IsAligned && !project.NeedsCheck),
                     () =>
                     {
                         if (SensorNavigator.IsActive) { navigator.Stop(); Close(); }
                         else { Close(); app.OpenSensorPicker(); }
-                    }),
-                ("clock", L.T("Χρονομηχανή", "Time machine"),
-                    () => !ready && !WorkMode.IsOffice ? L.T("μετά την ευθυγρ.", "after alignment")
-                        : displacement == null ? ""
-                        : DisplacementView.IsActive ? L.T("κλείσιμο", "close")
-                        : displacement.Unavailable() ?? L.T("μετακινήσεις", "displacements"),
-                    () => (ready || WorkMode.IsOffice) && displacement != null && (DisplacementView.IsActive || displacement.Unavailable() == null),
-                    () => { Close(); displacement.Toggle(); }),
-            };
-            if (ready)
-            {
-                tiles.Add(("pin", L.T("Ευθυγράμμιση", "Alignment"),
-                    () => L.En ? $"{Count(project.PlacedCount, "point", "points")} · {Verdict()}"
-                        : $"{project.PlacedCount} σημεία · {Verdict()}",
-                    () => true,
-                    () => { Close(); project.SetMode(true); }));
-                if (route != null)
-                    tiles.Add(("compass", L.T("Επιθεώρηση", "Inspection"),
-                        () => InspectionRoute.IsActive ? L.T($"{route.Index}/{route.Count} · διακοπή", $"{route.Index}/{route.Count} · stop")
-                            : route.Unavailable() ?? L.T("διαδρομή ελέγχου", "inspection route"),
-                        () => InspectionRoute.IsActive || route.Unavailable() == null,
-                        () =>
-                        {
-                            if (InspectionRoute.IsActive) { route.Stop(); Close(); }
-                            else { Close(); PickRoute(); }
-                        }));
-            }
+                    }));
+            tiles.Add(("clock", L.T("Χρονομηχανή", "Time machine"),
+                () => !ready && !WorkMode.IsOffice ? L.T("μετά την ευθυγρ.", "after alignment")
+                    : displacement == null ? ""
+                    : DisplacementView.IsActive ? L.T("κλείσιμο", "close")
+                    : displacement.Unavailable() ?? L.T("μετακινήσεις", "displacements"),
+                () => (ready || WorkMode.IsOffice) && displacement != null && (DisplacementView.IsActive || displacement.Unavailable() == null),
+                () => { Close(); displacement.Toggle(); }));
+            // The heatmap is the field's main view and the office's too: one tap from home
+            // (usage map Ε1). First press shows it and closes the menu; later presses step the
+            // measure (total → vertical → rate → off) with the menu open.
+            tiles.Add(("displacement", L.T("Heatmap", "Heatmap"),
+                () => model == null || !model.IsLoaded ? L.T("χωρίς μοντέλο", "no model")
+                    : WorkMode.IsField && !ready ? L.T("μετά την ευθυγρ.", "after alignment")
+                    : ModelHeatmap.Enabled ? ModelHeatmap.MeasureName : L.T("μετακινήσεις", "movement"),
+                () => model != null && model.IsLoaded && (!WorkMode.IsField || ready),
+                () =>
+                {
+                    if (!ModelHeatmap.Enabled) { ModelHeatmap.Enabled = true; ModelHeatmap.Shown = ModelHeatmap.Measure.Total; Close(); }
+                    else if (ModelHeatmap.Shown == ModelHeatmap.Measure.Rate) ModelHeatmap.Enabled = false;
+                    else ModelHeatmap.Shown = ModelHeatmap.Shown + 1;
+                }));
+            if (ready && route != null && !OfficeNoSite)
+                tiles.Add(("compass", L.T("Επιθεώρηση", "Inspection"),
+                    () => InspectionRoute.IsActive ? L.T($"{route.Index}/{route.Count} · διακοπή", $"{route.Index}/{route.Count} · stop")
+                        : route.Unavailable() ?? L.T("διαδρομή ελέγχου", "inspection route"),
+                    () => InspectionRoute.IsActive || route.Unavailable() == null,
+                    () =>
+                    {
+                        if (InspectionRoute.IsActive) { route.Stop(); Close(); }
+                        else { Close(); PickRoute(); }
+                    }));
 
             // Up to three in a row; four go two by two.
             int cols = tiles.Count <= 3 ? Mathf.Max(1, tiles.Count) : 2;
@@ -598,86 +610,88 @@ namespace QuestMarkerApp.UI
             y = Row(y, new Item
             {
                 // Whether placed control points survive a restart without a re-check.
-                Label = L.T("Spatial anchor χώρου", "Room spatial anchor"),
+                Label = L.T("Σημείο αναφοράς χώρου", "Room anchor"),
                 Value = () => anchors == null ? "—"
                     : anchors.IsPersistentAnchor ? L.T("Μόνιμο · θυμάται τη θέση", "Persistent · remembered")
                     : anchors.IsInitialized ? L.T("Προσωρινό · έλεγχος", "Temporary · check") : L.T("Φόρτωση…", "Loading…"),
                 Enabled = () => false
             });
 
-            // Accuracy measurement (README › Μέτρηση ακρίβειας ευθυγράμμισης): touches are compared
-            // with the frozen solution and logged, never placed. Off at every start.
-            y = Section(y + 8f, L.T("ΜΕΤΡΗΣΗ ΑΚΡΙΒΕΙΑΣ", "ACCURACY CHECK"));
-            y = Row(y, new Item
+            // Thesis measurements (usage map Ε4): one flow sets the conditions and switches the
+            // tools on; while it runs the tools themselves sit under it. Field (and practice) only.
+            if (!OfficeNoSite)
             {
-                Label = L.T("Σημεία ελέγχου ακρίβειας", "Accuracy check points"),
-                Value = () => AlignmentAccuracy.Active || AlignmentAccuracy.Unavailable(project) == null
-                    ? AlignmentAccuracy.Summary : AlignmentAccuracy.Unavailable(project),
-                Enabled = () => AlignmentAccuracy.Active || AlignmentAccuracy.Unavailable(project) == null,
-                Run = () =>
+                y = Section(y + 8f, L.T("ΜΕΤΡΗΣΕΙΣ ΔΙΠΛΩΜΑΤΙΚΗΣ", "THESIS MEASUREMENTS"));
+                y = Row(y, new Item
                 {
-                    bool on = !AlignmentAccuracy.Active;
-                    AlignmentAccuracy.SetActive(on, project);
-                    // Straight to the touching: the panel shows the target and each result.
-                    if (on && AlignmentAccuracy.Active) { Close(); project.SetMode(true); }
+                    Label = MeasurementDay.Active ? L.T("Τέλος μετρήσεων", "End measurements") : L.T("Ξεκινάω μετρήσεις", "Start measurements"),
+                    Value = () => MeasurementDay.Summary(project),
+                    Enabled = () => MeasurementDay.Active || MeasurementDay.Unavailable(project) == null,
+                    Run = () =>
+                    {
+                        if (MeasurementDay.Active) { MeasurementDay.End(project); ShowPage(Page.Align, true); }
+                        else { Close(); MeasurementDay.Begin(Flow, project); }
+                    }
+                });
+                if (MeasurementDay.Active)
+                {
+                    y = Row(y, new Item
+                    {
+                        // The app cannot see the light: set by hand, written into every CSV row.
+                        Label = L.T("Συνθήκες", "Conditions"),
+                        Value = () => AnchorFieldTest.ConditionName,
+                        Run = () => { Close(); MeasurementDay.PickCondition(Flow, project, null); }
+                    });
+                    y = Row(y, new Item
+                    {
+                        // Touches are compared with the frozen solution and logged, never placed.
+                        Label = L.T("Σημεία ελέγχου ακρίβειας", "Accuracy check points"),
+                        Value = () => AlignmentAccuracy.Active || AlignmentAccuracy.Unavailable(project) == null
+                            ? AlignmentAccuracy.Summary : AlignmentAccuracy.Unavailable(project),
+                        Enabled = () => AlignmentAccuracy.Active || AlignmentAccuracy.Unavailable(project) == null,
+                        Run = () =>
+                        {
+                            bool on = !AlignmentAccuracy.Active;
+                            AlignmentAccuracy.SetActive(on, project);
+                            if (on && AlignmentAccuracy.Active) { Close(); project.SetMode(true); }
+                        }
+                    });
+                    if (AnchorFieldTest.Enabled)
+                    {
+                        y = Row(y, new Item
+                        {
+                            Label = L.T("Μέτρηση anchors τώρα", "Measure anchors now"),
+                            Value = () => FieldTest != null ? FieldTest.Summary : "—",
+                            Enabled = () => FieldTest != null && !FieldTest.Busy && project != null && project.HasProject && !project.IsPractice,
+                            Run = () => FieldTest.MeasureNow()
+                        });
+                        y = Row(y, new Item
+                        {
+                            Label = L.T("Διαγραφή anchors δοκιμής", "Erase test anchors"),
+                            Value = () => L.T("Έργο · τα CSV μένουν", "Project · CSVs kept"),
+                            Enabled = () => FieldTest != null && !FieldTest.Busy && (project == null || !project.IsPractice),
+                            Destructive = true,
+                            Run = () => FieldTest.EraseAll()
+                        });
+                    }
                 }
-            });
-
-            // Phase 0 measurement (README › Δοκιμή πεδίου anchors): logs only, never aligns.
-            y = Section(y + 8f, L.T("ΔΟΚΙΜΗ ΠΕΔΙΟΥ", "FIELD TEST"));
-            y = Row(y, new Item
-            {
-                Label = L.T("Δοκιμή πεδίου anchors", "Anchor field test"),
-                Value = () => WorkMode.IsOffice ? L.T("Μόνο στο πεδίο", "Field only")
-                    : AnchorFieldTest.Enabled ? L.T("Ενεργή", "On") : L.T("Ανενεργή", "Off"),
-                Enabled = () => FieldTest != null && (AnchorFieldTest.Enabled || !WorkMode.IsOffice),
-                Run = () => AnchorFieldTest.Enabled = !AnchorFieldTest.Enabled
-            });
-            y = Row(y, new Item
-            {
-                // The app cannot see the light: set by hand, written into every CSV row.
-                Label = L.T("Συνθήκες", "Conditions"),
-                Value = () => AnchorFieldTest.ConditionName,
-                // Also written into the accuracy CSV.
-                Enabled = () => AnchorFieldTest.Enabled || AlignmentAccuracy.Active,
-                Run = () => AnchorFieldTest.Condition++
-            });
-            y = Row(y, new Item
-            {
-                Label = L.T("Αλλαγές στο εργοτάξιο", "Site changed"),
-                Value = () => AnchorFieldTest.SiteChanged ? L.T("Ναι", "Yes") : L.T("Όχι", "No"),
-                Enabled = () => AnchorFieldTest.Enabled,
-                Run = () => AnchorFieldTest.SiteChanged = !AnchorFieldTest.SiteChanged
-            });
-            y = Row(y, new Item
-            {
-                Label = L.T("Μέτρηση τώρα", "Measure now"),
-                Value = () => FieldTest != null ? FieldTest.Summary : "—",
-                Enabled = () => AnchorFieldTest.Enabled && FieldTest != null && !FieldTest.Busy && project != null && project.HasProject && !project.IsPractice,
-                Run = () => FieldTest.MeasureNow()
-            });
-            y = Row(y, new Item
-            {
-                Label = L.T("Διαγραφή anchors δοκιμής", "Erase test anchors"),
-                Value = () => L.T("Έργο · τα CSV μένουν", "Project · CSVs kept"),
-                Enabled = () => AnchorFieldTest.Enabled && FieldTest != null && !FieldTest.Busy && (project == null || !project.IsPractice),
-                Destructive = true,
-                Run = () => FieldTest.EraseAll()
-            });
+            }
             BackButton();
         }
 
         private void BuildView()
         {
             float y = Section(0f, L.T("ΕΜΦΑΝΙΣΗ", "DISPLAY"));
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 Label = L.T("Αισθητήρες στον χώρο", "Sensors on site"),
                 Value = () => markers == null || markers.MarkersVisible ? L.T("Εμφάνιση", "Shown") : L.T("Απόκρυψη", "Hidden"),
                 Enabled = () => markers != null,
                 Run = () => markers.MarkersVisible = !markers.MarkersVisible
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 Label = L.T("Μετροταινία", "Tape measure"),
                 Value = () => MeasureTool.IsActive ? L.T("Ενεργή · B: έξοδος", "On · B: exit") : L.T("Trigger: σημεία", "Trigger: points"),
@@ -689,7 +703,8 @@ namespace QuestMarkerApp.UI
                     else { Close(); tool.Open(); }
                 }
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 Label = L.T("Μόνο συναγερμοί", "Alarms only"),
                 Value = () => markers == null || !markers.AlarmsOnly ? L.T("Όχι · όλοι", "Off · all")
@@ -698,13 +713,15 @@ namespace QuestMarkerApp.UI
                 Enabled = () => markers != null,
                 Run = () => markers.AlarmsOnly = !markers.AlarmsOnly
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 Label = L.T("Βέλη προς συναγερμούς", "Arrows to alarms out of view"),
                 Value = () => AlarmBeacons.Enabled ? L.T("Ναι", "On") : L.T("Όχι", "Off"),
                 Run = () => AlarmBeacons.Enabled = !AlarmBeacons.Enabled
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 Label = L.T("Πίσω από τοίχους: αχνά (πειρ.)", "Behind walls: faint (exp.)"),
                 Value = () => DepthOcclusion.Enabled ? DepthOcclusion.Status : L.T("Όχι", "Off"),
@@ -716,7 +733,8 @@ namespace QuestMarkerApp.UI
                 Value = () => Marker.LabelsVisible ? L.T("Εμφάνιση", "Shown") : L.T("Απόκρυψη", "Hidden"),
                 Run = () => Marker.LabelsVisible = !Marker.LabelsVisible
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 // A 30-day mini-chart of each sensor's displacement beside its icon.
                 Label = L.T("Κορδέλες ιστορικού", "History ribbons"),
@@ -726,7 +744,8 @@ namespace QuestMarkerApp.UI
                 Enabled = () => ribbons != null && (HistoryRibbons.Enabled || ribbons.Unavailable() == null),
                 Run = () => HistoryRibbons.Enabled = !HistoryRibbons.Enabled
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 // Feature 10: a bar left of each icon, its length the "% of limit". Without the
                 // CanViewLimits permission the value says so and the row stays off.
@@ -752,11 +771,12 @@ namespace QuestMarkerApp.UI
                 Value = ControllerStyleName,
                 Run = CycleControllerStyle
             });
-            y = Row(y, new Item
+            if (!OfficeNoSite)
+                y = Row(y, new Item
             {
                 // Try both in the field: the clipboard follows the off hand, the other stays in
                 // the room and glides back in front like this menu.
-                Label = L.T("Panel ευθυγράμμισης", "Alignment panel"),
+                Label = L.T("Πάνελ ευθυγράμμισης", "Alignment panel"),
                 Value = () => project == null || project.PanelOnHand ? L.T("Στο χέρι", "On hand") : L.T("Στον χώρο", "In the room"),
                 Enabled = () => project != null,
                 Run = () => project.PanelOnHand = !project.PanelOnHand
@@ -848,7 +868,7 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
-                Label = L.T("Όριο ασφαλείας (boundary)", "Safety boundary"),
+                Label = L.T("Όριο ασφαλείας", "Safety boundary"),
                 Value = () => ModelOverlay.LifeSizeShown ? L.T("Ενεργό στο 1:1", "On at 1:1")
                     : BoundaryControl.Suppress
                     ? (BoundaryControl.IsSuppressed ? L.T("Ανενεργό", "Off") : L.T("Ανενεργό · αναμονή", "Off · waiting"))
@@ -900,7 +920,8 @@ namespace QuestMarkerApp.UI
                 Enabled = () => model != null && model.IsLoaded,
                 Run = () => ModelOverlay.Enabled = !ModelOverlay.Enabled
             });
-            y = Row(y, new Item
+            if (!WorkMode.IsField)
+                y = Row(y, new Item
             {
                 // Auto: on the site once aligned, a miniature until then. The other two always preview.
                 Label = L.T("Προβολή", "View"),
@@ -913,7 +934,8 @@ namespace QuestMarkerApp.UI
                 Enabled = () => model != null && !WorkMode.IsField,
                 Run = () => model.View = (ModelOverlay.ViewMode)(((int)model.View + 1) % 3)
             });
-            y = Row(y, new Item
+            if (!WorkMode.IsField)
+                y = Row(y, new Item
             {
                 Label = L.T("Νέα θέση μπροστά μου", "Move in front of me"),
                 Enabled = () => model != null && model.IsLoaded && model.CurrentPlacement != ModelOverlay.Placement.Project,
@@ -962,14 +984,16 @@ namespace QuestMarkerApp.UI
                 Enabled = () => ModelHeatmap.Enabled,
                 Run = () => ModelHeatmap.ReachSetting = (ModelHeatmap.ReachSetting + 1) % 3
             });
-            y = Row(y, new Item
+            if (!WorkMode.IsField)
+                y = Row(y, new Item
             {
                 // Stick walking through the 1:1 copy; rising / sinking follows at 0.7x.
                 Label = L.T("Ταχύτητα πλοήγησης", "Walk speed"),
                 Value = () => ModelOverlay.WalkSpeed.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m/s",
                 Run = ModelOverlay.CycleWalkSpeed
             });
-            y = Row(y, new Item
+            if (!WorkMode.IsField)
+                y = Row(y, new Item
             {
                 // Dots per sensor on the tabletop / 1:1 preview; on the site the real markers stand.
                 Label = L.T("Αισθητήρες στη μακέτα", "Sensors on model"),
