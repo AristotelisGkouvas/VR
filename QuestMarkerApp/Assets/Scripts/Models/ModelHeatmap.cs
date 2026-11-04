@@ -436,7 +436,18 @@ namespace QuestMarkerApp.Models
             }
             Camera cam = Headset.Camera;
             if (cam == null) return;
-            // Low on the left of the view (the time machine's bar takes the middle).
+            // With the time machine open: right above its panel, the two read as one.
+            Transform hud = DisplacementView.IsActive ? DisplacementView.Hud : null;
+            if (hud != null && hud.gameObject.activeInHierarchy)
+            {
+                legend.rotation = hud.rotation;
+                legend.position = hud.position + hud.up * (DisplacementView.HudHalfHeight + (37f + 12f) * 0.0006f);
+                legendGliding = false;
+                if (legendShown != computed) FillLegend(computed);
+                Probe(cam);
+                return;
+            }
+            // Low on the left of the view.
             Vector3 fwd = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
             if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.forward;
             fwd.Normalize();

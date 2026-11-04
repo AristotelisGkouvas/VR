@@ -34,6 +34,11 @@ namespace QuestMarkerApp.UI
             { "Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ" };
 
         public static bool IsActive { get; private set; }
+
+        /// <summary>The time machine's panel while it is on show (the heatmap legend sits on it).</summary>
+        public static Transform Hud { get; private set; }
+        /// <summary>Half the panel's height, metres.</summary>
+        public const float HudHalfHeight = 80f * 0.0006f;
         /// <summary>The date on the bar while open (ModelHeatmap follows it).</summary>
         public static DateTime? ShownAt { get; private set; }
         /// <summary>The compare-from date while set (grip).</summary>
@@ -733,6 +738,7 @@ namespace QuestMarkerApp.UI
             hud.position = hudSnap ? target : Vector3.Lerp(hud.position, target, 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime));
             hudSnap = false;
             VrUi.FaceViewer(hud, cam.transform);
+            Hud = hud.gameObject.activeInHierarchy ? hud : null;
 
             // Always on screen: the arrows are a diagram, not true size. "10 mm = 1.0 m" is how
             // long 10 mm of movement is drawn where the arrows stand (site, table or 1:1 model).
