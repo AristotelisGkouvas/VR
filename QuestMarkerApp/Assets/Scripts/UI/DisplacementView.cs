@@ -33,6 +33,9 @@ namespace QuestMarkerApp.UI
         // On the model the sensors crowd (15 on one bridge): mm readouts only on the largest
         // few and on the sensor aimed at; every arrow is still drawn.
         private const int ModelLabels = 5;
+        // A sensor with no reading for this long before the shown date is no longer measured
+        // there (T2 and T5 stopped in 2017): its last arrow is drawn grey, thin, with its year.
+        private const double StaleDays = 183;
         private static readonly string[] Months =
             { "Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ" };
 
@@ -132,6 +135,10 @@ namespace QuestMarkerApp.UI
             public bool Top;
             /// <summary>Drawn white (the heatmap carries the size): recoloured when it flips.</summary>
             public bool White;
+            /// <summary>Date of the reading the arrow shows.</summary>
+            public DateTime ReadDate;
+            /// <summary>That reading is more than StaleDays older than the shown date.</summary>
+            public bool Stale;
         }
 
         public void Init(ProjectAlignment alignment, MarkerManager markerManager)
@@ -230,9 +237,11 @@ namespace QuestMarkerApp.UI
             hudBase.gameObject.SetActive(false);
             lastOnModel = OnModel;
             scaleIndex = lastOnModel ? ModelScaleIndex() : SiteScaleIndex;
-            // Opening plays the whole record once: the site moving from day one to today.
-            progress = 0f;
-            playing = true;
+            // Opening shows today, every arrow at once. Playing from day one (A) made the
+            // time machine look like 'only T2, T5 and T6 have arrows': in 2017 only they
+            // were measured, and the panel may sit out of view at the miniature's corner.
+            progress = 1f;
+            playing = false;
             Feedback.Play(Feedback.Sound.Whoosh, 0.7f);
             return true;
         }
@@ -513,6 +522,7 @@ namespace QuestMarkerApp.UI
                     {
                         it.Valid = true;
                         it.Vec = vec;
+                        it.ReadDate = it.Series[i].Date;
                         it.Mm = (float)(Math.Sqrt(Sq(now.Dx) + Sq(now.Dy) + Sq(now.Dz)) * it.MetresPerUnit * 1000.0);
                         it.Color = Heat(it.Mm);
                         it.Text = $"{it.Mm:F1} mm";
@@ -522,12 +532,8 @@ namespace QuestMarkerApp.UI
 
                 if (it.Valid)
                 {
-                    Color color = it.White ? Color.white : it.Color;
-                    it.Shaft.startColor = color.WithAlpha(0.75f);
-                    it.Shaft.endColor = color;
-                    it.HeadMaterial.color = color;
-                    it.Label.text = it.Text;
-                    it.Label.color = Color.white; // outlined: readable on any ground
+                    it.Stale = (at - it.ReadDate).TotalDays > StaleDays;
+                    Paint(it);
                 }
 
                 it.HasCache = true;
@@ -542,11 +548,14 @@ namespace QuestMarkerApp.UI
                 SetOn(it.Root.gameObject, ref it.RootOn, false);
                 return;
             }
+            // The shown date moves on within one reading: the arrow can go stale meanwhile.
+            bool staleNow = (at - it.ReadDate).TotalDays > StaleDays;
+            if (staleNow != it.Stale) { it.Stale = staleNow; Paint(it); }
             SetOn(it.Root.gameObject, ref it.RootOn, true);
 
             // Camera-relative sizing: cheap, and the only part that follows the viewer.
             float camDist = Vector3.Distance(camPos, basePos);
-            float width = Mathf.Max(0.006f, camDist * 0.0035f);
+            float width = Mathf.Max(0.006f, camDist * 0.0035f) * (it.Stale ? 0.6f : 1f);
             Vector3 vecNow = it.Vec;
             float length = vecNow.magnitude;
             bool visible = length > width * 2f;
@@ -577,7 +586,8 @@ namespace QuestMarkerApp.UI
                 // the readout then says which way it went.
                 Vector3 view = (basePos - camPos).normalized;
                 bool endOn = Mathf.Abs(Vector3.Dot(view, vecNow / length)) > 0.85f;
-                string text = endOn ? (vecNow.y >= 0f ? "↑ " : "↓ ") + it.Text : it.Text;
+                string shown = it.Stale ? $"{it.Text} · {it.ReadDate.Year}" : it.Text;
+                string text = endOn ? (vecNow.y >= 0f ? "↑ " : "↓ ") + shown : shown;
                 if (it.Label.text != text) it.Label.text = text;
                 Vector3 pos = tip + Vector3.up * (width * 3f);
                 it.Label.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(pos - camPos));
@@ -588,6 +598,17 @@ namespace QuestMarkerApp.UI
 
         private static double Sq(double? v) => v.HasValue ? v.Value * v.Value : 0;
 
+        // White over the heatmap, the heat colour otherwise; grey and faint when stale.
+        private static void Paint(Item it)
+        {
+            Color color = it.Stale ? Brand.FgFaint.WithAlpha(0.6f) : it.White ? Color.white : it.Color;
+            it.Shaft.startColor = color.WithAlpha(color.a * 0.75f);
+            it.Shaft.endColor = color;
+            it.HeadMaterial.color = color;
+            it.Label.text = it.Stale ? $"{it.Text} · {it.ReadDate.Year}" : it.Text;
+            it.Label.color = it.Stale ? Brand.FgFaint : Color.white; // outlined: readable on any ground
+        }
+
         private readonly List<Item> ranked = new List<Item>();
 
         // The largest movements at the shown date get the mm readout on the model.
@@ -597,7 +618,7 @@ namespace QuestMarkerApp.UI
             foreach (Item it in items)
             {
                 it.Top = false;
-                if (it.Valid && it.RootOn) ranked.Add(it);
+                if (it.Valid && it.RootOn && !it.Stale) ranked.Add(it);
             }
             ranked.Sort((a, b) => b.Mm.CompareTo(a.Mm));
             for (int i = 0; i < ranked.Count && i < ModelLabels; i++) ranked[i].Top = true;
@@ -668,7 +689,12 @@ namespace QuestMarkerApp.UI
 
         private void Build()
         {
-            if (lineMaterial == null) lineMaterial = new Material(Shader.Find("Sprites/Default"));
+            if (lineMaterial == null)
+            {
+                // Faint inside the model, full in front (Resources/Shaders/ArrowLine).
+                Shader arrow = Resources.Load<Shader>("Shaders/ArrowLine");
+                lineMaterial = new Material(arrow != null ? arrow : Shader.Find("Sprites/Default")) { name = "DisplacementArrow" };
+            }
             if (headMesh == null) headMesh = Cone(12);
             if (hud == null) BuildHud();
         }
@@ -760,8 +786,17 @@ namespace QuestMarkerApp.UI
             // Never closer than an arm's length: then a little further along the model.
             Vector3 flat = Vector3.ProjectOnPlane(target - camPos, Vector3.up);
             if (flat.magnitude < 0.55f) target += -hudDir * (0.55f - flat.magnitude);
-            // Zoomed up so far that beside it is out of reach: back to body-locked.
-            return Vector3.Distance(target, camPos) < 1.6f;
+            // Zoomed up so far that beside it is out of reach, or the corner is out of view
+            // (the user looks at the far end): back to body-locked, so it is always in sight.
+            if (Vector3.Distance(target, camPos) >= 1.6f) return false;
+            Camera cam = Headset.Camera;
+            if (cam != null)
+            {
+                Vector3 look = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up);
+                Vector3 to = Vector3.ProjectOnPlane(target - camPos, Vector3.up);
+                if (look.sqrMagnitude > 1e-4f && to.sqrMagnitude > 1e-4f && Vector3.Angle(look, to) > 45f) return false;
+            }
+            return true;
         }
 
         private void UpdateHud(Camera cam, DateTime at, float scale)

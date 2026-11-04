@@ -408,7 +408,7 @@ namespace QuestMarkerApp.UI
             // Navigation and the inspection route walk to sensors on site: not in the office.
             if (!OfficeNoSite)
                 tiles.Add(("compass", L.T("Πλοήγηση", "Navigation"),
-                    () => !ready ? L.T("μετά την ευθυγρ.", "after alignment") : SensorNavigator.IsActive ? L.T("διακοπή", "stop") : L.T("σε αισθητήρα", "to a sensor"),
+                    () => !ready ? L.T("μετά την ευθυγρ.", "after alignment") : SensorNavigator.IsActive ? L.T("ενεργή · πάτα: διακοπή", "on · press: stop") : L.T("σε αισθητήρα", "to a sensor"),
                     () => SensorNavigator.IsActive || (project != null && project.IsAligned && !project.NeedsCheck),
                     () =>
                     {
@@ -418,7 +418,7 @@ namespace QuestMarkerApp.UI
             tiles.Add(("clock", L.T("Χρονομηχανή", "Time machine"),
                 () => !ready && !WorkMode.IsOffice ? L.T("μετά την ευθυγρ.", "after alignment")
                     : displacement == null ? ""
-                    : DisplacementView.IsActive ? L.T("κλείσιμο", "close")
+                    : DisplacementView.IsActive ? L.T("ανοιχτή · πάτα: κλείσε", "on · press: close")
                     : displacement.Unavailable() ?? L.T("μετακινήσεις", "displacements"),
                 () => (ready || WorkMode.IsOffice) && displacement != null && (DisplacementView.IsActive || displacement.Unavailable() == null),
                 () => { Close(); displacement.Toggle(); }));
