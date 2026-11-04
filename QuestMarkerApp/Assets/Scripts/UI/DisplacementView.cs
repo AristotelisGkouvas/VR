@@ -13,7 +13,7 @@ namespace QuestMarkerApp.UI
 {
     /// <summary>
     /// How the ground moved: every survey point grows one arrow along its measured displacement
-    /// (dx/dy/dz from the zero reading) at the chosen date, exaggerated ×20…×5000 so millimetres
+    /// (dx/dy/dz from the zero reading) at the chosen date, exaggerated (10 mm drawn as 2 to 50 cm) so millimetres
     /// read at arm's length, coloured green → amber → red by size. A time bar replays the whole
     /// record: the stick scrubs, A plays it as a film. On the aligned site the arrows stand on
     /// the real markers; while the model is previewed (table or 1:1) on its sensor dots, so no
@@ -22,9 +22,11 @@ namespace QuestMarkerApp.UI
     /// </summary>
     public class DisplacementView : MonoBehaviour
     {
-        private static readonly float[] Scales = { 20f, 50f, 100f, 200f, 500f, 1000f, 2000f, 5000f };
-        /// <summary>On a miniature, opening picks the first scale that draws RedAtMm about this long (metres).</summary>
-        private const float TabletopArrow = 0.1f;
+        // How long 10 mm of movement is drawn, metres, the same five steps on the site, the
+        // miniature and the 1:1 model. A bare "×5000" meant something else in each (a miniature
+        // is ~1/600 of the site) and ran out on the table; the factor is now worked out per frame.
+        private static readonly float[] ArrowLengths = { 0.02f, 0.05f, 0.10f, 0.20f, 0.50f };
+        private static readonly string[] ArrowLengthNames = { "2 cm", "5 cm", "10 cm", "20 cm", "50 cm" };
         /// <summary>Displacement (mm) drawn fully red; half of it is amber.</summary>
         private const float RedAtMm = 20f;
         private const float PlaySeconds = 10f;   // whole record, start to end
@@ -66,7 +68,8 @@ namespace QuestMarkerApp.UI
         private readonly List<Item> items = new List<Item>();
         private Material lineMaterial;
         private Mesh headMesh;
-        private const int SiteScaleIndex = 2; // ×100
+        private const int SiteScaleIndex = 4;  // 10 mm = 50 cm on the site and at 1:1
+        private const int TableScaleIndex = 2; // 10 mm = 10 cm on the miniature
         private int scaleIndex = SiteScaleIndex;
         /// <summary>
         /// Compare mode: the arrows show the movement since this date ("what moved since the
@@ -87,7 +90,6 @@ namespace QuestMarkerApp.UI
 
         // What the HUD currently shows, so strings are only rebuilt when the shown value changes.
         private float hudScaleShown = float.NaN;
-        private float hudScaleBar = float.NaN;
         private DateTime hudDateShown = DateTime.MinValue;
         private float hudProgressShown = -1f;
         private bool? hudPlayingShown;
@@ -264,7 +266,7 @@ namespace QuestMarkerApp.UI
         // Constant while open (and re-set on a language change).
         private void SetConstantTexts()
         {
-            hudScaleBar = float.NaN; // the count line now carries the scale (UpdateHud)
+            hudScaleShown = float.NaN; // title and size step are re-written by UpdateHud
             hudFrom.text = Format(SensorHistory.First);
             hudTo.text = Format(SensorHistory.Last);
         }
@@ -278,18 +280,19 @@ namespace QuestMarkerApp.UI
             items.Clear();
         }
 
-        // A miniature is ~1/100 of the site: ×100 would draw 20 mm as 2 cm. The first scale that
-        // makes it about TabletopArrow; at 1:1 that is the low end, as on the site.
+        // The miniature starts at 10 cm per 10 mm, the 1:1 model at the site's 50 cm.
         private int ModelScaleIndex()
         {
             if (modelOverlay == null) modelOverlay = FindAnyObjectByType<ModelOverlay>();
             Transform root = modelOverlay != null ? modelOverlay.Root : null;
             float rootScale = root != null ? Mathf.Max(root.lossyScale.x, 1e-6f) : 1f;
-            float want = TabletopArrow / (RedAtMm * 0.001f * rootScale);
-            for (int i = 0; i < Scales.Length; i++)
-                if (Scales[i] >= want) return i;
-            return Scales.Length - 1;
+            return rootScale >= 0.5f ? SiteScaleIndex : TableScaleIndex;
         }
+
+        // The model's zoom where the arrows stand (1 on the site).
+        private float ArrowZoom(bool onModel) =>
+            onModel && modelSensors != null && modelSensors.Container != null
+                ? Mathf.Max(modelSensors.Container.lossyScale.x, 1e-6f) : 1f;
 
         // ------------------------------------------------------------------
         //  Per frame
@@ -328,7 +331,8 @@ namespace QuestMarkerApp.UI
             DateTime at = CurrentAt();
             ShownAt = at;
             ComparedFrom = baseline;
-            float scale = Scales[scaleIndex];
+            // The factor that draws 10 mm at the chosen length, whatever the model's zoom.
+            float scale = ArrowLengths[scaleIndex] / (0.01f * ArrowZoom(onModel));
 
             // Alignment key: the change event plus the yaws Draw's maths reads from the project.
             // On the model: where it stands, turns and how far it is zoomed.
@@ -388,7 +392,7 @@ namespace QuestMarkerApp.UI
 
             if (stickAxis == 2 && ay > 0.7f && Time.unscaledTime >= nextScaleStep)
             {
-                int next = Mathf.Clamp(scaleIndex + (y > 0 ? 1 : -1), 0, Scales.Length - 1);
+                int next = Mathf.Clamp(scaleIndex + (y > 0 ? 1 : -1), 0, ArrowLengths.Length - 1);
                 if (next != scaleIndex)
                 {
                     scaleIndex = next;
@@ -828,24 +832,17 @@ namespace QuestMarkerApp.UI
             VrUi.FaceViewer(hud, cam.transform);
             Hud = hud.gameObject.activeInHierarchy ? hud : null;
 
-            // Always on screen: the arrows are a diagram, not true size. "10 mm = 1.0 m" is how
-            // long 10 mm of movement is drawn where the arrows stand (site, table or 1:1 model).
-            float zoom = lastOnModel && modelSensors != null && modelSensors.Container != null
-                ? modelSensors.Container.lossyScale.x : 1f;
-            float drawn = 0.01f * scale * zoom;
-            if (!Mathf.Approximately(drawn, hudScaleBar))
+            // Always on screen: the arrows are a diagram, not true size. The title says how long
+            // 10 mm is drawn, the corner which of the five steps it is.
+            if (scaleIndex != hudScaleShown)
             {
-                hudScaleBar = drawn;
-                string len = drawn >= 1f ? $"{drawn:0.0} m" : $"{drawn * 100f:0} cm";
-                hudCount.text = $"10 mm = {len}";
-            }
-
-            if (scale != hudScaleShown)
-            {
-                hudScaleShown = scale;
+                hudScaleShown = scaleIndex;
+                string len = ArrowLengthNames[scaleIndex];
+                hudCount.text = L.En ? $"arrow size {scaleIndex + 1}/{ArrowLengths.Length}"
+                                     : $"μέγεθος βελών {scaleIndex + 1}/{ArrowLengths.Length}";
                 hudTitle.text = baseline.HasValue
-                    ? (L.En ? $"Since {Format(baseline.Value)} · ×{scale:0}" : $"Από {Format(baseline.Value)} · ×{scale:0}")
-                    : (L.En ? $"Displacements · arrows ×{scale:0}" : $"Μετακινήσεις · βέλη ×{scale:0}");
+                    ? (L.En ? $"Since {Format(baseline.Value)} · 10 mm = {len}" : $"Από {Format(baseline.Value)} · 10 mm = {len}")
+                    : (L.En ? $"Displacements · 10 mm = {len}" : $"Μετακινήσεις · 10 mm = {len}");
                 bool on = baseline.HasValue;
                 if (hudBase.gameObject.activeSelf != on) hudBase.gameObject.SetActive(on);
                 if (on) hudBase.rectTransform.anchoredPosition = new Vector2(20f + TrackW * Fraction(baseline.Value) - 2f,
