@@ -44,6 +44,8 @@ namespace QuestMarkerApp.Core
             get => testEnabled;
             set
             {
+                // Field only: office touches must never be logged as site data.
+                if (value && WorkMode.IsOffice) return;
                 if (testEnabled == value) return;
                 testEnabled = value;
                 EnabledChanged?.Invoke();

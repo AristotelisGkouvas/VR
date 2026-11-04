@@ -447,7 +447,17 @@ curl -H "X-Api-Key: <κλειδί>" http://<IP του Quest>:8080/api/fieldtest
 curl -H "X-Api-Key: <κλειδί>" -O http://<IP του Quest>:8080/api/fieldtest/<αρχείο>.csv
 ```
 
-Στήλες: `timestamp, session_id, project, point_id, condition, site_changed, app_version, phase` (load / manual / touch / solution / create / undo / erase), `anchor_uuid, anchor_age_h, localized, seconds` (από την αρχή της μέτρησης), `tracked, dist_from_original_m, errH_cm_solution, errV_cm_solution, errH_cm_touch, errV_cm_touch, pair_errH_cm, pair_errV_cm` (χειρότερη διαφορά απόστασης από τα άλλα anchors σε σχέση με το έργο, χωρίς νέο άγγιγμα), `headset_dist_m, note`. Κενή στήλη σημαίνει «άγνωστο». Το `dist_from_original_m` είναι γνωστό μόνο όταν ξαναβρέθηκε και το ίδιο reference anchor του χώρου (άρα είναι σχετική μετακίνηση δύο anchors) ή μέσα στην ίδια συνεδρία. Το κατακόρυφο σφάλμα έχει πρόσημο (anchor μείον αναφορά).
+Στήλες: `timestamp, session_id, project, point_id, condition, site_changed, app_version, phase` (load / manual / touch / solution / create / undo / erase), `anchor_uuid, anchor_age_h, localized, seconds` (από την αρχή της μέτρησης), `tracked, dist_from_original_m, errH_cm_solution, errV_cm_solution, errH_cm_touch, errV_cm_touch, pair_errH_cm, pair_errV_cm` (χειρότερη διαφορά απόστασης από τα άλλα anchors σε σχέση με το έργο, χωρίς νέο άγγιγμα), `headset_dist_m, note, mode` (field / office). Κενή στήλη σημαίνει «άγνωστο». Το `dist_from_original_m` είναι γνωστό μόνο όταν ξαναβρέθηκε και το ίδιο reference anchor του χώρου (άρα είναι σχετική μετακίνηση δύο anchors) ή μέσα στην ίδια συνεδρία. Το κατακόρυφο σφάλμα έχει πρόσημο (anchor μείον αναφορά).
+
+## Πεδίο ή Γραφείο
+
+Στην εκκίνηση η εφαρμογή ρωτά **«Πού δουλεύεις τώρα;»**:
+
+- **Πεδίο:** πάνω στην κατασκευή. Η ευθυγράμμιση ζητείται, ή επιβεβαιώνεται με ένα άγγιγμα αν βρέθηκε η αποθηκευμένη. Το μοντέλο στέκεται ημιδιαφανές πάνω στο πραγματικό κτήριο, με το heatmap και με το πραγματικό περιβάλλον ορατό. Τα εργαλεία μέτρησης (ακρίβεια, δοκιμή anchors) είναι διαθέσιμα.
+- **Γραφείο:** δεν ζητείται ευθυγράμμιση. Δεύτερη ερώτηση, αν υπάρχει φορτωμένο μοντέλο: **Μακέτα** ή **1:1 γύρω μου** (προτείνεται η τελευταία επιλογή). Τα εργαλεία μέτρησης είναι **κλειδωμένα** («Μόνο στο πεδίο»), ώστε μια μέτρηση γραφείου να μη γραφτεί ποτέ ως μέτρηση πεδίου. Η χρονομηχανή δουλεύει πάνω στη μακέτα ή στο 1:1.
+- **Εξάσκηση:** οι τυπωμένοι στόχοι P1 και P2, σε λειτουργία γραφείου. Εδώ επιτρέπεται η μέτρηση ακρίβειας, με σήμανση `practice = yes`.
+
+Προτείνεται το **Πεδίο** όταν η αποθηκευμένη ευθυγράμμιση του έργου βρέθηκε σε αυτόν τον χώρο ("βρέθηκε εδώ"), αλλιώς η λειτουργία της τελευταίας φοράς. **Δεν ρωτά ξανά** αν η εφαρμογή χρησιμοποιήθηκε πριν από λιγότερο από **30 λεπτά**, π.χ. όταν βγάζεις τα γυαλιά για λίγο. Αλλαγή χωρίς επανεκκίνηση: Μενού › «Λειτουργία». Η λειτουργία γράφεται σε κάθε γραμμή των CSV (στήλη `mode`).
 
 ## Μέτρηση ακρίβειας ευθυγράμμισης
 
@@ -471,7 +481,7 @@ curl -H "X-Api-Key: <κλειδί>" -O http://<IP του Quest>:8080/api/accurac
 
 ή κατευθείαν με ανάλυση: `python thesis/analysis/alignment_accuracy.py --download --quest-ip <IP> --api-key <κλειδί>`.
 
-Στήλες: `timestamp, session_id, project, practice, app_version, condition, series, k, control_ids, baseline_m, rms_h_cm, rms_v_cm, meas_id, point_id, role` (check / control / undo), `repeat, centroid_dist_m, err_h_cm, err_v_cm, err_e_cm, err_n_cm, predicted_cm, touch_e, touch_n, touch_h, headset_dist_m, note`. Τα σφάλματα είναι στον κάναβο του έργου (άγγιγμα μείον σημείο). Το `predicted_cm` είναι το σ·√2·D/b με σ = 2 cm. Μια γραμμή `undo` ακυρώνει τη μέτρηση `meas_id` της ίδιας συνεδρίας.
+Στήλες: `timestamp, session_id, project, practice, app_version, condition, series, k, control_ids, baseline_m, rms_h_cm, rms_v_cm, meas_id, point_id, role` (check / control / undo), `repeat, centroid_dist_m, err_h_cm, err_v_cm, err_e_cm, err_n_cm, predicted_cm, touch_e, touch_n, touch_h, headset_dist_m, note, mode`. Τα σφάλματα είναι στον κάναβο του έργου (άγγιγμα μείον σημείο). Το `predicted_cm` είναι το σ·√2·D/b με σ = 2 cm. Μια γραμμή `undo` ακυρώνει τη μέτρηση `meas_id` της ίδιας συνεδρίας.
 
 ## Χειριστήρια Quest
 

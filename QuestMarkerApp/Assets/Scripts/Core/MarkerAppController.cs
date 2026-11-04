@@ -37,6 +37,7 @@ namespace QuestMarkerApp.Core
         private bool useRealCoordinates;
         private WebSocketPushClient wsClient;
         private MainMenu mainMenu;
+        private WorkModeChooser modeChooser;
         private TerrawebClient terraweb;
         private FlowPanel flowPanel;
         private SensorCard sensorCard;
@@ -257,6 +258,8 @@ namespace QuestMarkerApp.Core
             if (last != null) model.Load(last);
 
             mainMenu = Child<MainMenu>("MainMenu");
+            modeChooser = Child<WorkModeChooser>("WorkModeChooser");
+            modeChooser.Init(flowPanel, projectAlignment);
             mainMenu.Init(this, projectAlignment, markerManager, localServer, terraweb, flow, navigator);
             // Voice: "βρες Κ5", "δείξε συναγερμούς", "διαδρομή επιθεώρησης"... (typed until the
             // Wit.ai engine is installed; see VoiceRecognizers.cs).
@@ -288,6 +291,8 @@ namespace QuestMarkerApp.Core
         private System.Collections.IEnumerator OpenMenuWhenEmpty()
         {
             yield return new WaitForSeconds(1.5f);
+            // Field or office first (asked unless the app was in use < 30 min ago).
+            if (modeChooser != null) yield return modeChooser.SettleAtStart(null);
             // Not while the guide is teaching the menu button: opening it here would do the step for them.
             if ((projectAlignment == null || !projectAlignment.HasProject) && !UiState.AnyModal && !Onboarding.HoldsMenu)
                 mainMenu?.Open(userInitiated: false); // keeps the first-run controller labels showing

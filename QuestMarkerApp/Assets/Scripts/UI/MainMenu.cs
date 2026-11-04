@@ -205,7 +205,8 @@ namespace QuestMarkerApp.UI
         {
             int s = (int)CurrentStage();
             int placed = project != null ? Mathf.Min(project.PlacedCount, 1000) : 0;
-            return s | (placed << 3) | (Hands.LeftHanded ? 1 << 14 : 0) | (PracticeProject.IsActive ? 1 << 15 : 0);
+            return s | (placed << 3) | (Hands.LeftHanded ? 1 << 14 : 0) | (PracticeProject.IsActive ? 1 << 15 : 0)
+                   | ((int)WorkMode.Current << 16);
         }
 
         private void BuildHome()
@@ -215,6 +216,7 @@ namespace QuestMarkerApp.UI
             float y = 0f;
 
             y = BuildChips(y, stage);
+            y = ModeRow(y);
 
             switch (stage)
             {
@@ -231,6 +233,9 @@ namespace QuestMarkerApp.UI
                         L.T("Διάλεξε έργο και περιοχή. Οι αισθητήρες θα εμφανιστούν στον χώρο.", "Pick a project and area. Its sensors will appear around you."),
                         L.T("Διάλεξε έργο", "Pick a project"), null,
                         () => { Close(); flow.Begin(); }, null);
+                    break;
+                case Stage.Unaligned when WorkMode.IsOffice && !PracticeProject.IsActive:
+                    y = BuildTiles(y, false);
                     break;
                 case Stage.Unaligned:
                 {
@@ -293,6 +298,20 @@ namespace QuestMarkerApp.UI
             if (t.TotalDays < 1) return L.En ? $"{(int)t.TotalHours} h ago" : $"πριν {(int)t.TotalHours} ώρες";
             return L.En ? $"{(int)t.TotalDays} days ago" : $"πριν {(int)t.TotalDays} ημέρες";
         }
+
+        // Field / office (WorkMode): what it is now, and the question again on a press.
+        private float ModeRow(float y) => Row(y, new Item
+        {
+            Label = L.T("Λειτουργία", "Mode"),
+            Value = () => WorkMode.Current == WorkModeKind.None ? L.T("επιλογή ›", "choose ›")
+                : L.T($"{WorkMode.Name} · αλλαγή ›", $"{WorkMode.Name} · change ›"),
+            Enabled = () => modeChooser != null,
+            Run = () => { Close(); modeChooser.Ask(); }
+        });
+
+        private WorkModeChooser modeChooserCache;
+        private WorkModeChooser modeChooser => modeChooserCache != null ? modeChooserCache
+            : (modeChooserCache = FindAnyObjectByType<WorkModeChooser>());
 
         private float PracticeRow(float y) => Row(y, new Item
         {
@@ -390,11 +409,11 @@ namespace QuestMarkerApp.UI
                         else { Close(); app.OpenSensorPicker(); }
                     }),
                 ("clock", L.T("Χρονομηχανή", "Time machine"),
-                    () => !ready ? L.T("μετά την ευθυγρ.", "after alignment")
+                    () => !ready && !WorkMode.IsOffice ? L.T("μετά την ευθυγρ.", "after alignment")
                         : displacement == null ? ""
                         : DisplacementView.IsActive ? L.T("κλείσιμο", "close")
                         : displacement.Unavailable() ?? L.T("μετακινήσεις", "displacements"),
-                    () => ready && displacement != null && (DisplacementView.IsActive || displacement.Unavailable() == null),
+                    () => (ready || WorkMode.IsOffice) && displacement != null && (DisplacementView.IsActive || displacement.Unavailable() == null),
                     () => { Close(); displacement.Toggle(); }),
             };
             if (ready)
@@ -609,8 +628,9 @@ namespace QuestMarkerApp.UI
             y = Row(y, new Item
             {
                 Label = L.T("Δοκιμή πεδίου anchors", "Anchor field test"),
-                Value = () => AnchorFieldTest.Enabled ? L.T("Ενεργή", "On") : L.T("Ανενεργή", "Off"),
-                Enabled = () => FieldTest != null,
+                Value = () => WorkMode.IsOffice ? L.T("Μόνο στο πεδίο", "Field only")
+                    : AnchorFieldTest.Enabled ? L.T("Ενεργή", "On") : L.T("Ανενεργή", "Off"),
+                Enabled = () => FieldTest != null && (AnchorFieldTest.Enabled || !WorkMode.IsOffice),
                 Run = () => AnchorFieldTest.Enabled = !AnchorFieldTest.Enabled
             });
             y = Row(y, new Item

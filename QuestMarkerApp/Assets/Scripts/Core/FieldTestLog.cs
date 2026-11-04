@@ -23,7 +23,7 @@ namespace QuestMarkerApp.Core
             "timestamp", "session_id", "project", "point_id", "condition", "site_changed", "app_version",
             "phase", "anchor_uuid", "anchor_age_h", "localized", "seconds", "tracked", "dist_from_original_m",
             "errH_cm_solution", "errV_cm_solution", "errH_cm_touch", "errV_cm_touch",
-            "pair_errH_cm", "pair_errV_cm", "headset_dist_m", "note"
+            "pair_errH_cm", "pair_errV_cm", "headset_dist_m", "note", "mode"
         };
 
         /// <summary>One launch of the app: rows of the same visit share it.</summary>
@@ -88,7 +88,8 @@ namespace QuestMarkerApp.Core
                 Field(sb, Num(r.PairErrH, "F1"));
                 Field(sb, Num(r.PairErrV, "F1"));
                 Field(sb, Num(r.HeadsetDist, "F2"));
-                Field(sb, r.Note, true);
+                Field(sb, r.Note);
+                Field(sb, WorkMode.Tag, true);
                 File.AppendAllText(file, sb.ToString(), new UTF8Encoding(fresh));
             }
             catch (Exception e)

@@ -32,7 +32,7 @@ namespace QuestMarkerApp.Core
             "series", "k", "control_ids", "baseline_m", "rms_h_cm", "rms_v_cm",
             "meas_id", "point_id", "role", "repeat", "centroid_dist_m",
             "err_h_cm", "err_v_cm", "err_e_cm", "err_n_cm", "predicted_cm",
-            "touch_e", "touch_n", "touch_h", "headset_dist_m", "note"
+            "touch_e", "touch_n", "touch_h", "headset_dist_m", "note", "mode"
         };
 
         public static string Folder => Path.Combine(Application.persistentDataPath, FolderName);
@@ -88,6 +88,8 @@ namespace QuestMarkerApp.Core
         public static string Unavailable(ProjectAlignment a)
         {
             if (a == null || !a.HasProject) return L.T("Δεν υπάρχει έργο", "No project");
+            // Office touches must never be logged as site data; the practice targets may.
+            if (WorkMode.IsOffice && !a.IsPractice) return L.T("Μόνο στο πεδίο", "Field only");
             if (!a.IsAligned) return L.T("Ευθυγράμμισε πρώτα", "Align first");
             if (a.NeedsCheck) return L.T("Επιβεβαίωσε τη θέση", "Confirm the position");
             return null;
@@ -237,7 +239,8 @@ namespace QuestMarkerApp.Core
                 Field(sb, series.Practice ? "yes" : "no");
                 Field(sb, Application.version);
                 Field(sb, AnchorFieldTest.ConditionTag);
-                for (int i = 0; i < values.Length; i++) Field(sb, values[i], i == values.Length - 1);
+                foreach (string v in values) Field(sb, v);
+                Field(sb, WorkMode.Tag, true);
                 File.AppendAllText(file, sb.ToString(), new UTF8Encoding(fresh));
             }
             catch (Exception e)

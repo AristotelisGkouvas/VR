@@ -655,6 +655,7 @@ namespace QuestMarkerApp.Core
         public void OpenIfNeeded()
         {
             if (!NeedsAlignment) return;
+            if (WorkMode.IsOffice && !IsPractice) return;
             // Never on top of a menu / card / keyboard: B and A would reach both. Wait.
             if (UiState.AnyModal) { pendingOpen = true; return; }
             SetMode(true);
