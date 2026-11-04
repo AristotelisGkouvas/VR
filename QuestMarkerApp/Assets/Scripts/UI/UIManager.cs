@@ -299,7 +299,7 @@ namespace QuestMarkerApp.UI
                     "• POST /api/coordinates — σημεία\n" +
                     "• GET /api/coordinates — λίστα σημείων\n" +
                     "• DELETE /api/coordinates/{id} — διαγραφή\n" +
-                    "• X: Μενού\n" +
+                    "• Menu (≡): Μενού\n" +
                     "• Σκανδάλη: Επιλογή αισθητήρα",
                     "<b>How to use:</b>\n\n" +
                     "• POST /api/coordinates — points\n" +

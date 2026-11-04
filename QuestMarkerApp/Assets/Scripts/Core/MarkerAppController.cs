@@ -457,14 +457,15 @@ namespace QuestMarkerApp.Core
 
             if (Hands.OffHandPrimaryDown())
             {
-                // X opens the main menu. The alignment panel opens by itself while the project
-                // still needs aligning and otherwise only from the menu; X just closes it
-                // (ProjectAlignment handles X while it is open). The legacy laser calibration
-                // stays reachable only via POST /api/calibrate/start.
-                Feedback.Play(Feedback.Sound.Tick);
-                if (projectAlignment != null && projectAlignment.IsModeActive) projectAlignment.SetMode(false);
-                else mainMenu?.Open();
-                return;
+                // X only closes the alignment list. It used to open the menu as well, which
+                // put two menu buttons on one controller: the menu is the Menu button (≡)
+                // alone, or a stick click with the left controller pocketed.
+                if (projectAlignment != null && projectAlignment.IsModeActive)
+                {
+                    Feedback.Play(Feedback.Sound.Tick);
+                    projectAlignment.SetMode(false);
+                    return;
+                }
             }
 
             // While aligning, B belongs to the project panel and A would move the

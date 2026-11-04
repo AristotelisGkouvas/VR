@@ -176,8 +176,8 @@ namespace QuestMarkerApp.UI
         {
             if (hudHint != null)
                 hudHint.text = L.En
-                    ? $"{Hands.PrimaryName} play · stick ↔ time · ↕ scale · grip: compare from here · {Hands.SecondaryName} exit"
-                    : $"{Hands.PrimaryName} αναπαραγωγή · stick ↔ χρόνος · ↕ κλίμακα · grip: σύγκριση από εδώ · {Hands.SecondaryName} έξοδος";
+                    ? $"{Hands.PrimaryName} play · stick ← → date · stick ↑ ↓ arrow size · grip: zero here · {Hands.SecondaryName} exit"
+                    : $"{Hands.PrimaryName} αναπαραγωγή · στικ ← → ημερομηνία · στικ ↑ ↓ μέγεθος βελών · grip: μηδέν εδώ · {Hands.SecondaryName} έξοδος";
         }
 
         /// <summary>Why it can't open right now, or null when it can.</summary>
@@ -801,7 +801,7 @@ namespace QuestMarkerApp.UI
                 hudScaleShown = scale;
                 hudTitle.text = baseline.HasValue
                     ? (L.En ? $"Since {Format(baseline.Value)} · ×{scale:0}" : $"Από {Format(baseline.Value)} · ×{scale:0}")
-                    : (L.En ? $"Displacements · ×{scale:0}" : $"Μετακινήσεις · ×{scale:0}");
+                    : (L.En ? $"Displacements · arrows ×{scale:0}" : $"Μετακινήσεις · βέλη ×{scale:0}");
                 bool on = baseline.HasValue;
                 if (hudBase.gameObject.activeSelf != on) hudBase.gameObject.SetActive(on);
                 if (on) hudBase.rectTransform.anchoredPosition = new Vector2(20f + TrackW * Fraction(baseline.Value) - 2f,

@@ -301,7 +301,7 @@ namespace QuestMarkerApp.UI
             {
                 case Spot.Trigger: return b == Button.Trigger && dominant;
                 case Spot.BothTriggers: return b == Button.Trigger;
-                case Spot.Menu: return b == Button.Menu || (b == Button.Primary && !dominant);
+                case Spot.Menu: return b == Button.Menu;
                 case Spot.Back: return b == Button.Secondary && dominant;
                 default: return false;
             }
@@ -355,31 +355,27 @@ namespace QuestMarkerApp.UI
                 case "project":
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
                         (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     });
                 case "route":
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
                         (Button.Menu, "menu", L.T("Μενού · κράτα: διακοπή", "Menu · hold: stop"), false)
                     });
                 case "nav":
                     {
                         var map = new List<(Button, string, string, bool)>
                         {
-                            (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
-                            (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
+                                (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                         };
-                        if (DisplacementView.IsActive) map.Add((Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false));
+                        if (DisplacementView.IsActive) map.Add((Button.Thumbstick, "clock", L.T("← → ημερομηνία · ↑ ↓ βέλη", "← → date · ↑ ↓ arrows"), false));
                         else WithVoice(map);
                         return map;
                     }
                 case "time":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
-                        (Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false),
+                        (Button.Thumbstick, "clock", L.T("← → ημερομηνία · ↑ ↓ βέλη", "← → date · ↑ ↓ arrows"), false),
                         (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     };
                 case "message":
@@ -389,7 +385,6 @@ namespace QuestMarkerApp.UI
                     return WithVoice(new List<(Button, string, string, bool)>
                     {
                         (Button.Secondary, "history", L.T("Αναίρεση", "Undo"), false),
-                        (Button.Primary, "menu", L.T("Μενού", "Menu"), false),
                         (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     });
             }
@@ -509,7 +504,7 @@ namespace QuestMarkerApp.UI
                         if (DisplacementView.IsActive)
                         {
                             map.Add((Button.Primary, "play", L.T("Αναπαραγωγή / Παύση", "Play / pause"), false));
-                            map.Add((Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false));
+                            map.Add((Button.Thumbstick, "clock", L.T("← → ημερομηνία · ↑ ↓ βέλη", "← → date · ↑ ↓ arrows"), false));
                         }
                         return map;
                     }
@@ -518,7 +513,7 @@ namespace QuestMarkerApp.UI
                     {
                         (Button.Secondary, "close", L.T("Έξοδος χρονομηχανής", "Exit time machine"), false),
                         (Button.Primary, "play", L.T("Αναπαραγωγή / Παύση", "Play / pause"), false),
-                        (Button.Thumbstick, "clock", L.T("Χρόνος / κλίμακα", "Time / scale"), false),
+                        (Button.Thumbstick, "clock", L.T("← → ημερομηνία · ↑ ↓ βέλη", "← → date · ↑ ↓ arrows"), false),
                         (Button.Trigger, "info", L.T("Καρτέλα αισθητήρα", "Sensor card"), false),
                         (Button.Grip, "history", L.T("Σύγκριση από εδώ", "Compare from here"), false)
                     };

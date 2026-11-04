@@ -1228,7 +1228,8 @@ namespace QuestMarkerApp.UI
             };
             var offHand = new List<(string, string)>
             {
-                (Hands.OffHandPrimaryName, L.T("Μενού / κλείσιμο λίστας", "Menu / close list")),
+                ("Menu ≡", L.T("Μενού", "Menu")),
+                (Hands.OffHandPrimaryName, L.T("Κλείσιμο λίστας ευθυγρ.", "Close alignment list")),
                 ("Stick ↑↓", L.T("Επιλογή στη λίστα", "Select in list")),
                 (Hands.OffHandSecondaryName, L.T("Αναίρεση*", "Undo*")),
                 ("Grip", L.T("Μετακίνηση μοντέλου", "Move model")),

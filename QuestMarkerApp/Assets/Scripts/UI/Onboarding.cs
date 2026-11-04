@@ -462,8 +462,8 @@ namespace QuestMarkerApp.UI
                     head = en ? "Open the menu" : "Άνοιξε το μενού";
                     text = OneController()
                         ? (en ? "Click the stick. Everything starts there." : "Κλικ στο στικ. Από εκεί ξεκινούν όλα.")
-                        : (en ? $"Press Menu or {Hands.OffHandPrimaryName}. Everything starts there."
-                              : $"Πάτα Menu ή {Hands.OffHandPrimaryName}. Από εκεί ξεκινούν όλα.");
+                        : (en ? "Press Menu (≡) on the left controller. Everything starts there."
+                              : "Πάτα Menu (≡) στο αριστερό χειριστήριο. Από εκεί ξεκινούν όλα.");
                     break;
                 case Step.Login:
                     head = en ? "Log in or practise" : "Σύνδεση ή εξάσκηση";
