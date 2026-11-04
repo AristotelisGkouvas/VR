@@ -155,6 +155,36 @@ namespace QuestMarkerApp.UI
             return m;
         }
 
+        private static readonly Material[] modelSpriteLayers = new Material[3];
+        private static Material modelSpriteFade;
+
+        /// <summary>
+        /// MarkerSpriteLayer for the dots on the 3D model. The model is virtual and stands in
+        /// front of the real room, so the Quest depth sensor must not fade its dots: with
+        /// «behind walls» on, the desk and the laptop under a miniature left half of them
+        /// stippled at 30 %.
+        /// </summary>
+        public static Material ModelSpriteLayer(int layer)
+        {
+            int i = Mathf.Clamp(layer, 0, 2);
+            if (modelSpriteLayers[i] != null) return modelSpriteLayers[i];
+            var m = new Material(MarkerSpriteLayer(i)) { name = "ModelSprite" + i };
+            if (m.HasProperty("_XrayAlpha")) m.SetFloat("_XrayAlpha", 1f);
+            return modelSpriteLayers[i] = m;
+        }
+
+        /// <summary>MarkerSpriteFadeMaterial for the model's dots (no real-world fading).</summary>
+        public static Material ModelSpriteFadeMaterial
+        {
+            get
+            {
+                if (modelSpriteFade != null) return modelSpriteFade;
+                modelSpriteFade = new Material(MarkerSpriteFadeMaterial) { name = "ModelSpriteFade" };
+                if (modelSpriteFade.HasProperty("_XrayAlpha")) modelSpriteFade.SetFloat("_XrayAlpha", 1f);
+                return modelSpriteFade;
+            }
+        }
+
         /// <summary>Same, without depth write: fading rings must not punch holes in what is behind.</summary>
         public static Material MarkerSpriteFadeMaterial =>
             markerSpriteFade != null ? markerSpriteFade : (markerSpriteFade = MakeMarkerSprite(false));
