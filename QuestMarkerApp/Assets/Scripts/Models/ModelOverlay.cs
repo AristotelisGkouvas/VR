@@ -371,7 +371,9 @@ namespace QuestMarkerApp.Models
         /// stays put as the user walks between the points (the sticks do not move it then).
         /// </summary>
         public Placement CurrentPlacement =>
-            Aligning ? (CanPlaceInProject ? Placement.Project : Placement.LifeSize)
+            // On site only ever on the structure (FieldAllows hides it until it can be).
+            WorkMode.IsField ? Placement.Project
+            : Aligning ? (CanPlaceInProject ? Placement.Project : Placement.LifeSize)
             : View == ViewMode.Tabletop ? Placement.Tabletop
             : View == ViewMode.LifeSize ? Placement.LifeSize
             : CanPlaceInProject ? Placement.Project : Placement.Tabletop;
@@ -404,10 +406,19 @@ namespace QuestMarkerApp.Models
             if (error != null) return Status;
             if (model == null) return L.T("Χωρίς μοντέλο", "No model");
             if (InPractice) return L.T("Κρυφό στην εξάσκηση", "Hidden in practice");
+            if (WorkMode.IsField && !CanPlaceInProject) return L.T("Μετά την ευθυγράμμιση", "After alignment");
+            if (WorkMode.IsField && !ModelHeatmap.Enabled) return L.T("Πεδίο: μόνο με heatmap", "Field: with heatmap only");
             return null;
         }
 
         private bool InPractice => alignment != null && alignment.IsPractice;
+
+        /// <summary>
+        /// On site the real structure is what the user looks at: the model shows only to carry
+        /// the heatmap, see-through, on the structure itself — never as a tabletop or life-size
+        /// preview, and not before the alignment puts it in place (WorkMode.Field).
+        /// </summary>
+        private bool FieldAllows => !WorkMode.IsField || (ModelHeatmap.Enabled && CanPlaceInProject && !Aligning);
 
         public void Init(ProjectAlignment projectAlignment, MarkerManager markerManager)
         {
@@ -432,7 +443,7 @@ namespace QuestMarkerApp.Models
             // The office practice has its own two printed targets: a loaded design model
             // (another project's building) would only stand in the way. It stays loaded and
             // comes back on leaving practice, with no reload.
-            bool show = model != null && !loading && Enabled && !InPractice;
+            bool show = model != null && !loading && Enabled && !InPractice && FieldAllows;
             bool walk = false;
             bool preview = false;
             bool lifeSize = false;

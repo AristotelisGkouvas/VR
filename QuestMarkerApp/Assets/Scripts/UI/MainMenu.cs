@@ -905,10 +905,12 @@ namespace QuestMarkerApp.UI
                 // Auto: on the site once aligned, a miniature until then. The other two always preview.
                 Label = L.T("Προβολή", "View"),
                 Value = () => model == null ? ""
+                    : WorkMode.IsField ? L.T("Πεδίο · στην κατασκευή", "Field · on the structure")
                     : model.View == ModelOverlay.ViewMode.Tabletop ? L.T("Μακέτα", "Tabletop")
                     : model.View == ModelOverlay.ViewMode.LifeSize ? L.T("1:1 γύρω μου", "1:1 around me")
                     : model.CanPlaceInProject ? L.T("Αυτόματα · στο έργο", "Auto · on site") : L.T("Αυτόματα · μακέτα", "Auto · tabletop"),
-                Enabled = () => model != null,
+                // On site the model only stands on the structure: tabletop and 1:1 are for the office.
+                Enabled = () => model != null && !WorkMode.IsField,
                 Run = () => model.View = (ModelOverlay.ViewMode)(((int)model.View + 1) % 3)
             });
             y = Row(y, new Item

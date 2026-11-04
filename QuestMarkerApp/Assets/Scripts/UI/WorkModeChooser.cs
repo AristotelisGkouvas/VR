@@ -85,8 +85,8 @@ namespace QuestMarkerApp.UI
                 new FlowItem
                 {
                     Label = L.T("Πεδίο", "Field"),
-                    Sub = L.T("Ευθυγράμμιση · μοντέλο και heatmap πάνω στην κατασκευή · μετρήσεις",
-                        "Alignment · model and heatmap on the structure · measurements"),
+                    Sub = L.T("Ευθυγράμμιση · αισθητήρες και heatmap στην κατασκευή · μετρήσεις",
+                        "Alignment · sensors and heatmap on the structure · measurements"),
                     Value = found ? L.T("βρέθηκε εδώ", "found here") : null,
                     Icon = "target", Color = Brand.Primary, Tag = WorkModeKind.Field
                 },
@@ -179,7 +179,7 @@ namespace QuestMarkerApp.UI
             if (mode == WorkModeKind.Field)
             {
                 if (PracticeProject.IsActive) PracticeProject.Leave();
-                // The model stands on the real structure once aligned; the room stays visible.
+                // On site the model only carries the heatmap, on the structure (ModelOverlay.FieldAllows).
                 if (model != null) model.View = ModelOverlay.ViewMode.Auto;
                 if (alignment != null) alignment.OpenIfNeeded();
             }
