@@ -505,7 +505,7 @@ namespace QuestMarkerApp.UI
             {
                 // Every reply is kept on the headset: loading the project here, online, is the
                 // pack; on a site with no signal the same steps open from it.
-                Label = L.T("Offline πακέτο", "Offline pack"),
+                Label = L.T("Πακέτο χωρίς σύνδεση", "Offline pack"),
                 Value = () => terraweb != null && terraweb.ServingOffline
                     ? L.T("Σε χρήση · ", "In use · ") + AgoUtc(terraweb.OfflineDataDate)
                     : OfflineCache.Newest(terraweb != null ? terraweb.Server : null) is DateTime t
@@ -528,7 +528,7 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
-                Label = L.T("Καθαρισμός όλων των αισθητήρων", "Clear all sensors"),
+                Label = L.T("Καθαρισμός αισθητήρων", "Clear all sensors"),
                 Value = () => markers != null ? markers.ActiveMarkerCount.ToString() : "",
                 Enabled = () => markers != null && markers.ActiveMarkerCount > 0,
                 Destructive = true,
@@ -673,14 +673,14 @@ namespace QuestMarkerApp.UI
             {
                 Label = L.T("Μόνο συναγερμοί", "Alarms only"),
                 Value = () => markers == null || !markers.AlarmsOnly ? L.T("Όχι · όλοι", "Off · all")
-                    : PracticeProject.IsActive ? L.T("Ναι · όλοι στην εξάσκηση", "On · all in practice")
-                    : L.T("Ναι · όλοι στην ευθυγράμμιση", "On · all while aligning"),
+                    : PracticeProject.IsActive ? L.T("Ναι · όχι στην εξάσκηση", "On · off in practice")
+                    : L.T("Ναι · όχι στην ευθυγρ.", "On · off when aligning"),
                 Enabled = () => markers != null,
                 Run = () => markers.AlarmsOnly = !markers.AlarmsOnly
             });
             y = Row(y, new Item
             {
-                Label = L.T("Βέλη για συναγερμούς εκτός θέας", "Arrows to alarms out of view"),
+                Label = L.T("Βέλη προς συναγερμούς", "Arrows to alarms out of view"),
                 Value = () => AlarmBeacons.Enabled ? L.T("Ναι", "On") : L.T("Όχι", "Off"),
                 Run = () => AlarmBeacons.Enabled = !AlarmBeacons.Enabled
             });

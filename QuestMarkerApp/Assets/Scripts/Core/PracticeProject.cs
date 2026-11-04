@@ -25,7 +25,7 @@ namespace QuestMarkerApp.Core
     public static class PracticeProject
     {
         /// <summary>Shown as the project name in the menu and the alignment panel.</summary>
-        public const string Name = "ΕΞΑΣΚΗΣΗ / PRACTICE";
+        public static string Name => L.T("Εξάσκηση", "Practice");
         /// <summary>Distance P1–P2 on the printed sheet's instructions.</summary>
         public const float Baseline = 3.00f;
 

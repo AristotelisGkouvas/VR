@@ -66,7 +66,7 @@ namespace QuestMarkerApp.Core
         private static readonly List<Measurement> measured = new List<Measurement>();
         private static readonly Dictionary<string, int> repeats = new Dictionary<string, int>();
 
-        /// <summary>Menu readout: "Ενεργή · 7 μετρήσεις · διάμεσος 2.3 cm".</summary>
+        /// <summary>Menu readout, short enough for the value column: "Ενεργή · n=7 · 2.3 cm" (median).</summary>
         public static string Summary
         {
             get
@@ -79,8 +79,8 @@ namespace QuestMarkerApp.Core
                 foreach (Measurement m in measured) h.Add(m.ErrH);
                 h.Sort();
                 float median = h.Count % 2 == 1 ? h[h.Count / 2] : 0.5f * (h[h.Count / 2 - 1] + h[h.Count / 2]);
-                return L.T($"Ενεργή · {measured.Count} μετρ. · διάμ. {median * 100f:F1} cm",
-                    $"On · {measured.Count} measured · median {median * 100f:F1} cm");
+                return L.T($"Ενεργή · n={measured.Count} · {median * 100f:F1} cm",
+                    $"On · n={measured.Count} · {median * 100f:F1} cm");
             }
         }
 
@@ -89,7 +89,7 @@ namespace QuestMarkerApp.Core
         {
             if (a == null || !a.HasProject) return L.T("Δεν υπάρχει έργο", "No project");
             if (!a.IsAligned) return L.T("Ευθυγράμμισε πρώτα", "Align first");
-            if (a.NeedsCheck) return L.T("Επιβεβαίωσε πρώτα τη θέση", "Confirm the position first");
+            if (a.NeedsCheck) return L.T("Επιβεβαίωσε τη θέση", "Confirm the position");
             return null;
         }
 

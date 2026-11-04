@@ -643,7 +643,7 @@ namespace QuestMarkerApp.UI
             badgeRoot.SetParent(transform, false);
             RectTransform c = VrUi.CreateCanvas("BadgeCanvas", badgeRoot, new Vector2(300f, 40f), MetersPerPixel);
             VrUi.Panel("Pill", c, 0, 0, 300, 40, Brand.Control, 20);
-            VrUi.Text("Text", c, 0, 0, 300, 40, "ΕΞΑΣΚΗΣΗ · PRACTICE", 17f, Brand.MapInk, true,
+            VrUi.Text("Text", c, 0, 0, 300, 40, L.T("ΕΞΑΣΚΗΣΗ", "PRACTICE"), 17f, Brand.MapInk, true,
                 TextAlignmentOptions.Center).characterSpacing = 4f;
             badgeRoot.gameObject.SetActive(false);
         }

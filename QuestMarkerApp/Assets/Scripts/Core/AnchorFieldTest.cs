@@ -24,7 +24,7 @@ namespace QuestMarkerApp.Core
         public const int MaxAnchorsPerProject = 12;
         // Longer than the reference anchor's 8 s: outdoors, finding the map takes a while.
         private const double LocalizeTimeout = 20.0;
-        private const string EnabledKey = "fieldtest.enabled";
+        private const string LegacyEnabledKey = "fieldtest.enabled";
         private const string ConditionKey = "fieldtest.condition";
         private const string SiteChangedKey = "fieldtest.siteChanged";
 
@@ -33,11 +33,24 @@ namespace QuestMarkerApp.Core
         private static readonly string[] ConditionNamesEl = { "Ηλιοφάνεια", "Συννεφιά", "Εσωτερικός χώρος", "Πρωί", "Μεσημέρι", "Βράδυ" };
         private static readonly string[] ConditionNamesEn = { "Sunny", "Cloudy", "Indoor", "Morning", "Noon", "Evening" };
 
+        /// <summary>
+        /// Session-only, off at every start: switched on on site, it cannot be left on by mistake
+        /// in the office, where touching the same project's points would log office rows and
+        /// pin anchors as if on site (it happened, 2026-11-03). Switching it on with the project
+        /// already loaded measures the saved anchors at once ("load").
+        /// </summary>
         public static bool Enabled
         {
-            get => PlayerPrefs.GetInt(EnabledKey, 0) == 1;
-            set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
+            get => testEnabled;
+            set
+            {
+                if (testEnabled == value) return;
+                testEnabled = value;
+                EnabledChanged?.Invoke();
+            }
         }
+        private static bool testEnabled;
+        private static event Action EnabledChanged;
 
         public static int Condition
         {
@@ -82,7 +95,7 @@ namespace QuestMarkerApp.Core
 
         public bool Busy => busy;
 
-        /// <summary>Menu readout: "3/4 εντοπίστηκαν · 2.1 s · max 4.2 cm".</summary>
+        /// <summary>Menu readout, short enough for the value column: "3/4 · 2.1 s · max 4.2 cm".</summary>
         public string Summary
         {
             get
@@ -102,7 +115,7 @@ namespace QuestMarkerApp.Core
                     if (cm.HasValue) worst = Mathf.Max(worst, cm.Value * 100f);
                 }
                 string max = worst >= 0f ? $" · max {worst:F1} cm" : "";
-                return L.T($"{ok}/{probes.Count} εντοπίστηκαν · {slowest:F1} s{max}",
+                return L.T($"{ok}/{probes.Count} · {slowest:F1} s{max}",
                     $"{ok}/{probes.Count} localized · {slowest:F1} s{max}");
             }
         }
@@ -116,6 +129,8 @@ namespace QuestMarkerApp.Core
             project.OnPointPlaced += OnPointPlaced;
             project.OnPointRemoved += OnPointRemoved;
             project.OnAlignmentChanged += CheckProject;
+            EnabledChanged += OnEnabledChanged;
+            if (PlayerPrefs.HasKey(LegacyEnabledKey)) { PlayerPrefs.DeleteKey(LegacyEnabledKey); Prefs.Save(); }
             CheckProject();
         }
 
@@ -125,6 +140,7 @@ namespace QuestMarkerApp.Core
             project.OnPointPlaced -= OnPointPlaced;
             project.OnPointRemoved -= OnPointRemoved;
             project.OnAlignmentChanged -= CheckProject;
+            EnabledChanged -= OnEnabledChanged;
         }
 
         private void Update()
@@ -160,6 +176,22 @@ namespace QuestMarkerApp.Core
             float until = Time.realtimeSinceStartup + 12f;
             while (reference != null && !reference.IsInitialized && Time.realtimeSinceStartup < until) yield return null;
             if (Enabled && store.anchors.Count > 0) yield return Measure("load");
+            busy = false;
+            measureRoutine = null;
+        }
+
+        // Switched on with the project already loaded: the load measurement it skipped, now.
+        private void OnEnabledChanged()
+        {
+            if (!Enabled || busy || store == null || store.anchors.Count == 0 || probes.Count > 0) return;
+            if (!project.HasProject || project.IsPractice) return;
+            measureRoutine = StartCoroutine(MeasureOnSwitchOn());
+        }
+
+        private IEnumerator MeasureOnSwitchOn()
+        {
+            busy = true;
+            yield return Measure("load");
             busy = false;
             measureRoutine = null;
         }
