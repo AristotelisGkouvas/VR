@@ -422,9 +422,9 @@ namespace QuestMarkerApp.UI
         private static void AddModel(string ctx, List<(Button, string, string, bool)> offMap, List<(Button, string, string, bool)> domMap)
         {
             if (!offMap.Exists(e => e.Item1 == Button.Grip))
-                offMap.Add((Button.Grip, "pin", L.T("Κράτα: μετακίνηση μοντέλου", "Hold: move model"), false));
+                offMap.Add((Button.Grip, "move", L.T("Κράτα: μετακίνηση μοντέλου", "Hold: move model"), false));
             if (!PanelGrip(ctx) && !domMap.Exists(e => e.Item1 == Button.Grip))
-                domMap.Add((Button.Grip, "pin", L.T("Και τα δύο grip: ζουμ / στροφή", "Both grips: zoom / turn"), false));
+                domMap.Add((Button.Grip, "move", L.T("Και τα δύο grip: ζουμ / στροφή", "Both grips: zoom / turn"), false));
         }
 
         // Contexts whose panels can be carried with the dominant grip.
@@ -553,7 +553,7 @@ namespace QuestMarkerApp.UI
             hand.Badges.Clear();
 
             if (hand.IsLeft == Hands.LeftHanded && PanelGrip(context))
-                map.Add((Button.Grip, "pin", L.T("Κράτα: μετακίνηση", "Hold: move"), false));
+                map.Add((Button.Grip, "move", L.T("Κράτα: μετακίνηση", "Hold: move"), false));
             map.Sort((a, b) => a.button.CompareTo(b.button)); // top of the controller first
             foreach (var (button, icon, action, mirror) in map)
             {
