@@ -687,8 +687,8 @@ namespace QuestMarkerApp.UI
             hud.gameObject.SetActive(false);
         }
 
-        // Tabletop: beside the miniature, never over it. To its right as seen by the user, at the
-        // height of its top, standing in the world; re-placed only when the user has walked a
+        // Tabletop: beside the miniature, never over it. At its near right corner as seen by the user,
+        // standing in the world; re-placed only when the user has walked a
         // good way round it. False when there is no miniature in reach (then body-locked).
         private bool TableHudTarget(Vector3 camPos, out Vector3 target)
         {
@@ -707,8 +707,10 @@ namespace QuestMarkerApp.UI
             if (hudSnap || hudDir.sqrMagnitude < 0.5f || Vector3.Angle(hudDir, toUser) > HudDeadZoneDeg)
                 hudDir = toUser;
             Vector3 right = Vector3.Cross(hudDir, Vector3.up); // the user's right, facing the model
-            target = c + right * (half + 0.25f) + hudDir * Mathf.Min(half, 0.4f);
-            target.y = Mathf.Min(top + 0.1f, camPos.y - 0.25f);
+            // The near right corner, a little in front of it: a glance down finds it, and a big
+            // miniature does not push it out of view (the offsets are capped).
+            target = c + right * Mathf.Min(half, 0.45f) + hudDir * (Mathf.Min(half, 0.6f) + 0.1f);
+            target.y = Mathf.Min(top, camPos.y - 0.35f);
             // Zoomed up so far that beside it is out of reach: back to body-locked.
             return Vector3.Distance(target, camPos) < 1.6f;
         }
