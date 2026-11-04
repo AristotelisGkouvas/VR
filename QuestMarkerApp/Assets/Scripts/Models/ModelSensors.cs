@@ -30,6 +30,8 @@ namespace QuestMarkerApp.Models
         /// it yet stay visible: 30 cm at 1:1, ~9.5 cm at 1:10, ~1.7 cm at a 300 m bridge's 1:306.
         /// </summary>
         private const float DotZoomPower = 0.5f;
+        /// <summary>Smallest dot, as a fraction of its distance (≈1°).</summary>
+        private const float MinDotAngle = 0.018f;
         /// <summary>Sensors beyond the model's extent by more than this are not drawn (metres, model scale).</summary>
         private const float FarMargin = 50f;
         /// <summary>Aim tolerance around the ray: an angle, or a distance near the hand.</summary>
@@ -121,6 +123,9 @@ namespace QuestMarkerApp.Models
 
         /// <summary>The ray is on a sensor dot (it, not the surface under it, answers the pointer).</summary>
         public bool Aiming => aimed != null;
+
+        /// <summary>The project point id of the dot aimed at, or null.</summary>
+        public string AimedPointId => aimed != null ? aimed.Point.id : null;
         private float aimedSince;
         private RectTransform hoverTag;
         private Image tagState;
@@ -266,7 +271,9 @@ namespace QuestMarkerApp.Models
                 d.T.localPosition = d.Local;
                 Vector3 away = d.T.position - eye;
                 float dist = away.magnitude;
-                float world = baseWorld * (d == aimed ? 1.4f : 1f);
+                // Never smaller than about a degree: zoomed in, the zoom rule alone left the
+                // dots as specks lost in the heatmap's colours.
+                float world = Mathf.Max(baseWorld, dist * MinDotAngle) * (d == aimed ? 1.4f : 1f);
                 if (dist > 1e-4f)
                 {
                     Vector3 dir = away / dist;

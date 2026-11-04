@@ -30,6 +30,9 @@ namespace QuestMarkerApp.UI
         private const float PlaySeconds = 10f;   // whole record, start to end
         private const float ScrubSeconds = 5f;   // stick held fully over: whole record
         private const float LabelWithin = 25f;   // metres: mm readouts only on nearby arrows
+        // On the model the sensors crowd (15 on one bridge): mm readouts only on the largest
+        // few and on the sensor aimed at; every arrow is still drawn.
+        private const int ModelLabels = 5;
         private static readonly string[] Months =
             { "Ιαν", "Φεβ", "Μαρ", "Απρ", "Μαΐ", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ" };
 
@@ -125,6 +128,10 @@ namespace QuestMarkerApp.UI
             public string Text;
             // Current SetActive state, so it is only toggled on change.
             public bool RootOn = true, ArrowOn = true, LabelOn = true;
+            /// <summary>Among the largest ModelLabels movements (labelled on the model).</summary>
+            public bool Top;
+            /// <summary>Drawn white (the heatmap carries the size): recoloured when it flips.</summary>
+            public bool White;
         }
 
         public void Init(ProjectAlignment alignment, MarkerManager markerManager)
@@ -339,6 +346,7 @@ namespace QuestMarkerApp.UI
                 double yaw = gridYaw * Math.PI / 180.0;
                 double cosYaw = Math.Cos(yaw), sinYaw = Math.Sin(yaw);
                 foreach (Item it in items) Draw(it, at, scale, cosYaw, sinYaw, camPos, frame);
+                if (dataChanged) RankLabels();
                 lastAt = at;
                 lastScale = scale;
                 lastCacheVersion = cacheVersion;
@@ -470,6 +478,10 @@ namespace QuestMarkerApp.UI
             }
 
             int index = IndexAt(it, at);
+            // With the heatmap on the model, its colours already say how much: the arrows are
+            // white with a dark edge so they stand out on any colour of it.
+            bool white = modelFrame != null && ModelHeatmap.Enabled;
+            if (white != it.White) { it.White = white; it.HasCache = false; }
 
             // The arrow is a pure function of (sample index, scale, base position, alignment):
             // the reading in force does not change between two sample dates, so a paused or
@@ -510,12 +522,12 @@ namespace QuestMarkerApp.UI
 
                 if (it.Valid)
                 {
-                    Color color = it.Color;
+                    Color color = it.White ? Color.white : it.Color;
                     it.Shaft.startColor = color.WithAlpha(0.75f);
                     it.Shaft.endColor = color;
                     it.HeadMaterial.color = color;
                     it.Label.text = it.Text;
-                    it.Label.color = color;
+                    it.Label.color = Color.white; // outlined: readable on any ground
                 }
 
                 it.HasCache = true;
@@ -556,10 +568,17 @@ namespace QuestMarkerApp.UI
                 it.Head.localScale = new Vector3(width * 1.6f, width * 1.6f, headLen);
             }
 
-            bool label = visible && camDist < LabelWithin;
+            bool label = visible && camDist < LabelWithin
+                         && (modelFrame == null || it.Top || (it.PointId != null && it.PointId == modelSensors.AimedPointId));
             SetOn(it.Label.gameObject, ref it.LabelOn, label);
             if (label)
             {
+                // Seen end-on (a mostly vertical arrow from above) the arrow is only a blob:
+                // the readout then says which way it went.
+                Vector3 view = (basePos - camPos).normalized;
+                bool endOn = Mathf.Abs(Vector3.Dot(view, vecNow / length)) > 0.85f;
+                string text = endOn ? (vecNow.y >= 0f ? "↑ " : "↓ ") + it.Text : it.Text;
+                if (it.Label.text != text) it.Label.text = text;
                 Vector3 pos = tip + Vector3.up * (width * 3f);
                 it.Label.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(pos - camPos));
                 // TMP 3D: font size 10 is ~1 unit tall, so this is ~1.2 cm of text per metre away.
@@ -568,6 +587,21 @@ namespace QuestMarkerApp.UI
         }
 
         private static double Sq(double? v) => v.HasValue ? v.Value * v.Value : 0;
+
+        private readonly List<Item> ranked = new List<Item>();
+
+        // The largest movements at the shown date get the mm readout on the model.
+        private void RankLabels()
+        {
+            ranked.Clear();
+            foreach (Item it in items)
+            {
+                it.Top = false;
+                if (it.Valid && it.RootOn) ranked.Add(it);
+            }
+            ranked.Sort((a, b) => b.Mm.CompareTo(a.Mm));
+            for (int i = 0; i < ranked.Count && i < ModelLabels; i++) ranked[i].Top = true;
+        }
 
         // Green → amber at half the red mark → red.
         private static Color Heat(float mm)
