@@ -211,7 +211,9 @@ namespace QuestMarkerApp.UI
             scrollThumb = VrUi.Panel("Thumb", listPage, Width - 18, BodyTop, 4, 40, Brand.FgFaint, 2);
 
             messagePage = VrUi.Rect("MessagePage", root, 0, 0, Width, Height);
-            spinner = VrUi.Icon("Spinner", messagePage, Width / 2f - 28, BodyTop + 70, 56, Brand.IconSprite("sensor-point"),
+            // A loading ring (Resources/UiIcons/spinner): the spinning sensor target read as
+            // a crosshair, not as "loading".
+            spinner = VrUi.Icon("Spinner", messagePage, Width / 2f - 28, BodyTop + 70, 56, Brand.UiIconSprite("spinner"),
                 Brand.Primary);
             messageTitle = VrUi.Text("Heading", messagePage, 40, BodyTop + 150, Width - 80, 40, "", 22f, Brand.Fg, true,
                 TextAlignmentOptions.Center);

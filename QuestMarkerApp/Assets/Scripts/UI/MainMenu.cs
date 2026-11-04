@@ -1059,14 +1059,8 @@ namespace QuestMarkerApp.UI
                 Destructive = true,
                 Run = () => model.Unload()
             });
-            string ip = serverText.Split(':')[0];
-            // One line: the page's rows reach almost to the back button (the grips are on the
-            // controller hints).
-            var note = VrUi.Text("ModelNote", body, 28, y + 4, Width - 56, 26,
-                L.T($"PC: send_model.py αρχείο --quest-ip {ip} --api-key ", $"PC: send_model.py file --quest-ip {ip} --api-key ")
-                + (server != null ? server.ApiKey : ""),
-                11f, Brand.FgSubtle);
-            note.textWrappingMode = TextWrappingModes.Normal;
+            // No send_model.py line here any more: the user does not send models, they come
+            // with the project (Terraweb). The PC route stays for development, in the README.
             BackButton();
         }
 
@@ -1089,7 +1083,7 @@ namespace QuestMarkerApp.UI
             if (items.Count == 0)
             {
                 flowPanel.ShowMessage(L.T("ΜΟΝΤΕΛΟ 3D", "3D MODEL"), L.T("Κανένα μοντέλο", "No models"), L.T("Δεν υπάρχουν αρχεία στα γυαλιά", "No files on the headset"),
-                    L.T("Στείλε ένα από το PC με το send_model.py (OBJ, DXF ή IFC). Φορτώνεται αμέσως μόλις φτάσει.", "Send one from the PC with send_model.py (OBJ, DXF or IFC). It loads as soon as it arrives."),
+                    L.T("Το μοντέλο του έργου έρχεται μαζί με το έργο από το Terraweb. Φορτώνεται αμέσως μόλις φτάσει.", "The project's model comes with the project from Terraweb. It loads as soon as it arrives."),
                     false, flowPanel.Close);
                 return;
             }

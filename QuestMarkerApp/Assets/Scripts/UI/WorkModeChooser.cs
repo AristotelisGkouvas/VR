@@ -153,8 +153,8 @@ namespace QuestMarkerApp.UI
             {
                 flow.ShowMessage(L.T("Γραφείο", "Office"), L.T("Δεν υπάρχει μοντέλο", "No model"),
                     L.T("Δεν υπάρχει μοντέλο στα γυαλιά", "No model on the headset"),
-                    L.T("Στείλε το από το PC:\npython Server/send_model.py μοντέλο.obj --quest-ip <IP> --api-key <κλειδί>\n\nB: συνέχεια χωρίς μοντέλο.",
-                        "Send one from the PC:\npython Server/send_model.py model.obj --quest-ip <IP> --api-key <key>\n\nB: go on without a model."),
+                    L.T("Το μοντέλο του έργου έρχεται μαζί με το έργο από το Terraweb.\n\nB: συνέχεια χωρίς μοντέλο.",
+                        "The project's model comes with the project from Terraweb.\n\nB: go on without a model."),
                     false, () => Finish(WorkModeKind.Office, null));
                 return;
             }
