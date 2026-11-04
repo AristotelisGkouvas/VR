@@ -78,6 +78,7 @@ namespace QuestMarkerApp.UI
         private float progress = 1f;
         private bool playing;
         private float nextScaleStep;
+        private int stickAxis; // 0 none, 1 date (←→), 2 arrow size (↑↓)
 
         private Transform hud;
         private TextMeshProUGUI hudTitle, hudDate, hudFrom, hudTo, hudCount, hudHint;
@@ -370,15 +371,22 @@ namespace QuestMarkerApp.UI
         private void HandleInput()
         {
             float x = Hands.AnyStickX();
-            if (Mathf.Abs(x) > 0.15f)
+            float y = Hands.AnyStickY();
+            // One axis per push: the first direction the stick leans in wins until it is let go.
+            // A push up for bigger arrows leaned a little sideways too and moved the date,
+            // which at ×5000 (nothing bigger to step to) was all that happened.
+            float ax = Mathf.Abs(x), ay = Mathf.Abs(y);
+            if (ax < 0.15f && ay < 0.15f) stickAxis = 0;
+            else if (stickAxis == 0) stickAxis = ax >= ay ? 1 : 2;
+
+            if (stickAxis == 1 && ax > 0.15f)
             {
                 playing = false;
                 // Squared: a light push creeps, a full push sweeps.
-                progress = Mathf.Clamp01(progress + x * Mathf.Abs(x) * Time.deltaTime / ScrubSeconds);
+                progress = Mathf.Clamp01(progress + x * ax * Time.deltaTime / ScrubSeconds);
             }
 
-            float y = Hands.AnyStickY();
-            if (Mathf.Abs(y) > 0.7f && Mathf.Abs(x) < 0.5f && Time.unscaledTime >= nextScaleStep)
+            if (stickAxis == 2 && ay > 0.7f && Time.unscaledTime >= nextScaleStep)
             {
                 int next = Mathf.Clamp(scaleIndex + (y > 0 ? 1 : -1), 0, Scales.Length - 1);
                 if (next != scaleIndex)
@@ -387,9 +395,10 @@ namespace QuestMarkerApp.UI
                     Feedback.Play(Feedback.Sound.Tick);
                     Feedback.Buzz(Hands.Dominant, 0.2f, 0.03f);
                 }
+                else Feedback.Buzz(Hands.Dominant, 0.6f, 0.08f); // at the end of the scale: a firmer bump
                 nextScaleStep = Time.unscaledTime + 0.35f;
             }
-            else if (Mathf.Abs(y) < 0.3f) nextScaleStep = 0f;
+            else if (ay < 0.3f) nextScaleStep = 0f;
 
             // Not when the grip picks up a panel, nor as the first hand of a two-handed zoom.
             if (Hands.GripDown() && !Hands.OffHandGripHeld() && !VrPointer.ConsumedThisFrame && !VrPointer.IsDragging)

@@ -348,7 +348,7 @@ namespace QuestMarkerApp.UI
                 case "align":
                     return new List<(Button, string, string, bool)>
                     {
-                        (Button.Primary, "list", L.T("Κλείσιμο ευθυγρ.", "Close alignment"), false),
+                        (Button.Primary, "close", L.T("Κλείσιμο ευθυγρ.", "Close alignment"), false), // ✕, not the list icon: three lines read as a second Menu button
                         (Button.Thumbstick, "sort", L.T("Επιλογή αισθητήρα", "Select sensor"), false),
                         (Button.Menu, "menu", L.T("Μενού", "Menu"), false)
                     };
