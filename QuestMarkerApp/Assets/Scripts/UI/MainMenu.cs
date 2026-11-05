@@ -426,10 +426,12 @@ namespace QuestMarkerApp.UI
             // (usage map Ε1). First press shows it and closes the menu; later presses step the
             // measure (total → vertical → rate → off) with the menu open.
             tiles.Add(("displacement", L.T("Heatmap", "Heatmap"),
-                () => model == null || !model.IsLoaded ? L.T("χωρίς μοντέλο", "no model")
-                    : WorkMode.IsField && !ready ? L.T("μετά την ευθυγρ.", "after alignment")
-                    : ModelHeatmap.Enabled ? ModelHeatmap.MeasureName : L.T("μετακινήσεις", "movement"),
-                () => model != null && model.IsLoaded && (!WorkMode.IsField || ready),
+                () => (model == null || !model.IsLoaded) && WorkMode.IsOffice ? L.T("χωρίς μοντέλο", "no model")
+                    : (WorkMode.IsField || model == null || !model.IsLoaded) && !ready ? L.T("μετά την ευθυγρ.", "after alignment")
+                    : ModelHeatmap.Enabled ? ModelHeatmap.MeasureName
+                    : model == null || !model.IsLoaded ? L.T("ζώνες αισθητήρων", "sensor zones") : L.T("μετακινήσεις", "movement"),
+                // With no model, the zones around the sensors (SensorHeatZones): on site only.
+                () => model != null && model.IsLoaded ? !WorkMode.IsField || ready : ready && !WorkMode.IsOffice,
                 () =>
                 {
                     if (!ModelHeatmap.Enabled) { ModelHeatmap.Enabled = true; ModelHeatmap.Shown = ModelHeatmap.Measure.Total; Close(); }

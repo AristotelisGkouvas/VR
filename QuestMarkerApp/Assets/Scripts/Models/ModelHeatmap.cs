@@ -6,6 +6,7 @@ using UnityEngine.Rendering;
 using UnityEngine.UI;
 using QuestMarkerApp.API;
 using QuestMarkerApp.Core;
+using QuestMarkerApp.Markers;
 using QuestMarkerApp.UI;
 
 namespace QuestMarkerApp.Models
@@ -66,6 +67,9 @@ namespace QuestMarkerApp.Models
             get => Mathf.Clamp(PlayerPrefs.GetInt(ReachKey, 0), 0, 2);
             set { PlayerPrefs.SetInt(ReachKey, Mathf.Clamp(value, 0, 2)); Prefs.Save(); }
         }
+
+        /// <summary>The menu's narrow / wide setting as a factor (SensorHeatZones sizes by it too).</summary>
+        public static float ReachFactor => ReachFactors[ReachSetting];
 
         public static string ReachName => (L.En ? ReachNamesEn : ReachNamesEl)[ReachSetting];
 
@@ -143,9 +147,18 @@ namespace QuestMarkerApp.Models
             if (!on)
             {
                 if (shown) { Shader.SetGlobalFloat(HeatOpacityId, 0f); SetHeatKeyword(false); shown = false; }
+                key = null; // shown again: computed again (the texture is zeroed out of view)
+                // No model: the zones around the sensors carry the same scale and legend.
+                if (Enabled && SensorHeatZones.Showing)
+                {
+                    computed = Shown;
+                    Count = SensorHeatZones.Count;
+                    Status = L.En ? $"Zones · {Count} sensors" : $"Ζώνες · {Count} αισθητήρες";
+                    ShowUi(!UiState.AnyModal);
+                    return;
+                }
                 Status = Enabled ? L.T("Χωρίς μοντέλο", "No model") : L.T("Όχι", "Off");
                 ShowUi(false);
-                key = null; // shown again: computed again (the texture is zeroed out of view)
                 return;
             }
             ShowUi(shown && !UiState.AnyModal);
@@ -172,33 +185,45 @@ namespace QuestMarkerApp.Models
             sampleIds.Clear();
             foreach ((ProjectPoint p, Vector3 local) in sensors.DotPoints)
             {
-                if (!SensorHistory.TryDisplacementAt(p.sensorId, at, out SensorHistory.Sample s)) continue;
-                double toMm = SensorHistory.MetresPerUnit(p.sensorId) * 1000.0;
-                double value;
-                if (measure == Measure.Rate)
-                {
-                    // Change of the total movement over the last RateDays before the reading.
-                    DateTime back = s.Date.AddDays(-RateDays);
-                    if (!SensorHistory.TryDisplacementAt(p.sensorId, back, out SensorHistory.Sample o)) continue;
-                    double days = (s.Date - o.Date).TotalDays;
-                    if (days < RateDays * 0.5) continue; // too short a span to call a rate
-                    double ddx = (s.Dx ?? 0) - (o.Dx ?? 0), ddy = (s.Dy ?? 0) - (o.Dy ?? 0), ddz = (s.Dz ?? 0) - (o.Dz ?? 0);
-                    value = Math.Sqrt(ddx * ddx + ddy * ddy + ddz * ddz) * toMm / days;
-                }
-                else
-                {
-                    double dx = s.Dx ?? 0, dy = s.Dy ?? 0, dz = s.Dz ?? 0;
-                    if (from.HasValue && SensorHistory.TryDisplacementAt(p.sensorId, from.Value, out SensorHistory.Sample z))
-                    {
-                        dx -= z.Dx ?? 0;
-                        dy -= z.Dy ?? 0;
-                        dz -= z.Dz ?? 0;
-                    }
-                    value = measure == Measure.Vertical ? dz * toMm : Math.Sqrt(dx * dx + dy * dy + dz * dz) * toMm;
-                }
-                samples.Add((new Vector2(local.x, local.z), (float)value));
+                if (!TryValue(p.sensorId, at, from, measure, out float value)) continue;
+                samples.Add((new Vector2(local.x, local.z), value));
                 sampleIds.Append(p.id).Append(',');
             }
+        }
+
+        /// <summary>
+        /// A sensor's value at the date: mm, signed mm for dz, mm/day for the rate. False when it
+        /// has no reading by then, or too short a span to call a rate.
+        /// </summary>
+        public static bool TryValue(string sensorId, DateTime at, DateTime? from, Measure measure, out float result)
+        {
+            result = 0f;
+            if (!SensorHistory.TryDisplacementAt(sensorId, at, out SensorHistory.Sample s)) return false;
+            double toMm = SensorHistory.MetresPerUnit(sensorId) * 1000.0;
+            double value;
+            if (measure == Measure.Rate)
+            {
+                // Change of the total movement over the last RateDays before the reading.
+                DateTime back = s.Date.AddDays(-RateDays);
+                if (!SensorHistory.TryDisplacementAt(sensorId, back, out SensorHistory.Sample o)) return false;
+                double days = (s.Date - o.Date).TotalDays;
+                if (days < RateDays * 0.5) return false;
+                double ddx = (s.Dx ?? 0) - (o.Dx ?? 0), ddy = (s.Dy ?? 0) - (o.Dy ?? 0), ddz = (s.Dz ?? 0) - (o.Dz ?? 0);
+                value = Math.Sqrt(ddx * ddx + ddy * ddy + ddz * ddz) * toMm / days;
+            }
+            else
+            {
+                double dx = s.Dx ?? 0, dy = s.Dy ?? 0, dz = s.Dz ?? 0;
+                if (from.HasValue && SensorHistory.TryDisplacementAt(sensorId, from.Value, out SensorHistory.Sample z))
+                {
+                    dx -= z.Dx ?? 0;
+                    dy -= z.Dy ?? 0;
+                    dz -= z.Dz ?? 0;
+                }
+                value = measure == Measure.Vertical ? dz * toMm : Math.Sqrt(dx * dx + dy * dy + dz * dz) * toMm;
+            }
+            result = (float)value;
+            return true;
         }
 
         private void Compute(DateTime at, DateTime? from)
@@ -504,7 +529,7 @@ namespace QuestMarkerApp.Models
 #if !MOBILE_PREVIEW
             if (rig == null) rig = FindAnyObjectByType<OVRCameraRig>();
             Transform hand = rig != null && Hands.DominantConnected ? Hands.DominantAnchor(rig) : null;
-            if (hand != null && !VrPointer.IsHovering && !sensors.Aiming && lastPts.Length > 0
+            if (hand != null && overlay.IsLoaded && !VrPointer.IsHovering && !sensors.Aiming && lastPts.Length > 0
                 && overlay.TryRaycastSurface(new Ray(hand.position, hand.forward), 60f, out Vector3 local))
             {
                 var q = new Vector2(local.x, local.z);

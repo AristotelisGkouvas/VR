@@ -22,6 +22,15 @@ namespace QuestMarkerApp.Core
             set { PlayerPrefs.SetInt(EnabledKey, value ? 1 : 0); Prefs.Save(); }
         }
 
+        /// <summary>
+        /// SensorHeatZones paints on the real surface: the depth map runs for it, with the
+        /// markers' fading left as the menu has it (OcclusionShadersMode.None when off).
+        /// </summary>
+        public static bool ZonesWantDepth { get; set; }
+
+        /// <summary>A depth map is available to sample this frame.</summary>
+        public static bool DepthReady { get; private set; }
+
         /// <summary>One line for the menu.</summary>
         public static string Status { get; private set; } = "";
 
@@ -34,7 +43,9 @@ namespace QuestMarkerApp.Core
         {
             if (Time.unscaledTime < nextCheck) return;
             nextCheck = Time.unscaledTime + 0.5f;
-            bool want = Enabled;
+            bool fade = Enabled;
+            bool want = fade || ZonesWantDepth;
+            DepthReady = false;
             if (!want)
             {
                 if (manager != null && manager.enabled) manager.enabled = false; // its OnDisable clears the shader keywords
@@ -59,12 +70,15 @@ namespace QuestMarkerApp.Core
             if (manager == null)
             {
                 manager = gameObject.AddComponent<EnvironmentDepthManager>();
-                manager.OcclusionShadersMode = OcclusionShadersMode.SoftOcclusion;
+                manager.OcclusionShadersMode = fade ? OcclusionShadersMode.SoftOcclusion : OcclusionShadersMode.None;
                 manager.RemoveHands = true; // the controllers and hands never hide a marker
                 Debug.Log("[Depth] Environment depth on: markers behind real surfaces turn faint");
             }
             else if (!manager.enabled) manager.enabled = true;
-            Status = manager.IsDepthAvailable ? L.T("Ναι", "On") : L.T("Ναι · εκκίνηση…", "On · starting…");
+            OcclusionShadersMode mode = fade ? OcclusionShadersMode.SoftOcclusion : OcclusionShadersMode.None;
+            if (manager.OcclusionShadersMode != mode) manager.OcclusionShadersMode = mode;
+            DepthReady = manager.IsDepthAvailable;
+            Status = !fade ? L.T("Όχι", "Off") : manager.IsDepthAvailable ? L.T("Ναι", "On") : L.T("Ναι · εκκίνηση…", "On · starting…");
         }
 #endif
     }
