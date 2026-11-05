@@ -51,13 +51,13 @@ namespace QuestMarkerApp.UI
         private Image targetChip, targetGlyph, gaugeBar, gaugeOkZone, gaugeNeedle;
         private RectTransform gaugeBlock;
         private Image verdictDot;
-        private TextMeshProUGUI verdictWord, verdictHint, metricH, metricV, metricYaw;
+        private TextMeshProUGUI verdictWord, verdictHint, metricH, metricV;
         private TextMeshProUGUI controlCount, controlMore, controlUndo;
         private readonly List<ControlRow> controlRows = new List<ControlRow>();
         private Image doneButton;
         private TextMeshProUGUI doneLabel;
         // Texts set once in Build, re-set by Relabel when the language changes.
-        private TextMeshProUGUI eyebrow, captionH, captionV, captionYaw, controlHeader, listButtonLabel, listHeader, guideButtonLabel;
+        private TextMeshProUGUI eyebrow, captionH, captionV, controlHeader, listButtonLabel, listHeader, guideButtonLabel;
 
         // List page.
         private TextMeshProUGUI listCount;
@@ -135,7 +135,6 @@ namespace QuestMarkerApp.UI
             eyebrow.text = L.T("ΕΥΘΥΓΡΑΜΜΙΣΗ", "ALIGNMENT");
             captionH.text = L.T("Οριζόντιο", "Horizontal");
             captionV.text = L.T("Κατακόρυφο", "Vertical");
-            captionYaw.text = L.T("Γωνία", "Angle");
             controlHeader.text = L.T("ΣΗΜΕΙΑ ΕΛΕΓΧΟΥ", "CONTROL POINTS");
             listButtonLabel.text = L.T("Λίστα", "List");
             listHeader.text = L.T("ΑΙΣΘΗΤΗΡΕΣ", "SENSORS");
@@ -204,8 +203,7 @@ namespace QuestMarkerApp.UI
             verdictWord = VrUi.Text("Word", verdictBlock, 34, 10, Inner - 18, 26, "", 17f, Brand.Primary, true);
             verdictHint = VrUi.Text("Hint", verdictBlock, 16, 36, Inner, 20, "", 12.5f, Brand.FgMuted);
             metricH = Metric(verdictBlock, 16, 62, out captionH);
-            metricV = Metric(verdictBlock, 16 + Inner / 3f, 62, out captionV);
-            metricYaw = Metric(verdictBlock, 16 + Inner * 2f / 3f, 62, out captionYaw);
+            metricV = Metric(verdictBlock, 16 + Inner / 2f, 62, out captionV);
         }
 
         private static TextMeshProUGUI Metric(Transform parent, float x, float y, out TextMeshProUGUI caption)
@@ -592,7 +590,6 @@ namespace QuestMarkerApp.UI
             verdictHint.text = hint;
             metricH.text = Centimetres(a.RmsHorizontal);
             metricV.text = Centimetres(a.RmsVertical);
-            metricYaw.text = $"{a.YawDeg:F1}°";
         }
 
         private void RefreshControlPoints(ProjectAlignment a)

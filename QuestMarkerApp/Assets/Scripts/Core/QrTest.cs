@@ -66,6 +66,7 @@ namespace QuestMarkerApp.Core
         {
             public MRUKTrackable Trackable;
             public string Payload;
+            public bool HasPose;
             public Vector3 Center;
             public float Width, Height;
             public readonly Queue<Vector3> Recent = new Queue<Vector3>();
@@ -181,18 +182,19 @@ namespace QuestMarkerApp.Core
                 if (c.Trackable == null) continue;
                 Transform t = c.Trackable.transform;
                 Rect box = c.Trackable.PlaneRect ?? default;
-                c.Center = t.TransformPoint(new Vector3(box.center.x, box.center.y, 0f));
+                bool ghost = IsGhost(c.Payload, box.width);
+                Vector3 center = t.TransformPoint(new Vector3(box.center.x, box.center.y, 0f));
+                if (log) Append(c, center, box, t.rotation, head);
+                if (ghost) continue;
+                c.HasPose = true;
+                c.Center = center;
                 c.Width = box.width;
                 c.Height = box.height;
-                if (log)
+                // A lost code keeps its last pose: that is not a measurement of jitter.
+                if (log && c.Trackable.IsTracked)
                 {
-                    // A lost code keeps its last pose: that is not a measurement of jitter.
-                    if (c.Trackable.IsTracked)
-                    {
-                        c.Recent.Enqueue(c.Center);
-                        while (c.Recent.Count > JitterSamples) c.Recent.Dequeue();
-                    }
-                    Append(c, t.rotation, head);
+                    c.Recent.Enqueue(c.Center);
+                    while (c.Recent.Count > JitterSamples) c.Recent.Dequeue();
                 }
                 Draw(c, t, box, head);
             }
@@ -203,6 +205,17 @@ namespace QuestMarkerApp.Core
                 RefreshHud();
             }
             PlaceHud(cam);
+        }
+
+        // The side the name promises (QM-13A: 13 cm), against what was read; ±30 % leaves room for
+        // a printer's scaling. A name without a size is taken at its word.
+        private static bool IsGhost(string payload, float width)
+        {
+            string[] parts = payload.Split('-');
+            if (parts.Length < 2 || parts[1].Length < 2 || !int.TryParse(parts[1].Substring(0, 2), out int cm) || cm <= 0)
+                return width < 0.02f;
+            float nominal = cm * 0.01f;
+            return width < nominal * 0.7f || width > nominal * 1.3f;
         }
 
         private void Draw(Code c, Transform t, Rect box, Vector3 head)
@@ -282,6 +295,7 @@ namespace QuestMarkerApp.Core
             for (int i = 0; i < list.Count; i++)
                 for (int j = i + 1; j < list.Count && lines < 6; j++)
                 {
+                    if (!list[i].HasPose || !list[j].HasPose) continue;
                     text.Append(list[i].Payload).Append(" – ").Append(list[j].Payload).Append(": ")
                         .Append(Vector3.Distance(list[i].Center, list[j].Center).ToString("0.000", CultureInfo.InvariantCulture)).Append(" m\n");
                     lines++;
@@ -310,7 +324,7 @@ namespace QuestMarkerApp.Core
         //  CSV (same conventions as FieldTestLog: BOM on a new file, quoted fields, invariant numbers)
         // ------------------------------------------------------------------
 
-        private void Append(Code c, Quaternion rotation, Vector3 head)
+        private void Append(Code c, Vector3 center, Rect box, Quaternion rotation, Vector3 head)
         {
             try
             {
@@ -323,7 +337,7 @@ namespace QuestMarkerApp.Core
                 var sb = new StringBuilder(256);
                 if (fresh) sb.Append(string.Join(",", Columns)).Append('\n');
                 Vector3 normal = rotation * Vector3.forward;
-                float angle = Vector3.Angle(normal, head - c.Center);
+                float angle = Vector3.Angle(normal, head - center);
                 if (angle > 90f) angle = 180f - angle; // which way the anchor's axis points is not the question
                 Field(sb, DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm:ss.fffzzz", CultureInfo.InvariantCulture));
                 Field(sb, FieldTestLog.SessionId);
@@ -332,8 +346,8 @@ namespace QuestMarkerApp.Core
                 Field(sb, WorkMode.Tag);
                 Field(sb, c.Payload);
                 Field(sb, c.Trackable.IsTracked ? "1" : "0");
-                foreach (float v in new[] { c.Center.x, c.Center.y, c.Center.z, rotation.x, rotation.y, rotation.z, rotation.w,
-                             c.Width, c.Height, head.x, head.y, head.z, Vector3.Distance(head, c.Center), angle })
+                foreach (float v in new[] { center.x, center.y, center.z, rotation.x, rotation.y, rotation.z, rotation.w,
+                             box.width, box.height, head.x, head.y, head.z, Vector3.Distance(head, center), angle })
                     Field(sb, v.ToString("0.#####", CultureInfo.InvariantCulture));
                 sb[sb.Length - 1] = '\n';
                 File.AppendAllText(file, sb.ToString(), new UTF8Encoding(fresh));
