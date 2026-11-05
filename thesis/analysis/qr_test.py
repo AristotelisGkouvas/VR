@@ -122,6 +122,26 @@ def report_pairs(rows: list[dict], tape: dict[frozenset, float]) -> None:
         print(line)
 
 
+def report_close(rows: list[dict], tape: dict[frozenset, float], reach: float = 1.2) -> None:
+    """Pairs from readings taken within arm's reach of each code, one code at a time: how stickers would be read."""
+    sessions = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        if r["head_dist_m"] <= reach:
+            sessions[r["session_id"]][r["payload"]].append((r["x"], r["y"], r["z"]))
+    print(f"
+Ζεύγη από κοντινές αναγνώσεις (έως {reach} m από κάθε κωδικό):")
+    for codes in sessions.values():
+        names = sorted(codes)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                pa = [st.median(p[k] for p in codes[a]) for k in range(3)]
+                pb = [st.median(p[k] for p in codes[b]) for k in range(3)]
+                d = math.dist(pa, pb)
+                pair = frozenset((a, b))
+                extra = f", ταινία {tape[pair]:.3f} m → σφάλμα {(d - tape[pair]) * 100:+.1f} cm" if pair in tape else ""
+                print(f"  {a} – {b}: {d:.3f} m (n={len(codes[a])}+{len(codes[b])}){extra}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", default=DEFAULT_DIR)
@@ -135,10 +155,17 @@ def main() -> None:
     rows = load(args.dir)
     if not rows:
         raise SystemExit(f"Δεν υπάρχουν CSV στο {args.dir}")
+    # A misread: the tracker once reported a 13 cm code as 0.4 cm wide, two metres away from it.
+    medians = {n: st.median(r["width_m"] for r in rows if r["payload"] == n) for n in {r["payload"] for r in rows}}
+    kept = [r for r in rows if abs(r["width_m"] - medians[r["payload"]]) <= 0.25 * medians[r["payload"]]]
+    if len(kept) != len(rows):
+        print(f"Απορρίφθηκαν {len(rows) - len(kept)} εσφαλμένες αναγνώσεις (πλευρά εκτός ±25% της διάμεσης)")
+    rows = kept
     mark_still(rows)
     print(f"{len(rows)} μετρήσεις, {len({r['session_id'] for r in rows})} συνεδρίες")
     report_codes(rows)
     report_pairs(rows, tape)
+    report_close(rows, tape)
 
 
 if __name__ == "__main__":
