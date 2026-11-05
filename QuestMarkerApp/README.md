@@ -449,6 +449,10 @@ curl -H "X-Api-Key: <κλειδί>" -O http://<IP του Quest>:8080/api/fieldte
 
 Στήλες: `timestamp, session_id, project, point_id, condition, site_changed, app_version, phase` (load / manual / touch / solution / create / undo / erase), `anchor_uuid, anchor_age_h, localized, seconds` (από την αρχή της μέτρησης), `tracked, dist_from_original_m, errH_cm_solution, errV_cm_solution, errH_cm_touch, errV_cm_touch, pair_errH_cm, pair_errV_cm` (χειρότερη διαφορά απόστασης από τα άλλα anchors σε σχέση με το έργο, χωρίς νέο άγγιγμα), `headset_dist_m, note, mode` (field / office). Κενή στήλη σημαίνει «άγνωστο». Το `dist_from_original_m` είναι γνωστό μόνο όταν ξαναβρέθηκε και το ίδιο reference anchor του χώρου (άρα είναι σχετική μετακίνηση δύο anchors) ή μέσα στην ίδια συνεδρία. Το κατακόρυφο σφάλμα έχει πρόσημο (anchor μείον αναφορά).
 
+## Μόνο συναγερμοί
+
+Μενού › Εμφάνιση › «Μόνο συναγερμοί»: στον χώρο μένουν μόνο οι αισθητήρες σε alert ή alarm. **Κλειστό σε κάθε εκκίνηση.** Όσο είναι ανοιχτό, ψηλά στη θέα φαίνεται η ένδειξη «Μόνο συναγερμοί · 10 από 44», ώστε να μην κρύβονται αισθητήρες χωρίς να το ξέρεις. Δεν ισχύει όσο κάνεις ευθυγράμμιση, στην εξάσκηση και στο Γραφείο.
+
 ## Πεδίο ή Γραφείο
 
 Στην εκκίνηση η εφαρμογή ρωτά **«Πού δουλεύεις τώρα;»**:

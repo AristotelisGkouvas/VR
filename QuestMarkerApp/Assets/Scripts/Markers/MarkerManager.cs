@@ -81,20 +81,19 @@ namespace QuestMarkerApp.Markers
         }
 
         private bool hideProjectLayer;
-        private static bool? alarmsOnly;
+        private static bool alarmsOnly;
 
         /// <summary>
-        /// Only the project's sensors in alert or alarm stay on site (PlayerPrefs "ui.alarmsOnly"):
-        /// among 80 icons the two that matter get lost. Off by default.
+        /// Only the project's sensors in alert or alarm stay on site: among 80 icons the two
+        /// that matter get lost. Off at every start: saved, it hid 34 of 44 sensors in a later
+        /// session with nothing to say so. While on, AlarmBeacons shows a badge with the count.
         /// </summary>
         public bool AlarmsOnly
         {
-            get => alarmsOnly ?? (bool)(alarmsOnly = PlayerPrefs.GetInt("ui.alarmsOnly", 0) == 1);
+            get => alarmsOnly;
             set
             {
                 alarmsOnly = value;
-                PlayerPrefs.SetInt("ui.alarmsOnly", value ? 1 : 0);
-                Prefs.Save();
                 ApplyLayerVisibility();
             }
         }
@@ -105,9 +104,10 @@ namespace QuestMarkerApp.Markers
         /// <summary>
         /// "Alarms only" in effect. Never while aligning (the alignment list is open, in any
         /// project, measuring accuracy included) nor in the office practice: seeing every sensor
-        /// land where it belongs is how the user judges an alignment.
+        /// land where it belongs is how the user judges an alignment. Nor in the office, whose
+        /// menu has no such row to switch it off.
         /// </summary>
-        public bool AlarmsOnlyApplies => AlarmsOnly && !PracticeProject.IsActive && !Aligning;
+        public bool AlarmsOnlyApplies => AlarmsOnly && !PracticeProject.IsActive && !WorkMode.IsOffice && !Aligning;
 
         private ProjectAlignment alignmentCache;
         private bool Aligning
@@ -127,7 +127,11 @@ namespace QuestMarkerApp.Markers
         }
 
         private void OnPracticeChanged() => ApplyLayerVisibility();
-        private void OnDestroy() => PracticeProject.Changed -= OnPracticeChanged;
+        private void OnDestroy()
+        {
+            PracticeProject.Changed -= OnPracticeChanged;
+            WorkMode.Changed -= OnPracticeChanged;
+        }
 
         /// <summary>
         /// Hides every marker on the site (the aligned sensors, the control points, anything the
@@ -148,6 +152,8 @@ namespace QuestMarkerApp.Markers
         private void Awake()
         {
             PracticeProject.Changed += OnPracticeChanged;
+            WorkMode.Changed += OnPracticeChanged;
+            PlayerPrefs.DeleteKey("ui.alarmsOnly"); // the old saved switch
             if (markersContainer == null)
             {
                 GameObject container = new GameObject("MarkersContainer");
