@@ -122,8 +122,10 @@ Shader "QuestMarker/ModelTextured"
                 fixed4 h = tex2D(_ModelHeatTex, i.heatUv);
                 if (_ModelHeatOnly > 0.5)
                 {
-                    c.rgb = lerp(fixed3(0.80, 0.81, 0.82), h.rgb, h.a);
-                    if (_ModelHeatSeeThrough > 0.5) c.a = h.a * _ModelHeatOpacity;
+                    // On site only the alpha fades: mixing in the clay turned the heat's soft
+                    // edge into a pale veil over the real room.
+                    if (_ModelHeatSeeThrough > 0.5) { c.rgb = h.rgb; c.a = h.a * _ModelHeatOpacity; }
+                    else c.rgb = lerp(fixed3(0.80, 0.81, 0.82), h.rgb, h.a);
                     return c; // no rim: it would bring back the outline outside the heat
                 }
                 c.rgb = lerp(c.rgb, h.rgb, h.a * _ModelHeatOpacity);
