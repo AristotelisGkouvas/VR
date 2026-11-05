@@ -158,9 +158,8 @@ namespace QuestMarkerApp.UI
             VrUi.Card("Card", root, 0, 0, Width, Height, Brand.Surface.WithAlpha(0.97f), Brand.BorderStrong, 24);
             VrPointer.RegisterDraggable(root, transform);
 
-            VrUi.Panel("Mark", root, 28, 30, 12, 12, Brand.Primary, 6);
-            VrUi.Text("Eyebrow", root, 48, 22, 300, 28, "TERRAWEB · QUEST", 14f, Brand.FgSubtle, true)
-                .characterSpacing = 8f;
+            VrUi.Text("Wordmark", root, 28, 18, 120, 32, Brand.Wordmark, 22f, Brand.Fg, true).characterSpacing = -4f;
+            VrUi.Text("WordmarkSub", root, 128, 22, 200, 28, "MONITORING", 10f, Brand.FgSubtle, true).characterSpacing = 18f;
             // Breadcrumb: "Κόνιτσα ›" in subtle ink, then the page name; on the home page just the name.
             crumb = VrUi.Text("Crumb", root, 28, 52, Width - 92, 40, "", 20f, Brand.FgSubtle, true);
             title = VrUi.Text("Title", root, 28, 52, Width - 92, 40, "", 27f, Brand.Fg, true);

@@ -38,9 +38,12 @@ namespace QuestMarkerApp.Markers
         // the line width and the end dot stay in the box.
         private const float Left = 0.7f, Width = 2.2f, Height = 1f;
         private const float PlotMargin = 0.08f;
-        private const float LineWidth = 0.03f;          // ~3 % of the ribbon height
+        private const float LineWidth = 0.018f;         // thin: 30 readings in 2 icon widths
+        // The chart's height never stands for less than this: scaled to its own min and max, a
+        // sensor wandering by tenths of a millimetre drew the same mountain as one really moving.
+        private const double MinRangeMm = 5.0;
         private const float DotSize = 0.1f;
-        private const float LabelScale = 0.2f;           // TMP size 10 ≈ 1 unit tall → 0.2 icon sizes
+        private const float LabelScale = 0.26f;          // TMP size 10 ≈ 1 unit tall → 0.26 icon sizes
         private const float LabelTop = -Height * 0.5f - 0.06f;
 
         private static bool? enabledPref;
@@ -181,7 +184,8 @@ namespace QuestMarkerApp.Markers
 
             Camera cam = Headset.Camera;
             if (cam == null || items.Count == 0) return;
-            if (!markers.MarkersVisible || Unavailable() != null)
+            // Not with the time machine open: its arrows and their readouts stand in the same place.
+            if (!markers.MarkersVisible || Unavailable() != null || DisplacementView.IsActive)
             {
                 if (anyShown) HideAll();
                 return;
@@ -326,7 +330,13 @@ namespace QuestMarkerApp.Markers
                 pointBuf[k] = new Vector3((float)mm, 0f, 0f);
                 lastMm = (float)mm;
             }
-            if (max - min < 1e-9) { max += 1; min -= 1; }   // flat series: a line in the middle
+            float firstMm = pointBuf[0].x;
+            if (max - min < MinRangeMm)
+            {
+                double middle = (max + min) * 0.5;
+                min = middle - MinRangeMm * 0.5;
+                max = middle + MinRangeMm * 0.5;
+            }
 
             float plotH = Height - 2f * PlotMargin, plotW = Width - 2f * PlotMargin;
             float x0 = Left + PlotMargin, y0 = -Height * 0.5f + PlotMargin;
@@ -349,14 +359,18 @@ namespace QuestMarkerApp.Markers
             Vector3 end = pointBuf[n - 1];
             r.Dot.localPosition = new Vector3(end.x, end.y, -0.01f);
 
+            // The value first, then how much it changed across the chart.
+            float change = lastMm - firstMm;
+            string sign = change >= 0f ? "+" : "−";
+            float size = Mathf.Abs(change);
             if (L.En)
                 r.Label.text = fallback
-                    ? $"{count} readings · {lastMm:F1} mm"
-                    : $"{WindowDays} d · {lastMm:F1} mm";
+                    ? $"{lastMm:F1} mm · {sign}{size:F1} in {count} readings"
+                    : $"{lastMm:F1} mm · {sign}{size:F1} in {WindowDays} d";
             else
                 r.Label.text = fallback
-                    ? $"{count} μετρ. · {lastMm:F1} mm"
-                    : $"{WindowDays} ημ · {lastMm:F1} mm";
+                    ? $"{lastMm:F1} mm · {sign}{size:F1} σε {count} μετρ."
+                    : $"{lastMm:F1} mm · {sign}{size:F1} σε {WindowDays} ημ";
         }
 
         private static double Magnitude(in SensorHistory.Sample s)
@@ -410,13 +424,14 @@ namespace QuestMarkerApp.Markers
 
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(root, false);
-            labelGo.transform.localPosition = new Vector3(Left + Width * 0.5f, LabelTop, 0f);
+            labelGo.transform.localPosition = new Vector3(Left, LabelTop, 0f);
             labelGo.transform.localScale = Vector3.one * LabelScale;
             var label = labelGo.AddComponent<TextMeshPro>();
             Brand.Style(label, true);
             label.fontSize = 10f;
-            label.alignment = TextAlignmentOptions.Top;
-            label.rectTransform.pivot = new Vector2(0.5f, 1f);
+            label.alignment = TextAlignmentOptions.TopLeft;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.rectTransform.pivot = new Vector2(0f, 1f);
             label.rectTransform.sizeDelta = new Vector2(Width / LabelScale, 2f);
             label.color = Color.white;
             label.sortingOrder = 8;

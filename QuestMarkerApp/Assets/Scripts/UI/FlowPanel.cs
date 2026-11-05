@@ -173,7 +173,8 @@ namespace QuestMarkerApp.UI
             IsMessage = message;
             messageMode = message;
             selected = 0;
-            eyebrow.text = eyebrowText.ToUpperInvariant();
+            // The wordmark keeps its own lower case and colours.
+            eyebrow.text = eyebrowText == Brand.Wordmark ? eyebrowText : eyebrowText.ToUpperInvariant();
             title.text = titleText;
             listPage.gameObject.SetActive(!message);
             messagePage.gameObject.SetActive(message);

@@ -18,7 +18,7 @@ namespace QuestMarkerApp.UI
     {
         /// <summary>More than this many icons is unreadable and slow; ask for an area instead.</summary>
         private const int MaxSensors = 800;
-        private const string Eyebrow = "Terraweb";
+        private const string Eyebrow = Brand.Wordmark;
 
         private TerrawebClient client;
         private FlowPanel panel;

@@ -11,6 +11,8 @@ namespace QuestMarkerApp.UI
     /// (terraweb2-frontend src/app/index.css, :root[data-theme='dark']), Manrope as
     /// --font-sans, and the procedural shapes/icons every panel and marker shares.
     /// Dark rather than the light theme: a pale card glares against passthrough.
+    /// Terraweb's palette and logo are in docs/brand. The app keeps two lighter greys than the
+    /// palette (FgMuted, FgFaint): its Muted and Faint are too dim for small text over passthrough.
     /// </summary>
     public static class Brand
     {
@@ -43,7 +45,7 @@ namespace QuestMarkerApp.UI
         public static readonly Color Primary = Hex(0x8fc93a);
         public static readonly Color PrimarySoft = Hex(0x1f2e14);
         public static readonly Color PrimaryFg = Hex(0x10201f);
-        public static readonly Color Info = Hex(0x5bcce5);
+        public static readonly Color Info = Hex(0x2bb6d6);
         public static readonly Color Warning = Hex(0xe4a62b);
         public static readonly Color Danger = Hex(0xdb5a46);
         /// <summary>Control points — the frontend's reference-tier yellow.</summary>
@@ -51,6 +53,12 @@ namespace QuestMarkerApp.UI
         /// <summary>Light-theme pair used for labels drawn on the world, as on the map.</summary>
         public static readonly Color MapInk = Hex(0x1a211f);
         public static readonly Color MapHalo = Hex(0xf9faf5);
+
+        /// <summary>
+        /// The logo's wordmark for dark panels (docs/brand/terraweb-white.svg), as TMP rich text:
+        /// the SVG is live text in Manrope, which the app already carries.
+        /// </summary>
+        public const string Wordmark = "<color=#8FC93A>terra</color><color=#5BCCE5>web</color>";
 
         private static TMP_FontAsset body, bold;
         private static Material markerSprite, markerSpriteFade, labelMaterial;
