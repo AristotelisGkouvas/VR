@@ -462,9 +462,10 @@ namespace QuestMarkerApp.Core
                 OpenIfNeeded();
             }
             if (!modeActive) return;
-            // Beside an open main menu the two panels overlapped: the alignment panel steps
-            // aside while the menu is up and comes back (on its guide page) when the menu closes.
-            bool showPanel = !MainMenu.IsOpen;
+            // Beside an open menu, project list or keyboard the panels overlapped: picking a
+            // project with an unaligned one loaded opened the alignment panel over the list.
+            // It steps aside while they are up and comes back (on its guide page) after.
+            bool showPanel = !MainMenu.IsOpen && !FlowPanel.IsOpen && !VrKeyboard.IsOpen;
             if (panel != null && panel.gameObject.activeSelf != showPanel) panel.gameObject.SetActive(showPanel);
             UpdateCursorAndPanelPose();
             if (Time.unscaledTime >= nextLiveRefresh)
