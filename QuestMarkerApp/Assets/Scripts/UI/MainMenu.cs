@@ -428,6 +428,7 @@ namespace QuestMarkerApp.UI
             tiles.Add(("displacement", L.T("Heatmap", "Heatmap"),
                 () => (model == null || !model.IsLoaded) && WorkMode.IsOffice ? L.T("χωρίς μοντέλο", "no model")
                     : (WorkMode.IsField || model == null || !model.IsLoaded) && !ready ? L.T("μετά την ευθυγρ.", "after alignment")
+                    : ModelHeatmap.Enabled && (model == null || !model.IsLoaded) && SensorHeatZones.Count == 0 ? L.T("φόρτωση ιστορικού…", "loading history…")
                     : ModelHeatmap.Enabled ? ModelHeatmap.MeasureName
                     : model == null || !model.IsLoaded ? L.T("ζώνες αισθητήρων", "sensor zones") : L.T("μετακινήσεις", "movement"),
                 // With no model, the zones around the sensors (SensorHeatZones): on site only.

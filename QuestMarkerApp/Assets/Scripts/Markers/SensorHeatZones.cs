@@ -134,6 +134,7 @@ namespace QuestMarkerApp.Markers
                 z.Color = ModelHeatmap.Ramp(value, measure);
                 count++;
             }
+            if (count != Count) Debug.Log($"[HeatZones] {count} of {zones.Count} sensors with a value · history {SensorHistory.Count} · depth {DepthOcclusion.DepthReady}");
             Count = count;
         }
 

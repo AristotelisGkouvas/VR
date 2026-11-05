@@ -81,7 +81,24 @@ namespace QuestMarkerApp.UI
             session++;
             quietSession = session;
             Debug.Log("[Terraweb] Refreshing sensor positions in the background");
-            LoadSensors(lastAreaId, lastAreaName);
+            StartCoroutine(CheckProject(() => LoadSensors(lastAreaId, lastAreaName)));
+        }
+
+        // Every sensor call answers for the account's current project, which the web app (or
+        // another headset) can switch at any time. A background refresh then fetched the other
+        // project's sensors and saved them under this one's name, dropping its control points.
+        // So: go on only while the account is still on this project; off line nothing can switch it.
+        private System.Collections.IEnumerator CheckProject(Action same)
+        {
+            int token = session;
+            bool ok = false;
+            yield return client.GetProfile(
+                _ => ok = client.CurrentProjectId == selectedProjectId,
+                _ => ok = client.ServingOffline);
+            if (token != session) yield break;
+            if (ok) { same(); yield break; }
+            if (IsRefreshing) quietSession = -1;
+            Debug.LogWarning($"[Terraweb] Background refresh dropped: the account is on project {client.CurrentProjectId}, not {selectedProjectId}");
         }
 
         private float nextHistoryTry;
@@ -89,7 +106,7 @@ namespace QuestMarkerApp.UI
         // The survey history lives in memory only, so after a restart the heatmap and the time
         // machine had nothing to draw until a manual reload, and the only automatic refresh ran
         // with the model's sensor dots on show. Fetch it quietly as soon as the restored project
-        // can be reloaded, in any mode and placement; a failed try waits two minutes.
+        // can be reloaded, in any mode and placement; a try that did not land waits 30 s.
         private void Update()
         {
             if (Time.unscaledTime < nextHistoryTry) return;
@@ -98,7 +115,7 @@ namespace QuestMarkerApp.UI
             if (alignment.IsPractice || alignment.IsModeActive) return;
             if (SensorHistory.ProjectId == selectedProjectId) return; // loaded (even if empty)
             if (DisplacementView.IsActive || SensorNavigator.IsActive || InspectionRoute.IsActive) return;
-            nextHistoryTry = Time.unscaledTime + 120f;
+            nextHistoryTry = Time.unscaledTime + 30f;
             Debug.Log("[Terraweb] No survey history in memory: fetching it");
             RefreshQuietly();
         }
@@ -109,7 +126,9 @@ namespace QuestMarkerApp.UI
             session++;
             if (!client.IsLoggedIn) { ShowLogin(null); return; }
             if (!CanReload) { LoadProjects(); return; }
-            LoadSensors(lastAreaId, lastAreaName);
+            // Asked for by the user: put the account back on this project first (see CheckProject).
+            StartCoroutine(client.SelectProject(selectedProjectId, projectName,
+                Live(() => LoadSensors(lastAreaId, lastAreaName)), Fail(LoadProjects)));
         }
 
         private void RememberLoaded(string areaId, string areaName)
@@ -423,6 +442,13 @@ namespace QuestMarkerApp.UI
                 Busy(scope, L.T("Όρια συναγερμού…", "Alert limits…"));
                 yield return SensorLimits.Load(client, this, selectedProjectId, sensors, areaId, () => token == session);
                 if (token != session) yield break;
+            }
+            // The switch can come during the download too.
+            if (quiet)
+            {
+                bool still = false;
+                yield return CheckProject(() => still = true);
+                if (!still || token != session) yield break;
             }
             Apply(scope, sensors, areaId, areaName, history);
         }
