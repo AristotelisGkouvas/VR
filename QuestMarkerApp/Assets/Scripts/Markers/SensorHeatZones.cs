@@ -15,7 +15,8 @@ namespace QuestMarkerApp.Markers
     /// through walls and floors a surface between sensors would invent values.
     /// Near the user the colour lands on the real surface through the Quest depth map
     /// (SensorZone shader); further away, or with no depth, a zone is a soft ball.
-    /// With a model loaded, ModelHeatmap paints the model instead and this stays off.
+    /// With this project's model loaded, ModelHeatmap paints the model and this stays off; a
+    /// model of another site, with none of the sensors near it, does not count.
     /// </summary>
     public class SensorHeatZones : MonoBehaviour
     {
@@ -51,6 +52,7 @@ namespace QuestMarkerApp.Markers
         private MarkerManager markers;
         private ProjectAlignment project;
         private ModelOverlay overlay;
+        private ModelSensors modelSensors;
         private Material material;
         private Mesh sphere;
         private MaterialPropertyBlock block;
@@ -58,16 +60,17 @@ namespace QuestMarkerApp.Markers
         private string key;
         private bool visible;
 
-        public void Init(MarkerManager markerManager, ProjectAlignment alignment, ModelOverlay modelOverlay)
+        public void Init(MarkerManager markerManager, ProjectAlignment alignment, ModelOverlay modelOverlay, ModelSensors sensorsOnModel)
         {
             markers = markerManager;
             project = alignment;
             overlay = modelOverlay;
+            modelSensors = sensorsOnModel;
         }
 
         private bool Wanted =>
             ModelHeatmap.Enabled && markers != null && project != null
-            && (overlay == null || !overlay.IsLoaded)
+            && (overlay == null || !overlay.IsLoaded || (modelSensors != null && modelSensors.ModelElsewhere))
             && project.HasProject && !project.IsPractice && project.IsAligned && !project.NeedsCheck && !project.IsModeActive
             && !WorkMode.IsOffice && !markers.HideProjectLayer;
 

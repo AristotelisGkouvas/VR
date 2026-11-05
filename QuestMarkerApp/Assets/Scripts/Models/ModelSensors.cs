@@ -91,6 +91,11 @@ namespace QuestMarkerApp.Models
 
         private enum Reason { Off, NoProject, Practice, NoModel, Far, Ok }
 
+        /// <summary>
+        /// The loaded model is not this project's site: none of its sensors is near it.
+        /// </summary>
+        public bool ModelElsewhere => reason == Reason.Far;
+
         private sealed class Dot
         {
             public ProjectPoint Point;

@@ -226,7 +226,7 @@ namespace QuestMarkerApp.Core
             // Displacements spread over the model's surface (Model page).
             Child<ModelHeatmap>("ModelHeatmap").Init(model, modelSensors);
             // No model: zones around the sensors instead.
-            Child<SensorHeatZones>("SensorHeatZones").Init(markerManager, projectAlignment, model);
+            Child<SensorHeatZones>("SensorHeatZones").Init(markerManager, projectAlignment, model, modelSensors);
             // The watch on the off hand: mode, alignment trust, data age, connection.
             Child<StatusChip>("StatusChip").Init(projectAlignment, terraweb, flow, model);
             Child<ComfortVignette>("ComfortVignette");

@@ -142,7 +142,7 @@ namespace QuestMarkerApp.Models
 
         private void Update()
         {
-            bool on = Enabled && overlay != null && sensors != null && overlay.IsLoaded
+            bool on = Enabled && !SensorHeatZones.Showing && overlay != null && sensors != null && overlay.IsLoaded
                       && overlay.Root != null && overlay.Root.gameObject.activeInHierarchy;
             if (!on)
             {
