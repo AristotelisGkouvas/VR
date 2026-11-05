@@ -128,8 +128,7 @@ def report_close(rows: list[dict], tape: dict[frozenset, float], reach: float = 
     for r in rows:
         if r["head_dist_m"] <= reach:
             sessions[r["session_id"]][r["payload"]].append((r["x"], r["y"], r["z"]))
-    print(f"
-Ζεύγη από κοντινές αναγνώσεις (έως {reach} m από κάθε κωδικό):")
+    print(f"\nΖεύγη από κοντινές αναγνώσεις (έως {reach} m από κάθε κωδικό):")
     for codes in sessions.values():
         names = sorted(codes)
         for i, a in enumerate(names):
