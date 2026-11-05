@@ -902,7 +902,7 @@ namespace QuestMarkerApp.UI
             y = Row(y, new Item
             {
                 Label = L.T("Δοκιμή QR", "QR test"),
-                Value = () => QrTest.Active ? QrTest.Status : L.T("Όχι", "Off"),
+                Value = () => QrTest.Active || !string.IsNullOrEmpty(QrTest.Status) ? QrTest.Status : L.T("Όχι", "Off"),
                 Run = () =>
                 {
                     bool on = !QrTest.Active;

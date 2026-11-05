@@ -4,7 +4,8 @@
     "references": [
         "Unity.TextMeshPro",
         "Oculus.VR",
-        "Meta.XR.EnvironmentDepth"
+        "Meta.XR.EnvironmentDepth",
+        "meta.xr.mrutilitykit"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -39,6 +39,8 @@ def load(folder: str) -> list[dict]:
         with open(path, encoding="utf-8-sig", newline="") as f:
             for r in csv.DictReader(f):
                 r["t"] = datetime.fromisoformat(r["timestamp"]).timestamp()
+                if r["tracked"] != "1":
+                    continue  # a lost code keeps its last pose: not a measurement
                 for k in ("x", "y", "z", "width_m", "head_x", "head_y", "head_z", "head_dist_m", "view_angle_deg"):
                     r[k] = float(r[k])
                 rows.append(r)
