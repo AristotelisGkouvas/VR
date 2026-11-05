@@ -159,7 +159,7 @@ namespace QuestMarkerApp.UI
             VrPointer.RegisterDraggable(root, transform);
 
             VrUi.Text("Wordmark", root, 28, 18, 120, 32, Brand.Wordmark, 22f, Brand.Fg, true).characterSpacing = -4f;
-            VrUi.Text("WordmarkSub", root, 128, 22, 200, 28, "MONITORING", 10f, Brand.FgSubtle, true).characterSpacing = 18f;
+            VrUi.Text("WordmarkSub", root, 128, 22, 200, 28, "QUEST", 10f, Brand.FgSubtle, true).characterSpacing = 18f;
             // Breadcrumb: "Κόνιτσα ›" in subtle ink, then the page name; on the home page just the name.
             crumb = VrUi.Text("Crumb", root, 28, 52, Width - 92, 40, "", 20f, Brand.FgSubtle, true);
             title = VrUi.Text("Title", root, 28, 52, Width - 92, 40, "", 27f, Brand.Fg, true);
