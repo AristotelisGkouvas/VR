@@ -215,6 +215,10 @@ namespace QuestMarkerApp.UI
             // a crosshair, not as "loading".
             spinner = VrUi.Icon("Spinner", messagePage, Width / 2f - 28, BodyTop + 70, 56, Brand.UiIconSprite("spinner"),
                 Brand.Primary);
+            // Turns about its own centre: VrUi rects pivot on their top-left corner, which made the
+            // whole ring orbit that corner.
+            spinner.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            spinner.rectTransform.anchoredPosition = new Vector2(Width / 2f, -(BodyTop + 70 + 28));
             messageTitle = VrUi.Text("Heading", messagePage, 40, BodyTop + 150, Width - 80, 40, "", 22f, Brand.Fg, true,
                 TextAlignmentOptions.Center);
             messageText = VrUi.Text("Body", messagePage, 40, BodyTop + 196, Width - 80, 160, "", 16f, Brand.FgMuted,
