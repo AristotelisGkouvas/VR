@@ -897,6 +897,20 @@ namespace QuestMarkerApp.UI
                     Destructive = true,
                     Run = () => app.CalibrateReferencePoint()
                 });
+#if !MOBILE_PREVIEW
+            // A measuring tool for the QR stickers (thesis/data/protocols/δοκιμή_qr.md), any mode.
+            y = Row(y, new Item
+            {
+                Label = L.T("Δοκιμή QR", "QR test"),
+                Value = () => QrTest.Active ? QrTest.Status : L.T("Όχι", "Off"),
+                Run = () =>
+                {
+                    bool on = !QrTest.Active;
+                    QrTest.SetActive(on);
+                    if (on) Close();
+                }
+            });
+#endif
             BackButton();
         }
 

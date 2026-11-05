@@ -232,6 +232,9 @@ namespace QuestMarkerApp.Core
             Child<AlarmBeacons>("AlarmBeacons").Init(markerManager);
             Child<MeasureTool>("MeasureTool").Init(projectAlignment, markerManager);
             Child<DepthOcclusion>("DepthOcclusion");
+#if !MOBILE_PREVIEW
+            Child<QrTest>("QrTest");
+#endif
             if (localServer != null)
             {
                 // Kept so Cleanup can unsubscribe: the server may outlive this controller.
