@@ -207,6 +207,7 @@ namespace QuestMarkerApp.UI
             IsAsking = false;
             flow.Close();
             WorkMode.Set(mode);
+            if (mode == WorkModeKind.Field) ModelHeatmap.Enabled = false;
             Apply(mode, view);
             if (practice && alignment != null && !PracticeProject.IsActive) PracticeProject.Enter(alignment);
             Action then = afterChoice;

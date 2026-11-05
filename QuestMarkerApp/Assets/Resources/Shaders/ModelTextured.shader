@@ -83,6 +83,11 @@ Shader "QuestMarker/ModelTextured"
             sampler2D _ModelHeatTex;
             float4 _ModelHeatRect; // min x, min z, 1/size x, 1/size z (model-local metres)
             float _ModelHeatOpacity;
+            // ModelHeatmap: 1 = the texture gives way to plain clay under the heat.
+            float _ModelHeatOnly;
+            // 1 on site: outside the heat the model is not drawn at all, inside it is
+            // _ModelHeatOpacity see-through, so the real structure stays in view.
+            float _ModelHeatSeeThrough;
             #endif
             #if defined(_RIM)
             fixed _Rim;
@@ -115,6 +120,12 @@ Shader "QuestMarker/ModelTextured"
                 c.a = _Color.a;
                 #if defined(_MODELHEAT)
                 fixed4 h = tex2D(_ModelHeatTex, i.heatUv);
+                if (_ModelHeatOnly > 0.5)
+                {
+                    c.rgb = lerp(fixed3(0.80, 0.81, 0.82), h.rgb, h.a);
+                    if (_ModelHeatSeeThrough > 0.5) c.a = h.a * _ModelHeatOpacity;
+                    return c; // no rim: it would bring back the outline outside the heat
+                }
                 c.rgb = lerp(c.rgb, h.rgb, h.a * _ModelHeatOpacity);
                 #endif
                 #if defined(_RIM)

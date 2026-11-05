@@ -321,8 +321,14 @@ namespace QuestMarkerApp.Models
         /// 0.35: the model is an overlay on the real site, and an opaque shell hides the
         /// passthrough, the markers and the far side of the mesh.
         /// </summary>
+        // On site with the heatmap the fill must blend, whatever the slider says: the shader
+        // then draws only the heat (_ModelHeatSeeThrough) and the structure stays in view.
+        private static bool FieldHeat => WorkMode.IsField && ModelHeatmap.Enabled;
+        private bool fieldHeatApplied;
+
         private float AlphaFor()
         {
+            if (FieldHeat) return 0.9f;
             if (PlayerPrefs.HasKey(AlphaKey))
             {
                 if (opacity < 0f) opacity = Mathf.Clamp(PlayerPrefs.GetFloat(AlphaKey), 0.05f, 1f);
@@ -440,6 +446,15 @@ namespace QuestMarkerApp.Models
         private void Update()
         {
             if (root == null) return;
+            if (FieldHeat != fieldHeatApplied)
+            {
+                fieldHeatApplied = FieldHeat;
+                float a = AlphaFor();
+                foreach (var kv in fillMaterials) SetFillAlpha(kv.Value, kv.Key.Color, a);
+                foreach (var kv in texturedMaterials) SetFillAlpha(kv.Value, kv.Key.Tint, a);
+                // The edge lines would outline the whole model over the real site.
+                foreach (GameObject go in edgeObjects) if (go != null) go.SetActive(ShowEdges && !fieldHeatApplied);
+            }
             // The office practice has its own two printed targets: a loaded design model
             // (another project's building) would only stand in the way. It stays loaded and
             // comes back on leaving practice, with no reload.

@@ -75,6 +75,8 @@ namespace QuestMarkerApp.Models
         private static readonly int HeatTexId = Shader.PropertyToID("_ModelHeatTex");
         private static readonly int HeatRectId = Shader.PropertyToID("_ModelHeatRect");
         private static readonly int HeatOpacityId = Shader.PropertyToID("_ModelHeatOpacity");
+        private static readonly int HeatOnlyId = Shader.PropertyToID("_ModelHeatOnly");
+        private static readonly int HeatSeeThroughId = Shader.PropertyToID("_ModelHeatSeeThrough");
         // Global, matching ModelTextured's multi_compile: off, the heatmap sample is not in the shader.
         private static readonly GlobalKeyword HeatKeyword = GlobalKeyword.Create("_MODELHEAT");
 
@@ -147,6 +149,10 @@ namespace QuestMarkerApp.Models
                 return;
             }
             ShowUi(shown && !UiState.AnyModal);
+            // No texture under the heat; on site nothing but the heat (ModelOverlay keeps the
+            // fill blended there so the alpha counts).
+            Shader.SetGlobalFloat(HeatOnlyId, 1f);
+            Shader.SetGlobalFloat(HeatSeeThroughId, WorkMode.IsField ? 1f : 0f);
             if (Time.unscaledTime < nextCompute) return;
             nextCompute = Time.unscaledTime + RecomputeSeconds;
 
