@@ -10,6 +10,7 @@
   python qr_stickers.py --six έξοδος.pdf     έξι κωδικοί 13 cm, ένας ανά σελίδα (QM-13C έως QM-13H)
   python qr_stickers.py --target έξοδος.pdf  το ίδιο με στόχο γεωδαιτικού σταθμού στο κέντρο (QM-13J έως QM-13P)
   python qr_stickers.py --small έξοδος.pdf   δύο μικρότεροι με στόχο σε ένα A4 (QM-10R, QM-07S)
+  python qr_stickers.py --set έξοδος.pdf     τρεις 13 cm, δύο 10 cm, δύο 7 cm, όλοι με στόχο (QM-13T έως QM-07Z)
 Απαιτεί: qrcode, reportlab
 """
 from __future__ import annotations
@@ -126,7 +127,30 @@ def small_with_target(out: str) -> None:
     print(out)
 
 
+def field_set(out: str) -> None:
+    """The set for the survey test, all with the target: three 13 cm, two 10 cm, two 7 cm, on five A4."""
+    w, h = A4
+    c = canvas.Canvas(out, pagesize=A4)
+    c.setTitle("QR test set with survey targets")
+    for side in "TUV":
+        draw_code(c, f"QM-13{side}", w / 2, h / 2 + 1 * cm, 13 * cm, target=True)
+        scale_bar(c)
+        c.showPage()
+    for big, small in (("W", "Y"), ("X", "Z")):
+        draw_code(c, f"QM-10{big}", w / 2, 20.5 * cm, 10 * cm, target=True)
+        draw_code(c, f"QM-07{small}", w / 2, 8.2 * cm, 7 * cm, target=True)
+        scale_bar(c)
+        c.showPage()
+    c.save()
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(out)
+
+
 def main() -> None:
+    if len(sys.argv) > 2 and sys.argv[1] == "--set":
+        os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
+        field_set(sys.argv[2])
+        return
     if len(sys.argv) > 2 and sys.argv[1] == "--small":
         os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
         small_with_target(sys.argv[2])
