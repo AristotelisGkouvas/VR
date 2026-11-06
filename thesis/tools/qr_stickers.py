@@ -8,6 +8,7 @@
 
   python qr_stickers.py [έξοδος.pdf]
   python qr_stickers.py --six έξοδος.pdf     έξι κωδικοί 13 cm, ένας ανά σελίδα (QM-13C έως QM-13H)
+  python qr_stickers.py --target έξοδος.pdf  το ίδιο με στόχο γεωδαιτικού σταθμού στο κέντρο (QM-13J έως QM-13P)
 Απαιτεί: qrcode, reportlab
 """
 from __future__ import annotations
@@ -23,16 +24,30 @@ from reportlab.pdfgen import canvas
 DEFAULT_OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "protocols", "qr_δοκιμή_φύλλο.pdf")
 
 
-def modules(payload: str):
-    code = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=0)
+def modules(payload: str, level=qrcode.constants.ERROR_CORRECT_M):
+    code = qrcode.QRCode(error_correction=level, border=0)
     code.add_data(payload)
     code.make(fit=True)
     return code.get_matrix()
 
 
-def draw_code(c: canvas.Canvas, payload: str, cx: float, cy: float, side: float) -> None:
+def survey_target(c: canvas.Canvas, cx: float, cy: float) -> None:
+    """A checkered target for the total station on the code's centre, in a white ring."""
+    outer, inner = 0.85 * cm, 0.65 * cm
+    c.setFillGray(1)
+    c.circle(cx, cy, outer, stroke=0, fill=1)
+    c.setFillGray(0)
+    c.wedge(cx - inner, cy - inner, cx + inner, cy + inner, 0, 90, stroke=0, fill=1)
+    c.wedge(cx - inner, cy - inner, cx + inner, cy + inner, 180, 90, stroke=0, fill=1)
+    c.setLineWidth(0.5)
+    c.setStrokeGray(0)
+    c.circle(cx, cy, inner, stroke=1, fill=0)
+
+
+def draw_code(c: canvas.Canvas, payload: str, cx: float, cy: float, side: float, target: bool = False) -> None:
     """cx, cy: the code's centre; side: the black square's side, in points."""
-    m = modules(payload)
+    # With a target on it the code leans on the strongest error correction (up to 30 % of it).
+    m = modules(payload, qrcode.constants.ERROR_CORRECT_H) if target else modules(payload)
     n = len(m)
     cell = side / n
     x0, y0 = cx - side / 2, cy - side / 2
@@ -41,6 +56,8 @@ def draw_code(c: canvas.Canvas, payload: str, cx: float, cy: float, side: float)
         for col, dark in enumerate(cells):
             if dark:
                 c.rect(x0 + col * cell, y0 + (n - 1 - row) * cell, cell, cell, stroke=0, fill=1)
+    if target:
+        survey_target(c, cx, cy)
     # Centre ticks outside the quiet zone (4 modules): the tape goes from centre to centre.
     q = 4 * cell
     tick = 0.6 * cm
@@ -79,7 +96,25 @@ def six_of_a_size(out: str) -> None:
     print(out)
 
 
+def six_with_target(out: str) -> None:
+    """Six codes with a survey target on the centre, one per A4: QM-13J to QM-13P."""
+    w, h = A4
+    c = canvas.Canvas(out, pagesize=A4)
+    c.setTitle("QR test sheet, six codes with a survey target")
+    for side in "JKLMNP":
+        draw_code(c, f"QM-13{side}", w / 2, h / 2 + 1 * cm, 13 * cm, target=True)
+        scale_bar(c)
+        c.showPage()
+    c.save()
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(out)
+
+
 def main() -> None:
+    if len(sys.argv) > 2 and sys.argv[1] == "--target":
+        os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
+        six_with_target(sys.argv[2])
+        return
     if len(sys.argv) > 2 and sys.argv[1] == "--six":
         os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
         six_of_a_size(sys.argv[2])
