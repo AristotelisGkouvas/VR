@@ -9,6 +9,7 @@
   python qr_stickers.py [έξοδος.pdf]
   python qr_stickers.py --six έξοδος.pdf     έξι κωδικοί 13 cm, ένας ανά σελίδα (QM-13C έως QM-13H)
   python qr_stickers.py --target έξοδος.pdf  το ίδιο με στόχο γεωδαιτικού σταθμού στο κέντρο (QM-13J έως QM-13P)
+  python qr_stickers.py --small έξοδος.pdf   δύο μικρότεροι με στόχο σε ένα A4 (QM-10R, QM-07S)
 Απαιτεί: qrcode, reportlab
 """
 from __future__ import annotations
@@ -31,9 +32,10 @@ def modules(payload: str, level=qrcode.constants.ERROR_CORRECT_M):
     return code.get_matrix()
 
 
-def survey_target(c: canvas.Canvas, cx: float, cy: float) -> None:
-    """A checkered target for the total station on the code's centre, in a white ring."""
-    outer, inner = 0.85 * cm, 0.65 * cm
+def survey_target(c: canvas.Canvas, cx: float, cy: float, side: float) -> None:
+    """A checkered target for the total station on the code's centre, in a white ring, in step with the code."""
+    scale = side / (13 * cm)
+    outer, inner = 0.85 * cm * scale, 0.65 * cm * scale
     c.setFillGray(1)
     c.circle(cx, cy, outer, stroke=0, fill=1)
     c.setFillGray(0)
@@ -57,7 +59,7 @@ def draw_code(c: canvas.Canvas, payload: str, cx: float, cy: float, side: float,
             if dark:
                 c.rect(x0 + col * cell, y0 + (n - 1 - row) * cell, cell, cell, stroke=0, fill=1)
     if target:
-        survey_target(c, cx, cy)
+        survey_target(c, cx, cy, side)
     # Centre ticks outside the quiet zone (4 modules): the tape goes from centre to centre.
     q = 4 * cell
     tick = 0.6 * cm
@@ -110,7 +112,25 @@ def six_with_target(out: str) -> None:
     print(out)
 
 
+def small_with_target(out: str) -> None:
+    """Two smaller codes with the target, on one A4: QM-10R and QM-07S."""
+    w, h = A4
+    c = canvas.Canvas(out, pagesize=A4)
+    c.setTitle("QR test sheet, smaller codes with a survey target")
+    draw_code(c, "QM-10R", w / 2, 20.5 * cm, 10 * cm, target=True)
+    draw_code(c, "QM-07S", w / 2, 8.2 * cm, 7 * cm, target=True)
+    scale_bar(c)
+    c.showPage()
+    c.save()
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(out)
+
+
 def main() -> None:
+    if len(sys.argv) > 2 and sys.argv[1] == "--small":
+        os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
+        small_with_target(sys.argv[2])
+        return
     if len(sys.argv) > 2 and sys.argv[1] == "--target":
         os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
         six_with_target(sys.argv[2])
