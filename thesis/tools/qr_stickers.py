@@ -7,6 +7,7 @@
 του μαύρου τετραγώνου, χωρίς το λευκό περιθώριο. Τα σημάδια γύρω από τον κωδικό δείχνουν το κέντρο του.
 
   python qr_stickers.py [έξοδος.pdf]
+  python qr_stickers.py --six έξοδος.pdf     έξι κωδικοί 13 cm, ένας ανά σελίδα (QM-13C έως QM-13H)
 Απαιτεί: qrcode, reportlab
 """
 from __future__ import annotations
@@ -64,7 +65,25 @@ def scale_bar(c: canvas.Canvas) -> None:
     c.drawString(x, y + 0.25 * cm, "This bar must measure exactly 10 cm. Print at 100 % (actual size), no fit to page.")
 
 
+def six_of_a_size(out: str) -> None:
+    """Six codes of the largest size, one per A4: QM-13C to QM-13H (A and B are on the first sheet)."""
+    w, h = A4
+    c = canvas.Canvas(out, pagesize=A4)
+    c.setTitle("QR test sheet, six codes")
+    for side in "CDEFGH":
+        draw_code(c, f"QM-13{side}", w / 2, h / 2 + 1 * cm, 13 * cm)
+        scale_bar(c)
+        c.showPage()
+    c.save()
+    sys.stdout.reconfigure(encoding="utf-8")
+    print(out)
+
+
 def main() -> None:
+    if len(sys.argv) > 2 and sys.argv[1] == "--six":
+        os.makedirs(os.path.dirname(os.path.abspath(sys.argv[2])), exist_ok=True)
+        six_of_a_size(sys.argv[2])
+        return
     out = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_OUT
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     w, h = A4
