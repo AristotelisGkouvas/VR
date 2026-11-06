@@ -10,7 +10,7 @@
   python qr_stickers.py --six έξοδος.pdf     έξι κωδικοί 13 cm, ένας ανά σελίδα (QM-13C έως QM-13H)
   python qr_stickers.py --target έξοδος.pdf  το ίδιο με στόχο γεωδαιτικού σταθμού στο κέντρο (QM-13J έως QM-13P)
   python qr_stickers.py --small έξοδος.pdf   δύο μικρότεροι με στόχο σε ένα A4 (QM-10R, QM-07S)
-  python qr_stickers.py --set έξοδος.pdf     τρεις 13 cm, δύο 10 cm, δύο 7 cm, δύο 5 cm, όλοι με στόχο
+  python qr_stickers.py --set έξοδος.pdf     τρεις 13 cm, τρεις 10 cm, τρεις 7 cm, δύο 5 cm, όλοι με στόχο
 Απαιτεί: qrcode, reportlab
 """
 from __future__ import annotations
@@ -128,7 +128,7 @@ def small_with_target(out: str) -> None:
 
 
 def field_set(out: str) -> None:
-    """The set for the survey test, all with the target: three 13 cm, two 10 cm, two 7 cm, two 5 cm, on six A4."""
+    """The set for the survey test, all with the target: three 13 cm, three 10 cm, three 7 cm, two 5 cm, on seven A4."""
     w, h = A4
     c = canvas.Canvas(out, pagesize=A4)
     c.setTitle("QR test set with survey targets")
@@ -143,6 +143,11 @@ def field_set(out: str) -> None:
         c.showPage()
     draw_code(c, "QM-05Q", w / 2, 20.5 * cm, 5 * cm, target=True)
     draw_code(c, "QM-05I", w / 2, 9 * cm, 5 * cm, target=True)
+    scale_bar(c)
+    c.showPage()
+    # Last, so the pages already printed keep their numbers.
+    draw_code(c, "QM-10K", w / 2, 20.5 * cm, 10 * cm, target=True)
+    draw_code(c, "QM-07K", w / 2, 8.2 * cm, 7 * cm, target=True)
     scale_bar(c)
     c.showPage()
     c.save()
