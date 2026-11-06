@@ -327,10 +327,10 @@ namespace QuestMarkerApp.UI
             subtitle.text = L.En
                 ? a.IsAligned
                     ? $"{ControlPoints(n)} · aligned"
-                    : $"{Sensors(points.Count)} · {ControlPoints(n)}"
+                    : $"{Sensors(a.Sensors.Count)} · {ControlPoints(n)}"
                 : a.IsAligned
                     ? $"{ControlPoints(n)} · ευθυγραμμισμένο"
-                    : $"{points.Count} αισθητήρες · {ControlPoints(n)}";
+                    : $"{a.Sensors.Count} αισθητήρες · {ControlPoints(n)}";
 
             // Browsing (the selection moved, nothing placed) shows the list; a touch or undo
             // (the placed count changed) brings the guide back.
@@ -453,8 +453,12 @@ namespace QuestMarkerApp.UI
 
             targetInstr.text = measuring
                 ? L.T("Μύτη στο σημείο και Trigger· η ευθυγράμμιση δεν αλλάζει", "Tip on the point, then Trigger; the alignment does not change")
+                : a.NeedsCheck && a.HasCodes
+                ? L.T("Κοίτα έναν κωδικό από 1–2 m, ή μύτη και Trigger", "Look at a code from 1–2 m, or tip and Trigger")
                 : a.NeedsCheck
                 ? L.T("Ακούμπησε ένα γνωστό σημείο και πάτα Trigger", "Touch a known point and press Trigger")
+                : target != null && target.IsCode()
+                ? L.T("Κοίτα τον κωδικό από 1–2 m, ή μύτη και Trigger", "Look at the code from 1–2 m, or tip and Trigger")
                 : L.T("Ροζ μύτη στο σημείο και Trigger", "Pink tip on the point, then Trigger");
 
             // Gauge, or a short reason, under the instruction.
@@ -471,6 +475,7 @@ namespace QuestMarkerApp.UI
             string why = measuring
                 ? L.T($"Καταγραφή σε CSV. {Hands.SecondaryName}: αναίρεση μέτρησης. Μενού › Ευθυγράμμιση για τερματισμό.",
                       $"Logged to CSV. {Hands.SecondaryName}: undo measurement. Menu › Alignment to stop.")
+                : !string.IsNullOrEmpty(a.QrStatus) ? a.QrStatus
                 : a.NeedsCheck
                 ? L.T("Η ευθυγράμμιση είναι από προηγούμενη φορά. Κατά προτίμηση ένα από τα σημεία ελέγχου.",
                       "This alignment is from an earlier session. Preferably touch one of the control points.")

@@ -312,7 +312,7 @@ namespace QuestMarkerApp.Models
         private void CheckSource()
         {
             ModelData m = overlay.IsLoaded ? overlay.Model : null;
-            object pts = project != null ? project.Points : null;
+            object pts = project != null ? project.Sensors : null;
             bool practice = project != null && project.IsPractice;
             if (m != builtModel || !ReferenceEquals(pts, builtPoints) || practice != builtPractice || Enabled != builtEnabled)
                 dirty = true;
@@ -324,13 +324,13 @@ namespace QuestMarkerApp.Models
             Version++;
             ModelData m = overlay.IsLoaded ? overlay.Model : null;
             builtModel = m;
-            builtPoints = project != null ? project.Points : null;
+            builtPoints = project != null ? project.Sensors : null;
             builtPractice = project != null && project.IsPractice;
             builtEnabled = Enabled;
             Clear();
 
             total = 0;
-            if (project != null) foreach (ProjectPoint p in project.Points) if (p != null) total++;
+            if (project != null) foreach (ProjectPoint p in project.Sensors) if (p != null) total++;
             if (!builtEnabled) { reason = Reason.Off; return; }
             if (project == null || !project.HasProject) { reason = Reason.NoProject; return; }
             // The practice targets sit in a made-up local frame: on a real model they would be noise.
@@ -343,7 +343,7 @@ namespace QuestMarkerApp.Models
             // The sensors' own x/y/z, in the same grid as the model's vertices: nothing is
             // guessed. A typed height offset (menu) covers a model in another height datum.
             heightOffset = ManualOffset ?? 0f;
-            foreach (ProjectPoint p in project.Points)
+            foreach (ProjectPoint p in project.Sensors)
                 if (p != null && TryLocal(p, m, heightOffset, out Vector3 local) && near.Contains(local))
                     AddDot(p, local);
             // None near the model: another site, or another CRS. Say so rather than draw dots

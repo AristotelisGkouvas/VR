@@ -212,7 +212,7 @@ namespace QuestMarkerApp.UI
             if (Unavailable() != null) return false;
             Build();
             items.Clear();
-            foreach (ProjectPoint p in project.Points)
+            foreach (ProjectPoint p in project.Sensors)
             {
                 var series = SensorHistory.Of(p.sensorId);
                 if (series == null) continue;

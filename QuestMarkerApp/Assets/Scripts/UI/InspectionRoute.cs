@@ -131,7 +131,7 @@ namespace QuestMarkerApp.UI
             if (alertsOnly)
             {
                 bool any = false;
-                foreach (ProjectPoint p in alignment.Points)
+                foreach (ProjectPoint p in alignment.Sensors)
                     if (IsAlarm(p) || IsAlert(p)) { any = true; break; }
                 if (!any) return L.T("Κανένας αισθητήρας σε συναγερμό", "No sensors in alarm");
             }
@@ -143,9 +143,9 @@ namespace QuestMarkerApp.UI
         {
             if (alignment == null) return;
             var list = new List<ProjectPoint>();
-            foreach (ProjectPoint p in alignment.Points) if (IsAlarm(p)) list.Add(p);
+            foreach (ProjectPoint p in alignment.Sensors) if (IsAlarm(p)) list.Add(p);
             int alarms = list.Count;
-            foreach (ProjectPoint p in alignment.Points) if (IsAlert(p)) list.Add(p);
+            foreach (ProjectPoint p in alignment.Sensors) if (IsAlert(p)) list.Add(p);
             Begin(list, L.T("Συναγερμοί", "Alarms"), alarms);
         }
 
@@ -153,7 +153,7 @@ namespace QuestMarkerApp.UI
         {
             if (alignment == null) return;
             var list = new List<ProjectPoint>();
-            foreach (ProjectPoint p in alignment.Points) if (p != null) list.Add(p);
+            foreach (ProjectPoint p in alignment.Sensors) if (p != null) list.Add(p);
             Begin(list, L.T("Όλοι οι αισθητήρες", "All sensors"), 0);
         }
 

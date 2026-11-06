@@ -236,6 +236,7 @@ namespace QuestMarkerApp.Core
             Child<DepthOcclusion>("DepthOcclusion");
 #if !MOBILE_PREVIEW
             Child<QrTest>("QrTest");
+            Child<QrAlignment>("QrAlignment").Init(projectAlignment);
 #endif
             if (localServer != null)
             {
@@ -318,7 +319,7 @@ namespace QuestMarkerApp.Core
             Vector3 here = cam != null ? cam.transform.position : Vector3.zero;
 
             var entries = new System.Collections.Generic.List<(float dist, FlowItem item)>();
-            foreach (ProjectPoint p in projectAlignment.Points)
+            foreach (ProjectPoint p in projectAlignment.Sensors)
             {
                 string markerId = ProjectAlignment.MarkerPrefix + p.id;
                 if (!markerManager.ActiveMarkers.TryGetValue(markerId, out Marker m) || m == null) continue;

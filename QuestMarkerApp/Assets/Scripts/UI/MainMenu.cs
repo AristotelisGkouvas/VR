@@ -475,7 +475,7 @@ namespace QuestMarkerApp.UI
         {
             if (route == null || flowPanel == null || project == null) return;
             int alerts = 0, all = 0;
-            foreach (ProjectPoint p in project.Points)
+            foreach (ProjectPoint p in project.Sensors)
             {
                 all++;
                 string s = (p.alertState ?? "").ToLowerInvariant();

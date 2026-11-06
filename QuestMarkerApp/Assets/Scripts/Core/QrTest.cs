@@ -18,9 +18,8 @@ namespace QuestMarkerApp.Core
     /// code it sees, shows its jitter and the distance between pairs of codes (to compare with
     /// a tape) and logs each code twice a second to persistentDataPath/qrtest.
     /// Nothing is placed and the alignment is not touched. Session-only.
-    /// Runs on MRUK, created only when the test first starts, with its world lock and scene
-    /// loading off: left on, the lock would move the tracking space under the project's
-    /// alignment. The Core SDK's own QR API reports "not supported" on the same headset.
+    /// A code shows only while it is being read: out of sight its pose freezes, and after the
+    /// glasses come off it belongs to another tracking space.
     /// Protocol: thesis/data/protocols/δοκιμή_qr.md, analysis: thesis/analysis/qr_test.py.
     /// </summary>
     public class QrTest : MonoBehaviour
@@ -70,17 +69,15 @@ namespace QuestMarkerApp.Core
             public Vector3 Center;
             public float Width, Height;
             public readonly Queue<Vector3> Recent = new Queue<Vector3>();
-            public LineRenderer Frame;
-            public TextMeshPro Label;
+            public QrOutline Outline;
         }
 
         private readonly Dictionary<MRUKTrackable, Code> codes = new Dictionary<MRUKTrackable, Code>();
         private readonly List<MRUKTrackable> found = new List<MRUKTrackable>();
         private readonly List<MRUKTrackable> gone = new List<MRUKTrackable>();
-        private MRUK mruk;
-        private bool asked, started;
+        private bool asked, started, holding;
+        private int epoch;
         private float startedAt, nextScan, nextLog, nextView;
-        private Material lineMaterial;
         private ProjectAlignment project;
         private RectTransform hud;
         private TextMeshProUGUI hudText;
@@ -102,10 +99,15 @@ namespace QuestMarkerApp.Core
                 startedAt = Time.unscaledTime;
                 return;
             }
-            EnsureMruk();
+            if (!holding)
+            {
+                holding = true;
+                QrSource.Acquire(transform);
+                epoch = QrSource.Epoch;
+            }
             if (!started)
             {
-                if (mruk.TrackerConfiguration.QRCodeTrackingEnabled)
+                if (QrSource.Running)
                 {
                     started = true;
                     Status = L.T("Ψάχνει QR…", "Looking for QR codes…");
@@ -113,7 +115,7 @@ namespace QuestMarkerApp.Core
                 }
                 else if (Time.unscaledTime - startedAt > StartTimeoutSeconds)
                 {
-                    bool supported = mruk.QRCodeTrackingSupported;
+                    bool supported = QrSource.Supported;
                     Debug.LogWarning($"[QrTest] QR tracking did not start (supported: {supported})");
                     Stop();
                     Active = false;
@@ -129,34 +131,14 @@ namespace QuestMarkerApp.Core
             Sample();
         }
 
-        private void EnsureMruk()
-        {
-            if (mruk == null)
-            {
-                // Inactive while it is set up: its Awake reads the settings.
-                var go = new GameObject("MRUK");
-                go.SetActive(false);
-                go.transform.SetParent(transform, false);
-                mruk = go.AddComponent<MRUK>();
-                mruk.EnableWorldLock = false;
-                mruk.SceneSettings = new MRUK.MRUKSettings { LoadSceneOnStartup = false };
-                SetTracking(true);
-                go.SetActive(true);
-            }
-            else if (!mruk.SceneSettings.TrackerConfiguration.QRCodeTrackingEnabled) SetTracking(true);
-        }
-
-        private void SetTracking(bool on) =>
-            mruk.SceneSettings.TrackerConfiguration = new OVRAnchor.TrackerConfiguration { QRCodeTrackingEnabled = on };
-
         private void Scan()
         {
-            mruk.GetTrackables(found);
+            QrSource.Get(found);
             foreach (MRUKTrackable t in found)
             {
                 if (t == null || t.TrackableType != OVRAnchor.TrackableType.QRCode || codes.ContainsKey(t)) continue;
                 var code = new Code { Trackable = t, Payload = string.IsNullOrEmpty(t.MarkerPayloadString) ? "?" : t.MarkerPayloadString };
-                BuildVisual(code);
+                code.Outline = new QrOutline(transform, code.Payload);
                 codes[t] = code;
                 Debug.Log($"[QrTest] Found '{code.Payload}'");
             }
@@ -164,7 +146,7 @@ namespace QuestMarkerApp.Core
             foreach (MRUKTrackable t in codes.Keys) if (t == null || !found.Contains(t)) gone.Add(t);
             foreach (MRUKTrackable t in gone)
             {
-                if (codes[t].Frame != null) Destroy(codes[t].Frame.gameObject);
+                codes[t].Outline.Destroy();
                 codes.Remove(t);
             }
         }
@@ -174,6 +156,18 @@ namespace QuestMarkerApp.Core
             Camera cam = Headset.Camera;
             if (cam == null) return;
             Vector3 head = cam.transform.position;
+            QrSource.Tick(head);
+            if (epoch != QrSource.Epoch)
+            {
+                // What was read before belongs to the old tracking space: no pairs across it.
+                epoch = QrSource.Epoch;
+                foreach (Code c in codes.Values)
+                {
+                    c.HasPose = false;
+                    c.Recent.Clear();
+                    c.Outline.Hide();
+                }
+            }
             bool log = Time.unscaledTime >= nextLog;
             if (log) nextLog = Time.unscaledTime + LogSeconds;
 
@@ -182,21 +176,24 @@ namespace QuestMarkerApp.Core
                 if (c.Trackable == null) continue;
                 Transform t = c.Trackable.transform;
                 Rect box = c.Trackable.PlaneRect ?? default;
-                bool ghost = IsGhost(c.Payload, box.width);
                 Vector3 center = t.TransformPoint(new Vector3(box.center.x, box.center.y, 0f));
                 if (log) Append(c, center, box, t.rotation, head);
-                if (ghost) continue;
+                if (!c.Trackable.IsTracked || QrSource.IsGhost(c.Payload, box.width))
+                {
+                    c.Outline.Hide();
+                    continue;
+                }
                 c.HasPose = true;
                 c.Center = center;
                 c.Width = box.width;
                 c.Height = box.height;
-                // A lost code keeps its last pose: that is not a measurement of jitter.
-                if (log && c.Trackable.IsTracked)
+                if (log)
                 {
                     c.Recent.Enqueue(c.Center);
                     while (c.Recent.Count > JitterSamples) c.Recent.Dequeue();
                 }
-                Draw(c, t, box, head);
+                float dist = Vector3.Distance(head, c.Center);
+                c.Outline.Show(t, box, head, Brand.Primary, $"{c.Payload}\n{dist:0.00} m · {c.Width * 100f:0.0} cm · ±{Jitter(c) * 1000f:0.0} mm");
             }
 
             if (Time.unscaledTime >= nextView)
@@ -205,32 +202,6 @@ namespace QuestMarkerApp.Core
                 RefreshHud();
             }
             PlaceHud(cam);
-        }
-
-        // The side the name promises (QM-13A: 13 cm), against what was read; ±30 % leaves room for
-        // a printer's scaling. A name without a size is taken at its word.
-        private static bool IsGhost(string payload, float width)
-        {
-            string[] parts = payload.Split('-');
-            if (parts.Length < 2 || parts[1].Length < 2 || !int.TryParse(parts[1].Substring(0, 2), out int cm) || cm <= 0)
-                return width < 0.02f;
-            float nominal = cm * 0.01f;
-            return width < nominal * 0.7f || width > nominal * 1.3f;
-        }
-
-        private void Draw(Code c, Transform t, Rect box, Vector3 head)
-        {
-            c.Frame.SetPosition(0, t.TransformPoint(new Vector3(box.xMin, box.yMin, 0f)));
-            c.Frame.SetPosition(1, t.TransformPoint(new Vector3(box.xMax, box.yMin, 0f)));
-            c.Frame.SetPosition(2, t.TransformPoint(new Vector3(box.xMax, box.yMax, 0f)));
-            c.Frame.SetPosition(3, t.TransformPoint(new Vector3(box.xMin, box.yMax, 0f)));
-            Color color = c.Trackable.IsTracked ? Brand.Primary : Brand.FgFaint;
-            c.Frame.startColor = c.Frame.endColor = color;
-            float dist = Vector3.Distance(head, c.Center);
-            Vector3 labelAt = c.Center + Vector3.up * (Mathf.Max(box.height * 0.5f, 0.02f) + 0.03f);
-            c.Label.transform.SetPositionAndRotation(labelAt, Quaternion.LookRotation(labelAt - head));
-            c.Label.transform.localScale = Vector3.one * Mathf.Max(0.004f, dist * 0.006f);
-            c.Label.text = $"{c.Payload}\n{dist:0.00} m · {c.Width * 100f:0.0} cm · ±{Jitter(c) * 1000f:0.0} mm";
         }
 
         // Spread of the code's centre over the last 30 s tracked, 3D standard deviation, metres.
@@ -243,34 +214,6 @@ namespace QuestMarkerApp.Core
             float sum = 0f;
             foreach (Vector3 v in c.Recent) sum += (v - mean).sqrMagnitude;
             return Mathf.Sqrt(sum / (c.Recent.Count - 1));
-        }
-
-        private void BuildVisual(Code c)
-        {
-            if (lineMaterial == null) lineMaterial = new Material(Shader.Find("Sprites/Default")) { name = "QrTestFrame" };
-            var go = new GameObject("QrFrame_" + c.Payload);
-            go.transform.SetParent(transform, false);
-            c.Frame = go.AddComponent<LineRenderer>();
-            c.Frame.sharedMaterial = lineMaterial;
-            c.Frame.useWorldSpace = true;
-            c.Frame.loop = true;
-            c.Frame.positionCount = 4;
-            c.Frame.startWidth = c.Frame.endWidth = 0.004f;
-            c.Frame.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            c.Frame.receiveShadows = false;
-
-            var labelGo = new GameObject("Label");
-            labelGo.transform.SetParent(go.transform, false);
-            c.Label = labelGo.AddComponent<TextMeshPro>();
-            Brand.Style(c.Label, true);
-            c.Label.fontSize = 10f;
-            c.Label.alignment = TextAlignmentOptions.Bottom;
-            c.Label.rectTransform.pivot = new Vector2(0.5f, 0f);
-            c.Label.rectTransform.sizeDelta = new Vector2(60f, 6f);
-            c.Label.textWrappingMode = TextWrappingModes.NoWrap;
-            c.Label.color = Color.white;
-            Material outlined = Brand.LabelMaterial;
-            if (outlined != null) c.Label.fontSharedMaterial = outlined;
         }
 
         // ------------------------------------------------------------------
@@ -288,7 +231,9 @@ namespace QuestMarkerApp.Core
             }
             text.Clear();
             text.Append(L.T("<b>Δοκιμή QR</b>", "<b>QR test</b>"));
-            text.Append(L.En ? $" · {codes.Count} codes\n" : $" · {codes.Count} κωδικοί\n");
+            int read = 0;
+            foreach (Code c in codes.Values) if (c.HasPose) read++;
+            text.Append(L.En ? $" · {read} codes\n" : $" · {read} κωδικοί\n");
             int lines = 0;
             var list = new List<Code>(codes.Values);
             list.Sort((a, b) => string.CompareOrdinal(a.Payload, b.Payload));
@@ -301,8 +246,8 @@ namespace QuestMarkerApp.Core
                     lines++;
                 }
             hudText.text = text.ToString();
-            Status = codes.Count == 0 ? L.T("Ψάχνει QR…", "Looking for QR codes…")
-                : L.En ? $"On · {codes.Count} codes" : $"Ναι · {codes.Count} κωδικοί";
+            Status = read == 0 ? L.T("Ψάχνει QR…", "Looking for QR codes…")
+                : L.En ? $"On · {read} codes" : $"Ναι · {read} κωδικοί";
         }
 
         private void PlaceHud(Camera cam)
@@ -368,12 +313,11 @@ namespace QuestMarkerApp.Core
             started = false;
             asked = false;
             nextScan = nextLog = nextView = 0f;
-            foreach (Code c in codes.Values)
-                if (c.Frame != null) Destroy(c.Frame.gameObject);
+            foreach (Code c in codes.Values) c.Outline.Destroy();
             codes.Clear();
             if (hud != null) hud.gameObject.SetActive(false);
-            // MRUK stays, idle: tracking off releases the resources and it holds nothing else.
-            if (mruk != null) SetTracking(false);
+            if (holding) QrSource.Release();
+            holding = false;
             Debug.Log("[QrTest] QR tracking off");
         }
 

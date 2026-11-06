@@ -405,7 +405,7 @@ namespace QuestMarkerApp.UI
             if (panel == null || project == null || !project.HasProject) return;
             SensorLimits.Ranked(ranked, NearLimitsCount);
             var points = new Dictionary<string, ProjectPoint>();
-            foreach (ProjectPoint p in project.Points)
+            foreach (ProjectPoint p in project.Sensors)
                 if (p != null && !string.IsNullOrEmpty(p.sensorId)) points[p.sensorId] = p;
 
             var list = new List<FlowItem>();

@@ -223,7 +223,7 @@ namespace QuestMarkerApp.UI
             Command cmd = Parse(utterance);
             // A bare sensor name ("Κ5") without a verb still means "find it".
             if (cmd.Kind == Kind.None && alignment != null && alignment.HasProject
-                && MatchSensor(utterance, alignment.Points) != null)
+                && MatchSensor(utterance, alignment.Sensors) != null)
                 cmd = new Command(Kind.Find, utterance);
 
             switch (cmd.Kind)
@@ -289,7 +289,7 @@ namespace QuestMarkerApp.UI
         private string Find(string spoken)
         {
             if (alignment == null || !alignment.HasProject) { Feedback.Play(Feedback.Sound.Warn); return L.T("Φόρτωσε πρώτα έργο", "Load a project first"); }
-            ProjectPoint p = MatchSensor(spoken, alignment.Points);
+            ProjectPoint p = MatchSensor(spoken, alignment.Sensors);
             if (p == null) { Feedback.Play(Feedback.Sound.Warn); return L.En ? "Not found: “" + spoken + "”" : "Δεν βρέθηκε: «" + spoken + "»"; }
             return NavigateTo(p);
         }
@@ -310,7 +310,7 @@ namespace QuestMarkerApp.UI
             for (int tier = 0; tier < 2; tier++)
             {
                 bool wantAlarm = tier == 0;
-                foreach (ProjectPoint p in alignment.Points)
+                foreach (ProjectPoint p in alignment.Sensors)
                 {
                     if (p == null) continue;
                     bool isAlarm = string.Equals(p.alertState, "alarm", StringComparison.OrdinalIgnoreCase);

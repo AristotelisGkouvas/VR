@@ -155,6 +155,50 @@ namespace QuestMarkerApp.Core
         public int TerrawebProjectId => HasProject ? project.terrawebProjectId : 0;
         public IReadOnlyList<ProjectPoint> Points =>
             HasProject ? (IReadOnlyList<ProjectPoint>)project.points : Array.Empty<ProjectPoint>();
+        /// <summary>
+        /// The points that are sensors: <see cref="Points"/> without the surveyed QR codes, which
+        /// exist only for the alignment. The same array until the project changes.
+        /// </summary>
+        public IReadOnlyList<ProjectPoint> Sensors
+        {
+            get
+            {
+                if (!HasProject) return Array.Empty<ProjectPoint>();
+                if (!ReferenceEquals(sensorsOf, project.points))
+                {
+                    sensorsOf = project.points;
+                    sensors = project.points;
+                    foreach (ProjectPoint p in project.points)
+                        if (p != null && p.IsCode()) { sensors = Array.FindAll(project.points, q => q == null || !q.IsCode()); break; }
+                }
+                return sensors;
+            }
+        }
+        private ProjectPoint[] sensors, sensorsOf;
+
+        /// <summary>The project has surveyed QR codes.</summary>
+        public bool HasCodes => HasProject && !ReferenceEquals(Sensors, project.points);
+
+        public bool HasCode(string id) => IndexOfCode(id) >= 0;
+
+        private int IndexOfCode(string id)
+        {
+            if (!HasProject) return -1;
+            for (int i = 0; i < project.points.Length; i++)
+                if (project.points[i] != null && project.points[i].id == id && project.points[i].IsCode()) return i;
+            return -1;
+        }
+
+        /// <summary>What the QR reader is doing, for the panel; empty when it has nothing to say.</summary>
+        public string QrStatus { get; private set; } = "";
+
+        public void SetQrStatus(string status)
+        {
+            if (status == QrStatus) return;
+            QrStatus = status;
+            RefreshPanel();
+        }
+
         public int SelectedIndex => selectedIndex;
         public int PlacedCount => placements.Count;
         /// <summary>Placed control points, oldest first (the panel lists them in this order).</summary>
@@ -534,6 +578,15 @@ namespace QuestMarkerApp.Core
             var keepOrder = sameProject ? new List<string>(placementOrder) : new List<string>(keep.Keys);
             bool restored = !sameProject && keep.Count > 0;
 
+            // The codes first: they are what the list and the guide offer before any sensor.
+            if (Array.Exists(request.points, q => q != null && q.IsCode()))
+            {
+                var ordered = new List<ProjectPoint>(request.points.Length);
+                ordered.AddRange(Array.FindAll(request.points, q => q != null && q.IsCode()));
+                ordered.AddRange(Array.FindAll(request.points, q => q == null || !q.IsCode()));
+                request.points = ordered.ToArray();
+            }
+
             project = request;
             IsPractice = practice;
             // Round the origin to whole metres so local offsets stay readable in logs. Taken from
@@ -682,6 +735,7 @@ namespace QuestMarkerApp.Core
             EnsureVisuals();
             if (panel != null) panel.gameObject.SetActive(modeActive);
             if (tipCursor != null) tipCursor.gameObject.SetActive(modeActive);
+            if (HasCodes) Render(); // the codes show only while aligning
             if (modeActive) RefreshPanel();
             // "Alarms only" is lifted while aligning: every sensor must show to judge the fit.
             if (markerManager != null) markerManager.RefreshVisibility();
@@ -706,21 +760,7 @@ namespace QuestMarkerApp.Core
             {
                 bool wasAligned = isAligned;
                 Vector3 tip = TipWorldPosition();
-                if (PlaceSelectedAt(tip))
-                {
-                    Feedback.Buzz(Hands.Dominant, 0.6f, 0.08f);
-                    bool moved = lastMessage != null && lastMessage.StartsWith(L.T("Ο χώρος μετακινήθηκε", "The room moved"));
-                    if (moved) Feedback.Play(Feedback.Sound.Warn);
-                    else if (isAligned && !wasAligned)
-                    {
-                        // The moment it locks in: chord, a longer buzz, sensors drop from the sky.
-                        Feedback.Play(Feedback.Sound.Success);
-                        Feedback.Buzz(Hands.Dominant, 0.8f, 0.25f);
-                    }
-                    else if (lastMessage != null && lastMessage.StartsWith(L.T("Έλεγχος OK", "Check OK")))
-                        Feedback.Play(Feedback.Sound.Success);
-                    else Feedback.Play(Feedback.Sound.Place);
-                }
+                if (PlaceSelectedAt(tip)) PlacedFeedback(wasAligned);
             }
 
             if (AlignmentAccuracy.Active && isAligned)
@@ -744,6 +784,61 @@ namespace QuestMarkerApp.Core
                 Feedback.Buzz(Hands.Dominant, 0.25f, 0.06f);
             }
 #endif
+        }
+
+#if !MOBILE_PREVIEW
+        private void PlacedFeedback(bool wasAligned)
+        {
+            Feedback.Buzz(Hands.Dominant, 0.6f, 0.08f);
+            bool moved = lastMessage != null && lastMessage.StartsWith(L.T("Ο χώρος μετακινήθηκε", "The room moved"));
+            if (moved) Feedback.Play(Feedback.Sound.Warn);
+            else if (isAligned && !wasAligned)
+            {
+                // The moment it locks in: chord, a longer buzz, sensors drop from the sky.
+                Feedback.Play(Feedback.Sound.Success);
+                Feedback.Buzz(Hands.Dominant, 0.8f, 0.25f);
+            }
+            else if (lastMessage != null && lastMessage.StartsWith(L.T("Έλεγχος OK", "Check OK")))
+                Feedback.Play(Feedback.Sound.Success);
+            else Feedback.Play(Feedback.Sound.Place);
+        }
+
+        /// <summary>A surveyed QR code was read: the same as touching its point, then on to the
+        /// suggested next code.</summary>
+        public bool PlaceCode(string id, Vector3 worldPosition)
+        {
+            int index = IndexOfCode(id);
+            if (index < 0) return false;
+            bool wasAligned = isAligned;
+            selectedIndex = index;
+            if (!PlaceSelectedAt(worldPosition)) return false;
+            PlacedFeedback(wasAligned);
+            if (lastMessage == null)
+            {
+                lastMessage = L.En ? $"{id} read." : $"Διαβάστηκε το {id}.";
+                goodMessage = lastMessage;
+            }
+            int next = IndexOfCode(suggestedId);
+            if (next >= 0) selectedIndex = next;
+            RefreshPanel();
+            return true;
+        }
+#endif
+
+        /// <summary>
+        /// The tracking space changed while codes were being read: they would fit metres apart
+        /// with whatever is read next, so the alignment starts over.
+        /// </summary>
+        public void DropAfterTrackingChange()
+        {
+            placements.Clear();
+            placementOrder.Clear();
+            needsCheck = false;
+            lastMessage = L.T("Τα γυαλιά έχασαν τη θέση τους. Διάβασε ξανά τους κωδικούς.",
+                "The glasses lost their position. Read the codes again.");
+            goodMessage = null;
+            Solve();
+            Save();
         }
 
         private void MoveSelection(int delta)
@@ -987,9 +1082,12 @@ namespace QuestMarkerApp.Core
             if (!HasProject || pairs.Count == 0 || pairs.Count >= project.points.Length) return null;
             string best = null;
             float bestScore = -1f;
+            bool codesLeft = false;
+            foreach (ProjectPoint pt in project.points)
+                if (pt != null && pt.IsCode() && !placements.ContainsKey(pt.id)) { codesLeft = true; break; }
             foreach (ProjectPoint pt in project.points)
             {
-                if (pt == null || placements.ContainsKey(pt.id)) continue;
+                if (pt == null || placements.ContainsKey(pt.id) || (codesLeft && !pt.IsCode())) continue;
                 Vector3 q = ProjectLocal(pt);
                 float nearest = float.MaxValue;
                 foreach (var (p, _) in pairs)
@@ -1101,6 +1199,7 @@ namespace QuestMarkerApp.Core
             ProjectPoint sel = SelectedPoint;
             Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
             if (sel == null || reference == null || placements.Count == 0 || placements.ContainsKey(sel.id)) return;
+            if (sel.IsCode()) return; // read, not walked to with the tip
 
             Vector3 tip = reference.InverseTransformPoint(TipWorldPosition());
             Vector3 selLocal = ProjectLocal(sel);
@@ -1157,7 +1256,7 @@ namespace QuestMarkerApp.Core
             var coords = new List<CoordinateData>();
             foreach (var pt in project.points)
             {
-                if (pt == null) continue;
+                if (pt == null || (pt.IsCode() && !modeActive)) continue;
                 bool placed = placements.TryGetValue(pt.id, out Vector3 measured);
                 Vector3 local;
                 if (isAligned) local = solvedRotation * ProjectLocal(pt) + solvedTranslation;

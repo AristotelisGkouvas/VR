@@ -267,7 +267,7 @@ namespace QuestMarkerApp.Core
             ActiveAlerts = alerts;
 
             changes.Clear();
-            foreach (ProjectPoint pt in alignment.Points)
+            foreach (ProjectPoint pt in alignment.Sensors)
             {
                 if (pt == null || string.IsNullOrEmpty(pt.sensorId)) continue;
                 int to = tiers.TryGetValue(pt.sensorId, out int rank) ? rank : RankNone;

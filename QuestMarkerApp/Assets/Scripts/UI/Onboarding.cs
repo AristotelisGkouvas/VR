@@ -531,7 +531,7 @@ namespace QuestMarkerApp.UI
             nearestName = null;
             nearestDist = float.MaxValue;
             if (cam == null) return;
-            foreach (ProjectPoint p in project.Points)
+            foreach (ProjectPoint p in project.Sensors)
             {
                 if (p == null || !markers.ActiveMarkers.TryGetValue(ProjectAlignment.MarkerPrefix + p.id, out Marker m) || m == null)
                     continue;

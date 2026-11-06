@@ -37,6 +37,11 @@ namespace QuestMarkerApp.API
         /// </summary>
         public bool approx;
 
+        /// <summary>Names a surveyed QR sticker rather than a sensor: an alignment point only.</summary>
+        public static bool IsCodeId(string id) => id != null && id.StartsWith("QM-", StringComparison.Ordinal);
+
+        public bool IsCode() => IsCodeId(id);
+
         /// <summary>A reading older than this many days is flagged "old" (icon ring, card, label).</summary>
         public const int StaleDays = 30;
 
