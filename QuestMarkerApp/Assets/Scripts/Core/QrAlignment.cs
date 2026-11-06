@@ -13,8 +13,8 @@ using QuestMarkerApp.UI;
 namespace QuestMarkerApp.Core
 {
     /// <summary>
-    /// Alignment on surveyed QR codes. While the alignment panel is open on a project with codes
-    /// (points named QM-…, whose centres were measured), a code that holds still in view becomes
+    /// Alignment on surveyed QR codes. While the alignment panel is open and QR was the method
+    /// chosen (points named QM-…, whose centres were measured), a code that holds still in view becomes
     /// a control point by itself: no row to pick, nothing to touch. The solve, the outlier check,
     /// the suggestion and "Finish" stay the ones the touches use, and so does undo: a withdrawn
     /// code waits until it has left the view, or it would be read again at once.
@@ -50,8 +50,8 @@ namespace QuestMarkerApp.Core
 
         private void Update()
         {
-            bool want = alignment != null && alignment.IsModeActive && alignment.HasCodes
-                && !alignment.IsPractice && !AlignmentAccuracy.Active && !QrTest.Active;
+            bool want = alignment != null && alignment.IsModeActive && alignment.QrOnly
+                && !alignment.ChoosingMethod && !alignment.IsPractice && !QrTest.Active;
             if (!want)
             {
                 if (holding) Stop();

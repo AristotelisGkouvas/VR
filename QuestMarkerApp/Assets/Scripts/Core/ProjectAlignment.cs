@@ -20,6 +20,8 @@ namespace QuestMarkerApp.Core
     /// Frames: project E/N/H → local metres (x = East, y = Up, z = North) minus a double
     /// origin, then → reference-anchor local space, which is what MarkerManager consumes.
     /// </summary>
+    public enum AlignMethod { Touch, Qr }
+
     public class ProjectAlignment : MonoBehaviour
     {
         public const string MarkerPrefix = "prj:";
@@ -175,6 +177,87 @@ namespace QuestMarkerApp.Core
             }
         }
         private ProjectPoint[] sensors, sensorsOf;
+
+        private const string MethodPref = "align.method";
+
+        /// <summary>How this alignment is done. Asked in the field when the project has codes.</summary>
+        public AlignMethod Method { get; private set; } = AlignMethod.Touch;
+
+        /// <summary>The panel is asking how to align: nothing can be placed until it is answered.</summary>
+        public bool ChoosingMethod { get; private set; }
+
+        /// <summary>The method used last on this headset, which the question highlights.</summary>
+        public AlignMethod LastMethod => PlayerPrefs.GetInt(MethodPref, (int)AlignMethod.Qr) == (int)AlignMethod.Touch ? AlignMethod.Touch : AlignMethod.Qr;
+
+        /// <summary>Only codes count: the list holds them alone, and the tip and Trigger are off.
+        /// An accuracy measurement stays on the tip whatever the method.</summary>
+        public bool QrOnly => Method == AlignMethod.Qr && HasCodes && !AlignmentAccuracy.Active;
+
+        /// <summary>The first <see cref="ListCount"/> of <see cref="Points"/> can be picked (the codes come first).</summary>
+        public int ListCount => QrOnly ? CodeCount : Points.Count;
+
+        public int CodeCount => HasProject ? project.points.Length - Sensors.Count : 0;
+
+        public bool CanChangeMethod => HasCodes && AsksMethod && !ChoosingMethod && !AlignmentAccuracy.Active && PlacedCount < 3;
+
+        private bool AsksMethod
+        {
+            get
+            {
+#if MOBILE_PREVIEW
+                return false;
+#else
+                return HasCodes && WorkMode.IsField && !IsPractice;
+#endif
+            }
+        }
+
+        public void AskMethod()
+        {
+            if (!AsksMethod) return;
+            ChoosingMethod = true;
+            RefreshPanel();
+        }
+
+        public void ChooseMethod(AlignMethod method)
+        {
+            Method = method;
+            ChoosingMethod = false;
+            PlayerPrefs.SetInt(MethodPref, (int)method);
+            Prefs.Save();
+            lastMessage = null;
+            // Re-solved for the suggestion, which depends on the method.
+            Solve();
+            selectedIndex = SelectionFor(method);
+            if (panel != null) panel.ShowPlan();
+            RefreshPanel();
+        }
+
+        private int SelectionFor(AlignMethod method)
+        {
+            int first = method == AlignMethod.Qr ? 0 : CodeCount;
+            for (int i = 0; i < project.points.Length; i++)
+                if (project.points[i] != null && project.points[i].id == suggestedId) return i;
+            int end = method == AlignMethod.Qr ? CodeCount : project.points.Length;
+            for (int i = first; i < end; i++)
+                if (project.points[i] != null && !placements.ContainsKey(project.points[i].id)) return i;
+            return Mathf.Min(first, project.points.Length - 1);
+        }
+
+        /// <summary>Where the wearer stands in the plan (x East, y North, as <see cref="PointLocal"/>) and faces
+        /// (degrees clockwise from North). Only once the alignment is trusted.</summary>
+        public bool TryHeadInProject(out Vector2 plan, out float headingDeg)
+        {
+            plan = default;
+            headingDeg = 0f;
+            Camera cam = Headset.Camera;
+            Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
+            if (!isAligned || needsCheck || cam == null || reference == null) return false;
+            Vector3 local = Quaternion.Inverse(solvedRotation) * (reference.InverseTransformPoint(cam.transform.position) - solvedTranslation);
+            plan = new Vector2(local.x, local.z);
+            if (TryProjectVector(cam.transform.forward, out Vector3 f)) headingDeg = Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+            return true;
+        }
 
         /// <summary>The project has surveyed QR codes.</summary>
         public bool HasCodes => HasProject && !ReferenceEquals(Sensors, project.points);
@@ -565,6 +648,7 @@ namespace QuestMarkerApp.Core
                 Debug.LogWarning("[Project] Empty project ignored");
                 return;
             }
+            ChoosingMethod = false;
 
             for (int i = 0; i < request.points.Length; i++)
             {
@@ -669,7 +753,7 @@ namespace QuestMarkerApp.Core
         {
             if (!HasProject || string.IsNullOrWhiteSpace(query)) return false;
             query = query.Trim();
-            int n = project.points.Length;
+            int n = ListCount;
             for (int step = 1; step <= n; step++)
             {
                 int i = (selectedIndex + step) % n;
@@ -693,7 +777,7 @@ namespace QuestMarkerApp.Core
         public void Select(int index)
         {
             if (!HasProject) return;
-            int clamped = Mathf.Clamp(index, 0, project.points.Length - 1);
+            int clamped = Mathf.Clamp(index, 0, Mathf.Max(0, ListCount - 1));
             if (clamped == selectedIndex) return;
             selectedIndex = clamped;
             RefreshPanel();
@@ -730,11 +814,16 @@ namespace QuestMarkerApp.Core
         {
             modeActive = active && HasProject;
             autoOpened = false;
+            // Asked again each time the project still needs aligning; once it is aligned the
+            // panel opens straight on, with the method last used.
+            ChoosingMethod = modeActive && AsksMethod && NeedsAlignment && !AlignmentAccuracy.Active;
+            if (modeActive && !ChoosingMethod) Method = AsksMethod ? LastMethod : AlignMethod.Touch;
             panelPlaced = false; // reopens in front, not wherever it was last left
             panelGliding = false;
             EnsureVisuals();
             if (panel != null) panel.gameObject.SetActive(modeActive);
-            if (tipCursor != null) tipCursor.gameObject.SetActive(modeActive);
+            if (tipCursor != null) tipCursor.gameObject.SetActive(modeActive && !QrOnly && !ChoosingMethod);
+            if (selectedIndex >= ListCount) selectedIndex = 0;
             if (HasCodes) Render(); // the codes show only while aligning
             if (modeActive) RefreshPanel();
             // "Alarms only" is lifted while aligning: every sensor must show to judge the fit.
@@ -744,6 +833,7 @@ namespace QuestMarkerApp.Core
         private void HandleModeInput()
         {
 #if !MOBILE_PREVIEW
+            if (ChoosingMethod) return; // the ray answers; a stray Trigger must not place a point
             float stick = Hands.OffHandStickY();
             if (Mathf.Abs(stick) > 0.6f && Time.unscaledTime >= nextStickMove)
             {
@@ -756,7 +846,7 @@ namespace QuestMarkerApp.Core
                 stickHeldSince = -1f;
             }
 
-            if (!VrPointer.ConsumedThisFrame && Hands.TriggerDown())
+            if (!QrOnly && !VrPointer.ConsumedThisFrame && Hands.TriggerDown())
             {
                 bool wasAligned = isAligned;
                 Vector3 tip = TipWorldPosition();
@@ -820,6 +910,7 @@ namespace QuestMarkerApp.Core
             }
             int next = IndexOfCode(suggestedId);
             if (next >= 0) selectedIndex = next;
+            else if (selectedIndex >= ListCount) selectedIndex = index; // every code is in
             RefreshPanel();
             return true;
         }
@@ -844,7 +935,7 @@ namespace QuestMarkerApp.Core
         private void MoveSelection(int delta)
         {
             if (!HasProject) return;
-            int n = project.points.Length;
+            int n = Mathf.Max(1, ListCount);
             selectedIndex = (selectedIndex + delta + n) % n;
             RefreshPanel();
         }
@@ -1083,8 +1174,9 @@ namespace QuestMarkerApp.Core
             string best = null;
             float bestScore = -1f;
             bool codesLeft = false;
-            foreach (ProjectPoint pt in project.points)
-                if (pt != null && pt.IsCode() && !placements.ContainsKey(pt.id)) { codesLeft = true; break; }
+            if (QrOnly)
+                foreach (ProjectPoint pt in project.points)
+                    if (pt != null && pt.IsCode() && !placements.ContainsKey(pt.id)) { codesLeft = true; break; }
             foreach (ProjectPoint pt in project.points)
             {
                 if (pt == null || placements.ContainsKey(pt.id) || (codesLeft && !pt.IsCode())) continue;
@@ -1199,7 +1291,7 @@ namespace QuestMarkerApp.Core
             ProjectPoint sel = SelectedPoint;
             Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
             if (sel == null || reference == null || placements.Count == 0 || placements.ContainsKey(sel.id)) return;
-            if (sel.IsCode()) return; // read, not walked to with the tip
+            if (QrOnly) return; // read, not walked to with the tip
 
             Vector3 tip = reference.InverseTransformPoint(TipWorldPosition());
             Vector3 selLocal = ProjectLocal(sel);
@@ -1380,7 +1472,12 @@ namespace QuestMarkerApp.Core
         private void UpdateCursorAndPanelPose()
         {
             if (!lateHooked) { Application.onBeforeRender += LatePose; lateHooked = true; }
-            if (tipCursor != null) tipCursor.position = TipWorldPosition();
+            if (tipCursor != null)
+            {
+                bool tip = modeActive && !QrOnly && !ChoosingMethod;
+                if (tipCursor.gameObject.activeSelf != tip) tipCursor.gameObject.SetActive(tip);
+                tipCursor.position = TipWorldPosition();
+            }
 
             Camera cam = Headset.Camera;
             if (panel == null || cam == null) return;

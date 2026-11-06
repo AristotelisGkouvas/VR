@@ -69,6 +69,31 @@ namespace QuestMarkerApp.UI
         /// <summary>A panel is being carried with the grip; panels ignore their stick meanwhile.</summary>
         public static bool IsDragging => dragging != null;
 
+        /// <summary>The ray is on <paramref name="rect"/>: where, in pixels from its top-left corner, y down.</summary>
+        public static bool TryHit(RectTransform rect, out Vector2 at)
+        {
+            at = default;
+            if (hovered == null || rect == null) return false;
+            if (hovered.Rect != rect && !hovered.Rect.IsChildOf(rect)) return false;
+            Vector3 local = rect.InverseTransformPoint(hoverPoint);
+            at = new Vector2(local.x, -local.y);
+            return true;
+        }
+
+        public static bool TriggerHeld
+        {
+            get
+            {
+#if !MOBILE_PREVIEW
+                return OVRInput.Get(OVRInput.Button.PrimaryIndexTrigger, Hands.Dominant);
+#else
+                return Input.GetMouseButton(0);
+#endif
+            }
+        }
+
+        private static Vector3 hoverPoint;
+
         private static readonly List<Draggable> Draggables = new List<Draggable>();
         private static Draggable dragging;
         private float dragDistance;
@@ -268,6 +293,7 @@ namespace QuestMarkerApp.UI
             if (best != null)
             {
                 // Just in front of the panel, facing back along the ray.
+                hoverPoint = bestHit;
                 cursor.position = bestHit - ray.direction * 0.004f;
                 cursor.rotation = Quaternion.LookRotation(ray.direction, Vector3.up);
             }

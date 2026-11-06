@@ -15,8 +15,9 @@ namespace QuestMarkerApp.UI
     /// distance gauge against an already placed point), a one-word verdict with three small
     /// metrics once aligned, the placed control points with their misfit, and the
     /// "Ολοκλήρωση" / "Λίστα" buttons.</item>
-    /// <item>List: every sensor with the brand-kit icon, for picking the target. The stick
-    /// opens it; placing a point returns to the guide.</item>
+    /// <item>Plan: where the points are (<see cref="PlanView"/>) and a short list, for picking
+    /// the target. The stick opens it; placing a point returns to the guide.</item>
+    /// <item>Method: the question asked first in the field when the project has QR codes.</item>
     /// </list>
     /// Pure view — <see cref="ProjectAlignment"/> owns the state and calls <see cref="Refresh"/>.
     /// </summary>
@@ -29,8 +30,8 @@ namespace QuestMarkerApp.UI
         private const float BoxX = 20f;
         private const float BoxW = Width - 40f;
         private const float Inner = BoxW - 32f;
-        private const int Rows = 9;
-        private const float RowH = 48f;
+        private const int Rows = 4;
+        private const float RowH = 41f;
         private const int MaxControlRows = 4;
         // Good / usable / redo, in metres of RMS residual.
         private const float GoodResidual = 0.05f;
@@ -39,7 +40,12 @@ namespace QuestMarkerApp.UI
         private const float GaugeScale = 0.5f;
         private const float GaugeOk = 0.10f;
 
-        private RectTransform root, guidePage, listPage;
+        private RectTransform root, guidePage, listPage, methodPage, changeButton;
+        private PlanView plan;
+        private TextMeshProUGUI planHint;
+        private readonly List<(AlignMethod method, Image border, Image fill, TextMeshProUGUI name, TextMeshProUGUI text, TextMeshProUGUI need, Image tag, TextMeshProUGUI tagText)> methodCards =
+            new List<(AlignMethod, Image, Image, TextMeshProUGUI, TextMeshProUGUI, TextMeshProUGUI, Image, TextMeshProUGUI)>();
+        private TextMeshProUGUI methodTitle, methodLead, methodFoot;
         private TextMeshProUGUI title, subtitle;
         private ProjectAlignment owner;
 
@@ -57,10 +63,9 @@ namespace QuestMarkerApp.UI
         private Image doneButton;
         private TextMeshProUGUI doneLabel;
         // Texts set once in Build, re-set by Relabel when the language changes.
-        private TextMeshProUGUI eyebrow, captionH, captionV, controlHeader, listButtonLabel, listHeader, guideButtonLabel;
+        private TextMeshProUGUI eyebrow, captionH, captionV, controlHeader, listButtonLabel, guideButtonLabel, changeLabel;
 
         // List page.
-        private TextMeshProUGUI listCount;
         private Image scrollThumb;
         private readonly List<Row> rows = new List<Row>();
         private float listTop;
@@ -103,6 +108,9 @@ namespace QuestMarkerApp.UI
                     q => { if (owner.SelectMatch(q)) ShowList(true); }, null),
                 enabled: () => !UiState.AnyModal);
             subtitle = VrUi.Text("Subtitle", root, 24, 80, Width - 48, 22, "", 14f, Brand.FgSubtle);
+            changeButton = VrUi.Button("Change", root, Width - 150, 74, 130, 30, null, " ", () => owner.AskMethod());
+            changeLabel = changeButton.GetComponentInChildren<TextMeshProUGUI>();
+            changeLabel.fontSize = 12.5f;
 
             guidePage = VrUi.Rect("Guide", root, 0, BodyTop, Width, Height - BodyTop);
             BuildStepper();
@@ -115,6 +123,10 @@ namespace QuestMarkerApp.UI
             listPage = VrUi.Rect("List", root, 0, BodyTop, Width, Height - BodyTop);
             BuildList();
             listPage.gameObject.SetActive(false);
+
+            methodPage = VrUi.Rect("Method", root, 0, BodyTop, Width, Height - BodyTop);
+            BuildMethod();
+            methodPage.gameObject.SetActive(false);
             Relabel();
             L.Changed += OnLanguageChanged;
         }
@@ -136,8 +148,8 @@ namespace QuestMarkerApp.UI
             captionH.text = L.T("Οριζόντιο", "Horizontal");
             captionV.text = L.T("Κατακόρυφο", "Vertical");
             controlHeader.text = L.T("ΣΗΜΕΙΑ ΕΛΕΓΧΟΥ", "CONTROL POINTS");
-            listButtonLabel.text = L.T("Λίστα", "List");
-            listHeader.text = L.T("ΑΙΣΘΗΤΗΡΕΣ", "SENSORS");
+            listButtonLabel.text = L.T("Κάτοψη", "Plan");
+            changeLabel.text = L.T("Αλλαγή τρόπου", "Change method");
             guideButtonLabel.text = L.T("Οδηγός", "Guide");
         }
 
@@ -246,7 +258,7 @@ namespace QuestMarkerApp.UI
                 () => owner.SetMode(false), true, false, () => CanFinish(owner));
             doneButton = done.GetComponent<Image>();
             doneLabel = done.GetComponentInChildren<TextMeshProUGUI>();
-            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", L.T("Λίστα", "List"), () => ShowList(true))
+            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", L.T("Κάτοψη", "Plan"), () => ShowList(true))
                 .GetComponentInChildren<TextMeshProUGUI>();
         }
 
@@ -259,16 +271,89 @@ namespace QuestMarkerApp.UI
 
         private void BuildList()
         {
-            listTop = 30f;
-            listHeader = VrUi.Text("ListHeader", listPage, 24, 0, 200, 24, "", 13f, Brand.FgSubtle, true);
-            listHeader.characterSpacing = 6f;
-            listCount = VrUi.Text("ListCount", listPage, Width - 224, 0, 200, 24, "", 13f, Brand.FgSubtle,
-                false, TextAlignmentOptions.MidlineRight);
+            RectTransform planRoot = VrUi.Rect("Plan", listPage, BoxX, 4, PlanView.W, PlanView.TotalH);
+            plan = planRoot.gameObject.AddComponent<PlanView>();
+            plan.Build(owner);
+            listTop = 4f + PlanView.TotalH + 6f;
             for (int i = 0; i < Rows; i++) rows.Add(BuildRow(i));
             VrUi.Panel("ScrollTrack", listPage, Width - 18, listTop, 4, Rows * RowH, Brand.SurfaceSunken, 2);
             scrollThumb = VrUi.Panel("ScrollThumb", listPage, Width - 18, listTop, 4, 40, Brand.FgFaint, 2);
-            guideButtonLabel = VrUi.Button("Guide", listPage, BoxX, Height - BodyTop - 62, 150, 46, "chevron-right", L.T("Οδηγός", "Guide"),
+            guideButtonLabel = VrUi.Button("Guide", listPage, BoxX, Height - BodyTop - 56, 118, 46, "chevron-right", L.T("Οδηγός", "Guide"),
                 () => ShowList(false), false, true).GetComponentInChildren<TextMeshProUGUI>();
+            planHint = VrUi.Text("Hint", listPage, BoxX + 128, Height - BodyTop - 56, BoxW - 128, 46, "", 13f, Brand.FgMuted);
+            planHint.textWrappingMode = TextWrappingModes.Normal;
+        }
+
+        // ------------------------------------------------------------------
+        //  Method page
+        // ------------------------------------------------------------------
+
+        private void BuildMethod()
+        {
+            methodTitle = VrUi.Text("Title", methodPage, BoxX, 0, BoxW, 32, "", 22f, Brand.Fg, true);
+            methodLead = VrUi.Text("Lead", methodPage, BoxX, 34, BoxW, 22, "", 14f, Brand.FgMuted);
+            BuildMethodCard(AlignMethod.Qr, 66f);
+            BuildMethodCard(AlignMethod.Touch, 256f);
+            methodFoot = VrUi.Text("Foot", methodPage, BoxX, 446, BoxW, 22, "", 13f, Brand.FgSubtle);
+        }
+
+        private void BuildMethodCard(AlignMethod method, float y)
+        {
+            const float h = 180f;
+            Image border = VrUi.Panel("Border", methodPage, BoxX, y, BoxW, h, Brand.BorderStrong, 16);
+            Image fill = VrUi.Panel("Fill", methodPage, BoxX + 2, y + 2, BoxW - 4, h - 4, Brand.SurfaceSunken, 15);
+            RectTransform card = fill.rectTransform;
+            if (method == AlignMethod.Qr)
+            {
+                VrUi.Panel("Chip", card, 14, 14, 42, 42, Brand.Info, 10);
+                VrUi.Text("ChipText", card, 14, 14, 42, 42, "QR", 16f, Brand.PrimaryFg, true, TextAlignmentOptions.Center);
+            }
+            else
+            {
+                VrUi.Panel("Chip", card, 14, 14, 42, 42, Brand.BorderStrong, 10);
+                VrUi.Icon("Tip", card, 25, 25, 20, Brand.DiscSprite, new Color(1f, 0.2f, 0.9f));
+            }
+            TextMeshProUGUI name = VrUi.Text("Name", card, 68, 14, 200, 42, "", 19f, Brand.Fg, true);
+            Image tag = VrUi.Panel("Tag", card, BoxW - 4 - 126, 24, 112, 22, Brand.Primary, 11);
+            TextMeshProUGUI tagText = VrUi.Text("TagText", tag.rectTransform, 0, 0, 112, 22, "", 10.5f, Brand.PrimaryFg, true, TextAlignmentOptions.Center);
+            TextMeshProUGUI text = VrUi.Text("Text", card, 14, 64, BoxW - 32, 66, "", 15f, Brand.FgMuted, false, TextAlignmentOptions.TopLeft);
+            text.textWrappingMode = TextWrappingModes.Normal;
+            TextMeshProUGUI need = VrUi.Text("Need", card, 14, 134, BoxW - 32, 36, "", 13f, Brand.FgSubtle, false, TextAlignmentOptions.TopLeft);
+            need.textWrappingMode = TextWrappingModes.Normal;
+            VrPointer.Register(card, () => owner.ChooseMethod(method), null, null, fill, Brand.SurfaceMuted);
+            methodCards.Add((method, border, fill, name, text, need, tag, tagText));
+        }
+
+        private void RefreshMethod(ProjectAlignment a)
+        {
+            methodTitle.text = L.T("Πώς θα ευθυγραμμίσεις;", "How will you align?");
+            methodLead.text = L.En ? $"This project has {a.CodeCount} surveyed QR codes." : $"Το έργο έχει {a.CodeCount} μετρημένους κωδικούς QR.";
+            methodFoot.text = L.T("Μπορείς να αλλάξεις τρόπο και μετά.", "You can change the method later.");
+            AlignMethod last = a.LastMethod;
+            foreach (var c in methodCards)
+            {
+                bool qr = c.method == AlignMethod.Qr;
+                c.name.text = qr ? L.T("Με κωδικούς QR", "With QR codes") : L.T("Με άγγιγμα σημείων", "By touching points");
+                c.text.text = qr
+                    ? L.T("Κοιτάς τον κωδικό από 1–2 m και μένεις ακίνητος. Διαβάζεται μόνος του, χωρίς να ακουμπήσεις τίποτα.",
+                          "Look at the code from 1–2 m and hold still. It reads by itself, with nothing to touch.")
+                    : L.T("Πηγαίνεις σε γνωστά σημεία, βάζεις τη ροζ μύτη του χειριστηρίου πάνω τους και πατάς Trigger.",
+                          "Go to known points, put the controller's pink tip on them and press Trigger.");
+                c.need.text = qr
+                    ? L.T("Χρειάζεσαι 3 κωδικούς, όσο πιο μακριά ο ένας από τον άλλο.", "You need 3 codes, as far apart as you can.")
+                    : L.T("Χρειάζεσαι 3 σημεία που μπορείς να φτάσεις με το χέρι.", "You need 3 points within reach of your hand.");
+                c.border.color = c.method == last ? Brand.Primary : Brand.BorderStrong;
+                bool tag = qr || c.method == last;
+                c.tag.gameObject.SetActive(tag);
+                c.tagText.text = qr ? L.T("ΠΡΟΤΕΙΝΕΤΑΙ", "RECOMMENDED") : L.T("ΤΕΛΕΥΤΑΙΑ ΦΟΡΑ", "LAST TIME");
+            }
+        }
+
+        /// <summary>Right after the method is chosen: the plan of what to go to.</summary>
+        public void ShowPlan()
+        {
+            lastSelected = lastPlaced = -1;
+            ShowListSilently(true);
         }
 
         private Row BuildRow(int i)
@@ -278,14 +363,14 @@ namespace QuestMarkerApp.UI
             // Hover plate under the selection plate, as in FlowPanel: the row under the ray lights up.
             Image hover = VrUi.Panel("Hover", r.Root, 0, 0, Width - 44, RowH - 4, Color.clear, 12);
             VrPointer.Register(r.Root, () => owner.Select(SlotIndex(slot)), null,
-                () => SlotIndex(slot) < owner.Points.Count, hover, Brand.SurfaceSunken.WithAlpha(0.7f));
+                () => SlotIndex(slot) < owner.ListCount, hover, Brand.SurfaceSunken.WithAlpha(0.7f));
             r.Background = VrUi.Panel("Bg", r.Root, 0, 0, Width - 44, RowH - 4, Brand.PrimarySoft, 12);
             r.Accent = VrUi.Panel("Accent", r.Root, 0, 8, 4, RowH - 20, Brand.Primary, 2);
-            r.Chip = VrUi.Icon("Chip", r.Root, 14, 6, 32, Brand.DiscSprite, Brand.FgFaint);
-            r.Glyph = VrUi.Icon("Glyph", r.Root, 20, 12, 20, null, Color.white);
+            r.Chip = VrUi.Icon("Chip", r.Root, 14, 3, 31, Brand.DiscSprite, Brand.FgFaint);
+            r.Glyph = VrUi.Icon("Glyph", r.Root, 20, 9, 19, null, Color.white);
             r.Name = VrUi.Text("Name", r.Root, 58, 0, 160, RowH - 4, "", 17f, Brand.Fg, true);
-            r.BadgeBg = VrUi.Panel("BadgeBg", r.Root, 214, 11, 96, 22, Brand.Control.WithAlpha(0.16f), 11);
-            r.Badge = VrUi.Text("Badge", r.Root, 214, 11, 96, 22, "", 11f, Brand.Control, true,
+            r.BadgeBg = VrUi.Panel("BadgeBg", r.Root, 214, 8, 96, 22, Brand.Control.WithAlpha(0.16f), 11);
+            r.Badge = VrUi.Text("Badge", r.Root, 214, 8, 96, 22, "", 11f, Brand.Control, true,
                 TextAlignmentOptions.Center);
             r.Height = VrUi.Text("H", r.Root, 312, 0, Width - 44 - 324, RowH - 4, "", 15f, Brand.FgMuted,
                 false, TextAlignmentOptions.MidlineRight);
@@ -294,15 +379,18 @@ namespace QuestMarkerApp.UI
 
         private int SlotIndex(int slot)
         {
-            int n = owner.Points.Count;
-            return Mathf.Clamp(owner.SelectedIndex - Rows / 2, 0, Mathf.Max(0, n - Rows)) + slot;
+            int n = owner.ListCount;
+            return Mathf.Clamp(owner.SelectedIndex - 1, 0, Mathf.Max(0, n - Rows)) + slot;
         }
 
         // Every opening starts on the guide; the browsing heuristic below needs a fresh baseline.
         private void OnEnable()
         {
             lastSelected = lastPlaced = -1;
-            if (guidePage != null) ShowListSilently(false);
+            if (guidePage == null) return;
+            ShowListSilently(false);
+            // Back from beside a menu, it may still be asking.
+            if (owner != null && owner.ChoosingMethod) Refresh(owner);
         }
 
         private void ShowList(bool show)
@@ -324,7 +412,26 @@ namespace QuestMarkerApp.UI
             IReadOnlyList<ProjectPoint> points = a.Points;
             title.text = a.ProjectName;
             int n = a.PlacedCount;
-            subtitle.text = L.En
+
+            if (changeButton.gameObject.activeSelf != a.CanChangeMethod) changeButton.gameObject.SetActive(a.CanChangeMethod);
+            subtitle.rectTransform.sizeDelta = new Vector2(a.CanChangeMethod ? Width - 184f : Width - 48f, subtitle.rectTransform.sizeDelta.y);
+            methodPage.gameObject.SetActive(a.ChoosingMethod);
+            if (a.ChoosingMethod)
+            {
+                guidePage.gameObject.SetActive(false);
+                listPage.gameObject.SetActive(false);
+                subtitle.text = L.En ? $"{Sensors(a.Sensors.Count)} · {ControlPoints(n)}" : $"{a.Sensors.Count} αισθητήρες · {ControlPoints(n)}";
+                RefreshMethod(a);
+                return;
+            }
+            guidePage.gameObject.SetActive(!showingList);
+            listPage.gameObject.SetActive(showingList);
+
+            subtitle.text = a.CanChangeMethod
+                ? a.QrOnly
+                    ? L.En ? $"By QR · {n} of 3 codes" : $"Με QR · {n} από 3 κωδικούς"
+                    : L.En ? $"By touch · {n} of 3 points" : $"Με άγγιγμα · {n} από 3 σημεία"
+                : L.En
                 ? a.IsAligned
                     ? $"{ControlPoints(n)} · aligned"
                     : $"{Sensors(a.Sensors.Count)} · {ControlPoints(n)}"
@@ -453,12 +560,10 @@ namespace QuestMarkerApp.UI
 
             targetInstr.text = measuring
                 ? L.T("Μύτη στο σημείο και Trigger· η ευθυγράμμιση δεν αλλάζει", "Tip on the point, then Trigger; the alignment does not change")
-                : a.NeedsCheck && a.HasCodes
-                ? L.T("Κοίτα έναν κωδικό από 1–2 m, ή μύτη και Trigger", "Look at a code from 1–2 m, or tip and Trigger")
+                : a.QrOnly
+                ? L.T("Κοίτα τον κωδικό από 1–2 m και μείνε ακίνητος", "Look at the code from 1–2 m and hold still")
                 : a.NeedsCheck
                 ? L.T("Ακούμπησε ένα γνωστό σημείο και πάτα Trigger", "Touch a known point and press Trigger")
-                : target != null && target.IsCode()
-                ? L.T("Κοίτα τον κωδικό από 1–2 m, ή μύτη και Trigger", "Look at the code from 1–2 m, or tip and Trigger")
                 : L.T("Ροζ μύτη στο σημείο και Trigger", "Pink tip on the point, then Trigger");
 
             // Gauge, or a short reason, under the instruction.
@@ -476,6 +581,8 @@ namespace QuestMarkerApp.UI
                 ? L.T($"Καταγραφή σε CSV. {Hands.SecondaryName}: αναίρεση μέτρησης. Μενού › Ευθυγράμμιση για τερματισμό.",
                       $"Logged to CSV. {Hands.SecondaryName}: undo measurement. Menu › Alignment to stop.")
                 : !string.IsNullOrEmpty(a.QrStatus) ? a.QrStatus
+                : a.NeedsCheck && a.QrOnly
+                ? L.T("Η ευθυγράμμιση είναι από προηγούμενη φορά.", "This alignment is from an earlier session.")
                 : a.NeedsCheck
                 ? L.T("Η ευθυγράμμιση είναι από προηγούμενη φορά. Κατά προτίμηση ένα από τα σημεία ελέγχου.",
                       "This alignment is from an earlier session. Preferably touch one of the control points.")
@@ -649,10 +756,18 @@ namespace QuestMarkerApp.UI
 
         private void RefreshList(ProjectAlignment a, IReadOnlyList<ProjectPoint> points)
         {
-            int n = points.Count;
-            int first = Mathf.Clamp(a.SelectedIndex - Rows / 2, 0, Mathf.Max(0, n - Rows));
-            listCount.text = $"{a.SelectedIndex + 1} / {n}";
+            plan.Refresh(a);
+            int n = a.ListCount;
+            int first = Mathf.Clamp(a.SelectedIndex - 1, 0, Mathf.Max(0, n - Rows));
             for (int i = 0; i < Rows; i++) RefreshRow(rows[i], a, first + i);
+
+            ProjectPoint sel = a.SelectedIndex >= 0 && a.SelectedIndex < points.Count ? points[a.SelectedIndex] : null;
+            planHint.text = !string.IsNullOrEmpty(a.QrStatus) ? a.QrStatus
+                : sel != null && a.IsPlaced(sel.id)
+                    ? L.En ? $"Already a control point. {Hands.SecondaryName}: undo." : $"Ήδη σημείο ελέγχου. {Hands.SecondaryName}: αναίρεση."
+                : a.QrOnly
+                    ? L.T("Πήγαινε σε έναν κωδικό και κοίτα τον από 1–2 m. Διαβάζεται μόνος του.", "Go to a code and look at it from 1–2 m. It reads by itself.")
+                    : L.T("Ροζ μύτη στο σημείο και Trigger.", "Pink tip on the point, then Trigger.");
 
             // Scroll thumb proportional to the visible window.
             float track = Rows * RowH;
@@ -666,7 +781,7 @@ namespace QuestMarkerApp.UI
         private static void RefreshRow(Row r, ProjectAlignment a, int index)
         {
             IReadOnlyList<ProjectPoint> points = a.Points;
-            bool visible = index < points.Count;
+            bool visible = index < a.ListCount;
             r.Root.gameObject.SetActive(visible);
             if (!visible) return;
 
@@ -677,7 +792,10 @@ namespace QuestMarkerApp.UI
 
             r.Background.enabled = selected;
             r.Accent.enabled = selected;
+            r.Chip.sprite = p.IsCode() ? Brand.Rounded(8) : Brand.DiscSprite;
+            r.Chip.type = p.IsCode() ? Image.Type.Sliced : Image.Type.Simple;
             r.Chip.color = placed ? Brand.Control
+                : p.IsCode() ? Brand.Info
                 : ColorUtility.TryParseHtmlString(p.color ?? "", out Color c) ? c : Brand.Primary;
             r.Glyph.sprite = Brand.IconSprite(p.icon);
             r.Glyph.enabled = r.Glyph.sprite != null;
