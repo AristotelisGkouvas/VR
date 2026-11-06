@@ -6,6 +6,7 @@
 |---|---|---|
 | `fieldtest/` | CSV της «Δοκιμής πεδίου anchors» | `GET /api/fieldtest` ή `analysis/fieldtest_anchors.py --download` |
 | `accuracy/` | CSV της μέτρησης ακρίβειας ευθυγράμμισης | `GET /api/accuracy` ή `analysis/alignment_accuracy.py --download` |
+| `qrtest/` | CSV της «Δοκιμής QR», συντεταγμένες σταθμού, αποτελέσματα | `adb pull` από τα γυαλιά, `analysis/qr_survey.py` |
 | `performance/` | CSV του OVR Metrics Tool | OVR Metrics Tool |
 | `user-study/` | Ερωτηματολόγια και χρόνοι, **ανωνυμοποιημένα** (Σ01, Σ02, …) | Μελέτη χρηστών |
 
@@ -15,4 +16,5 @@
 
 | Ημερομηνία | Πείραμα | Χώρος | Συνθήκες | Έκδοση εφαρμογής | Σημειώσεις |
 |---|---|---|---|---|---|
+| 2026-11-06 | Ακρίβεια QR έναντι σταθμού | Κτήριο IQsoft | Εξωτερικοί χώροι, ήλιος | 1.2.0 | 6 από 7 κωδικούς, δύο μηδενισμοί |
 | | | | | thesis-v2 | |
