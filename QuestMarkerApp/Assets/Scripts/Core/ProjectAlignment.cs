@@ -917,9 +917,39 @@ namespace QuestMarkerApp.Core
 #endif
 
         /// <summary>
-        /// The tracking space changed while codes were being read: they would fit metres apart
-        /// with whatever is read next, so the alignment starts over.
+        /// Where the working alignment puts a surveyed code, in world space. False when not
+        /// aligned, waiting for a check, or the code is not in this project.
         /// </summary>
+        public bool TryPredictCode(string id, out Vector3 world)
+        {
+            world = default;
+            int index = IndexOfCode(id);
+            Transform reference = markerManager != null ? markerManager.ReferencePoint : null;
+            if (index < 0 || reference == null || !isAligned || needsCheck) return false;
+            world = reference.TransformPoint(solvedRotation * ProjectLocal(project.points[index]) + solvedTranslation);
+            return true;
+        }
+
+        /// <summary>Beyond this a code read again says the room moved under the alignment.</summary>
+        public static float MovedTolerance => RecheckTolerance;
+
+        /// <summary>
+        /// A code read again sits away from where the alignment puts it: the tracking space or the
+        /// anchor moved, whatever the cause. Mark for a check; the reading that found it is then
+        /// placed as a re-check (PlaceCode), which keeps or drops the old points.
+        /// </summary>
+        public void FlagMoved(string id, float off)
+        {
+            if (!isAligned || needsCheck) return;
+            needsCheck = true;
+            lastMessage = L.En ? $"{id} is {off * 100f:F0} cm from where it was. Checking the alignment."
+                : $"Το {id} απέχει {off * 100f:F0} cm από πριν. Έλεγχος της ευθυγράμμισης.";
+            goodMessage = null;
+            Debug.LogWarning($"[Project] {id} read {off:F3} m from its predicted place: alignment flagged for a check");
+            RefreshPanel();
+            OnAlignmentChanged?.Invoke();
+        }
+
         /// <summary>
         /// The glasses came off, or tracking restarted, with codes read. A localised spatial anchor
         /// follows the room and the placements are relative to it, so they still hold. Without

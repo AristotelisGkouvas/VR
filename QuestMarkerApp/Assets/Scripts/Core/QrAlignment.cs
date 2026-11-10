@@ -19,6 +19,11 @@ namespace QuestMarkerApp.Core
     /// the suggestion and "Finish" stay the ones the touches use, and so does undo: a withdrawn
     /// code waits until it has left the view, or it would be read again at once.
     /// The limits come from the survey comparison in thesis/data/qrtest/.
+    ///
+    /// A code already placed keeps being read while it is in view. If it turns up more than
+    /// <see cref="ProjectAlignment.MovedTolerance"/> from where the alignment puts it, the room
+    /// moved under the alignment (on 6/11/2026 the tracking space reset twice with no sign
+    /// from the headset): the reading becomes a re-check, which keeps or drops the old points.
     /// </summary>
     public class QrAlignment : MonoBehaviour
     {
@@ -26,6 +31,10 @@ namespace QuestMarkerApp.Core
         private const float ScanSeconds = 1f, SampleSeconds = 0.2f;
         private const int Samples = 10; // 2 s
         private const float MaxDistance = 2.3f, MaxAngle = 60f, MaxSpread = 0.015f;
+        // Reading range per size: 20 sides (5 cm: 1 m, 7 cm: 1.4 m, 10 cm: 2 m). The pose
+        // moved by up to 3.8 cm with the reading distance on 6/11/2026; the camera sees a small
+        // code at 2 m with too few pixels to settle it.
+        private const float SidesAway = 20f;
 
         private sealed class Reading
         {
@@ -145,12 +154,8 @@ namespace QuestMarkerApp.Core
                 r.PlacedHere = false;
                 r.WaitingToLeave = true;
             }
-            if (placed && !alignment.NeedsCheck)
-            {
-                r.Centres.Clear();
-                r.Outline.Show(t, box, head, Brand.Primary, r.Payload + " · OK");
-                return;
-            }
+            bool watching = placed && !alignment.NeedsCheck;
+            if (watching) r.Outline.Show(t, box, head, Brand.Primary, r.Payload + " · OK");
             if (r.WaitingToLeave)
             {
                 r.Outline.Show(t, box, head, Brand.FgFaint, r.Payload + L.T("\nκοίτα αλλού για να ξαναδιαβαστεί", "\nlook away to read it again"));
@@ -161,10 +166,18 @@ namespace QuestMarkerApp.Core
             float distance = Vector3.Distance(head, centre);
             float angle = Vector3.Angle(t.rotation * Vector3.forward, head - centre);
             if (angle > 90f) angle = 180f - angle;
-            if (distance > MaxDistance || angle > MaxAngle)
+            float reach = ReachFor(r.Payload);
+            if (watching)
+            {
+                // Quietly, with no prompts: only a steady reading in range is compared.
+                if (distance > reach || angle > MaxAngle) r.Centres.Clear();
+                else if (sample) Watch(r, distance);
+                return;
+            }
+            if (distance > reach || angle > MaxAngle)
             {
                 r.Centres.Clear();
-                string hint = distance > MaxDistance ? L.T("πλησίασε", "come closer") : L.T("πήγαινε πιο μπροστά από τον κωδικό", "stand more in front of it");
+                string hint = distance > reach ? L.T("πλησίασε", "come closer") : L.T("πήγαινε πιο μπροστά από τον κωδικό", "stand more in front of it");
                 r.Outline.Show(t, box, head, Brand.Warning, $"{r.Payload}\n{hint}");
                 status = $"{r.Payload}: {hint}.";
                 return;
@@ -187,6 +200,35 @@ namespace QuestMarkerApp.Core
             r.PlacedHere = true;
             placedNow.Add(r.Payload);
             Debug.Log($"[QrAlign] {r.Payload} placed: {distance:F2} m away, spread {spread * 1000f:F1} mm");
+            Log(r.Payload, median, distance, box.width, spread);
+        }
+
+        private static float ReachFor(string payload)
+        {
+            float nominal = QrSource.NominalSize(payload);
+            return nominal > 0f ? Mathf.Min(MaxDistance, nominal * SidesAway) : MaxDistance;
+        }
+
+        // A placed code read again: compared with where the alignment puts it.
+        private void Watch(Reading r, float distance)
+        {
+            Transform t = r.Trackable.transform;
+            Rect box = r.Trackable.PlaneRect ?? default;
+            r.Centres.Add(t.TransformPoint(new Vector3(box.center.x, box.center.y, 0f)));
+            if (r.Centres.Count > Samples) r.Centres.RemoveAt(0);
+            if (r.Centres.Count < Samples) return;
+            Vector3 median = Median(r.Centres);
+            float spread = 0f;
+            foreach (Vector3 c in r.Centres) spread = Mathf.Max(spread, Vector3.Distance(c, median));
+            if (spread > MaxSpread || !alignment.TryPredictCode(r.Payload, out Vector3 predicted)) return;
+            r.Centres.Clear();
+            float off = Vector3.Distance(predicted, median);
+            if (off <= ProjectAlignment.MovedTolerance) return;
+            alignment.FlagMoved(r.Payload, off);
+            // PlaceCode answers with the re-check's own sound (OK or "the room moved").
+            if (!alignment.PlaceCode(r.Payload, median)) return;
+            r.PlacedHere = true;
+            placedNow.Add(r.Payload);
             Log(r.Payload, median, distance, box.width, spread);
         }
 

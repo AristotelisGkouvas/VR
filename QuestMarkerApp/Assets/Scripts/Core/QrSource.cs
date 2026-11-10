@@ -44,6 +44,8 @@ namespace QuestMarkerApp.Core
             {
                 hooked = true;
                 OVRManager.HMDUnmounted += () => NewEpoch("glasses off");
+                // The resets of 6/11/2026 (13:54, 14:00) came with none of the others.
+                OVRManager.TrackingLost += () => NewEpoch("tracking lost");
                 OVRManager.display.RecenteredPose += () => NewEpoch("recenter");
             }
             if (mruk == null)
@@ -87,16 +89,24 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>
-        /// The size the name promises (QM-07Y: 7 cm) against what was read; ±30 % leaves room for
-        /// a printer's scaling. Catches the misreads near the head. A name without a size is taken
-        /// at its word.
+        /// The side the name promises in metres (QM-07Y: 0.07), or 0 for a name without a size.
         /// </summary>
-        public static bool IsGhost(string payload, float width)
+        public static float NominalSize(string payload)
         {
             string[] parts = payload.Split('-');
             if (parts.Length < 2 || parts[1].Length < 2 || !int.TryParse(parts[1].Substring(0, 2), out int cm) || cm <= 0)
-                return width < 0.02f;
-            float nominal = cm * 0.01f;
+                return 0f;
+            return cm * 0.01f;
+        }
+
+        /// <summary>
+        /// The size the name promises against what was read; ±30 % leaves room for a printer's
+        /// scaling. Catches the misreads near the head. A name without a size is taken at its word.
+        /// </summary>
+        public static bool IsGhost(string payload, float width)
+        {
+            float nominal = NominalSize(payload);
+            if (nominal <= 0f) return width < 0.02f;
             return width < nominal * 0.7f || width > nominal * 1.3f;
         }
 
