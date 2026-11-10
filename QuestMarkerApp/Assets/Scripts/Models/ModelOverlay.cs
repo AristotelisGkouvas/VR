@@ -870,7 +870,7 @@ namespace QuestMarkerApp.Models
             heights = null;
             loadedName = null;
             error = null;
-            ModelStore.LastLoadedName = null;
+            if (alignment == null || !alignment.IsPractice) ModelStore.SetLastFor(ModelStore.KeyFor(alignment), null);
             if (root != null) root.gameObject.SetActive(false);
             PublishLoad();
             OnChanged?.Invoke();
@@ -980,7 +980,6 @@ namespace QuestMarkerApp.Models
             building = false;
             cts?.Dispose();
             cts = null;
-            ModelStore.LastLoadedName = info.Name;
             placed = null; // Update places it: on the site if aligned, else as a preview
             Debug.Log($"[Model] '{info.Name}' ready: {model.Groups.Count} groups, {model.TriangleCount} tris, " +
                       $"{model.LineCount} lines, {textures.Count} textures, origin E{model.OriginE} N{model.OriginN} H{model.OriginH}" +

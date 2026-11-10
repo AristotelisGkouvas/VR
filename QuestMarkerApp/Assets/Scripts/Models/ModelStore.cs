@@ -18,7 +18,7 @@ namespace QuestMarkerApp.Models
     /// </summary>
     public class ModelStore
     {
-        private const string LastKey = "model.last";
+        private const string LastKey = "model.last.";
         private static readonly string[] ModelExtensions = { ".obj", ".dxf", ".ifc" };
         /// <summary>Sidecar file inside a package folder.</summary>
         public const string PackageSidecar = "model.json";
@@ -60,17 +60,24 @@ namespace QuestMarkerApp.Models
             }
         }
 
-        /// <summary>Name of the model last loaded into the overlay (PlayerPrefs), so a restart can bring it back.</summary>
-        public static string LastLoadedName
+        /// <summary>
+        /// The model a restart brings back with this project (PlayerPrefs). Per project, and only
+        /// one with the project's sensors on it (ModelSensors): another site's model cost the
+        /// frame rate and the resolution for nothing.
+        /// </summary>
+        public static string LastFor(string projectKey) => PlayerPrefs.GetString(LastKey + projectKey, "");
+
+        public static void SetLastFor(string projectKey, string modelName)
         {
-            get => PlayerPrefs.GetString(LastKey, "");
-            set
-            {
-                if (string.IsNullOrEmpty(value)) PlayerPrefs.DeleteKey(LastKey);
-                else PlayerPrefs.SetString(LastKey, value);
-                Prefs.Save();
-            }
+            if (LastFor(projectKey) == (modelName ?? "")) return;
+            if (string.IsNullOrEmpty(modelName)) PlayerPrefs.DeleteKey(LastKey + projectKey);
+            else PlayerPrefs.SetString(LastKey + projectKey, modelName);
+            Prefs.Save();
         }
+
+        /// <summary>The key for the open project, empty with none.</summary>
+        public static string KeyFor(Core.ProjectAlignment project) =>
+            project != null && project.HasProject ? project.ProjectName : "";
 
         /// <summary>All models on the device, newest first.</summary>
         public static List<ModelInfo> List()
@@ -162,7 +169,6 @@ namespace QuestMarkerApp.Models
                 {
                     Debug.LogWarning($"[ModelStore] Delete {info.Folder} failed: {e.Message}");
                 }
-                if (string.Equals(LastLoadedName, info.Name, StringComparison.OrdinalIgnoreCase)) LastLoadedName = null;
                 return;
             }
             try
@@ -178,7 +184,6 @@ namespace QuestMarkerApp.Models
             {
                 Debug.LogWarning($"[ModelStore] Delete {info.Path} failed: {e.Message}");
             }
-            if (string.Equals(LastLoadedName, info.Name, StringComparison.OrdinalIgnoreCase)) LastLoadedName = null;
         }
 
         // "<file>.json" is what the upload handler writes; "<base>.json" is accepted for files

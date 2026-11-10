@@ -260,8 +260,7 @@ namespace QuestMarkerApp.Core
                 localServer.OnModelReceived += onModelReceived;
                 localServer.OnModelDeleted += onModelDeleted;
             }
-            ModelStore.ModelInfo last = ModelStore.Find(ModelStore.LastLoadedName);
-            if (last != null) model.Load(last);
+            StartCoroutine(RestoreModel(model));
 
             mainMenu = Child<MainMenu>("MainMenu");
             modeChooser = Child<WorkModeChooser>("WorkModeChooser");
@@ -290,6 +289,15 @@ namespace QuestMarkerApp.Core
             isInitialized = true;
             Debug.Log("[MarkerApp] Initialization complete (v1.2)");
             StartCoroutine(OpenMenuWhenEmpty());
+        }
+
+        // After ProjectAlignment.Start has brought the last project back: the model goes with it.
+        private System.Collections.IEnumerator RestoreModel(ModelOverlay overlay)
+        {
+            yield return null;
+            yield return null;
+            ModelStore.ModelInfo last = ModelStore.Find(ModelStore.LastFor(ModelStore.KeyFor(projectAlignment)));
+            if (last != null && overlay != null) overlay.Load(last);
         }
 
         // An empty room on launch gave a first-time user nothing to go on: show the menu

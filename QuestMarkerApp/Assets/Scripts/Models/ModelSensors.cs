@@ -328,6 +328,7 @@ namespace QuestMarkerApp.Models
             builtPractice = project != null && project.IsPractice;
             builtEnabled = Enabled;
             Clear();
+            RememberModel(m);
 
             total = 0;
             if (project != null) foreach (ProjectPoint p in project.Sensors) if (p != null) total++;
@@ -351,6 +352,29 @@ namespace QuestMarkerApp.Models
             reason = dots.Count == 0 ? Reason.Far : Reason.Ok;
             Debug.Log($"[ModelSensors] {dots.Count} of {total} sensors on '{overlay.LoadedName}'" +
                       (heightOffset != 0f ? $", heights shifted {heightOffset:F1} m" : ""));
+        }
+
+        // Decided here, where model and sensors meet, whether the switch below is on or off: a
+        // model comes back on the next launch only with a project it has sensors of.
+        private void RememberModel(ModelData m)
+        {
+            if (m == null || overlay.Root == null || builtPractice) return;
+            string key = ModelStore.KeyFor(project);
+            bool belongs = project == null || !project.HasProject;
+            if (!belongs)
+            {
+                Bounds near = overlay.ModelBounds;
+                near.Expand(FarMargin * 2f);
+                float offset = ManualOffset ?? 0f;
+                foreach (ProjectPoint p in project.Sensors)
+                    if (p != null && TryLocal(p, m, offset, out Vector3 local) && near.Contains(local))
+                    {
+                        belongs = true;
+                        break;
+                    }
+            }
+            if (belongs) ModelStore.SetLastFor(key, overlay.LoadedName);
+            else if (ModelStore.LastFor(key) == overlay.LoadedName) ModelStore.SetLastFor(key, null);
         }
 
         private static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
