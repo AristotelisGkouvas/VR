@@ -54,6 +54,9 @@ namespace QuestMarkerApp.API
         /// <summary>The sensor's newest reading is old (ProjectPoint.IsStale): a grey ring on its icon.</summary>
         public bool stale;
 
+        /// <summary>Placed by an alignment that is only proposed: dashed ring, faded icon.</summary>
+        public bool provisional;
+
         /// <summary>Logical layer / group name.</summary>
         public string layer = "default";
 

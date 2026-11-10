@@ -24,6 +24,10 @@ namespace QuestMarkerApp.Core
     /// <see cref="ProjectAlignment.MovedTolerance"/> from where the alignment puts it, the room
     /// moved under the alignment (on 6/11/2026 the tracking space reset twice with no sign
     /// from the headset): the reading becomes a re-check, which keeps or drops the old points.
+    ///
+    /// In the field the codes are also read with no panel open (ProjectAlignment.ReadsCodesInBackground):
+    /// once two of them fit well the alignment is proposed, and AlignmentProposal asks for one
+    /// touch. While an anchor proposal is up a code in view is only measured against it.
     /// </summary>
     public class QrAlignment : MonoBehaviour
     {
@@ -51,7 +55,9 @@ namespace QuestMarkerApp.Core
         private readonly List<MRUKTrackable> gone = new List<MRUKTrackable>();
         // Codes placed since the panel opened: all from the tracking space of this sitting.
         private readonly HashSet<string> placedNow = new HashSet<string>();
-        private bool holding, asked;
+        private bool holding, asked, background, checkingAnchor;
+        // What the background reading still needs, after the last code it placed.
+        private string waitingHint;
         private int epoch;
         private float nextScan, nextSample;
 
@@ -59,8 +65,12 @@ namespace QuestMarkerApp.Core
 
         private void Update()
         {
-            bool want = alignment != null && alignment.IsModeActive && alignment.QrOnly
-                && !alignment.ChoosingMethod && !alignment.IsPractice && !QrTest.Active;
+            background = alignment != null && !alignment.IsModeActive && alignment.ReadsCodesInBackground;
+            checkingAnchor = alignment != null && !alignment.IsModeActive && alignment.IsProvisional
+                && alignment.Proposal == ProjectAlignment.ProposalSource.Anchor;
+            bool panel = alignment != null && alignment.IsModeActive && alignment.QrOnly && !alignment.ChoosingMethod;
+            bool want = alignment != null && (panel || background || checkingAnchor)
+                && !alignment.IsPractice && !QrTest.Active;
             if (!want)
             {
                 if (holding) Stop();
@@ -97,10 +107,11 @@ namespace QuestMarkerApp.Core
             bool sample = Time.unscaledTime >= nextSample;
             if (sample) nextSample = Time.unscaledTime + SampleSeconds;
             // Beside an open menu or list the panel has stepped aside: nothing lands unseen.
-            bool paused = MainMenu.IsOpen || FlowPanel.IsOpen || VrKeyboard.IsOpen;
+            bool paused = MainMenu.IsOpen || FlowPanel.IsOpen || VrKeyboard.IsOpen || (!panel && SensorCard.IsOpen);
             string status = "";
             foreach (Reading r in readings.Values)
                 Follow(r, head, sample, paused, ref status);
+            if (string.IsNullOrEmpty(status) && background) status = waitingHint ?? "";
             alignment.SetQrStatus(status);
         }
 
@@ -167,6 +178,12 @@ namespace QuestMarkerApp.Core
             float angle = Vector3.Angle(t.rotation * Vector3.forward, head - centre);
             if (angle > 90f) angle = 180f - angle;
             float reach = ReachFor(r.Payload);
+            if (checkingAnchor)
+            {
+                if (distance > reach || angle > MaxAngle) r.Centres.Clear();
+                else if (sample) CheckAnchor(r);
+                return;
+            }
             if (watching)
             {
                 // Quietly, with no prompts: only a steady reading in range is compared.
@@ -199,8 +216,9 @@ namespace QuestMarkerApp.Core
             if (!alignment.PlaceCode(r.Payload, median)) return;
             r.PlacedHere = true;
             placedNow.Add(r.Payload);
-            Debug.Log($"[QrAlign] {r.Payload} placed: {distance:F2} m away, spread {spread * 1000f:F1} mm");
+            Debug.Log($"[QrAlign] {r.Payload} placed{(background ? " in the background" : "")}: {distance:F2} m away, spread {spread * 1000f:F1} mm");
             Log(r.Payload, median, distance, box.width, spread);
+            if (background) waitingHint = alignment.ConsiderQrProposal();
         }
 
         private static float ReachFor(string payload)
@@ -230,6 +248,25 @@ namespace QuestMarkerApp.Core
             r.PlacedHere = true;
             placedNow.Add(r.Payload);
             Log(r.Payload, median, distance, box.width, spread);
+        }
+
+        // An anchor proposal is up: a steady code in view says how far off it is, nothing more.
+        private void CheckAnchor(Reading r)
+        {
+            Transform t = r.Trackable.transform;
+            Rect box = r.Trackable.PlaneRect ?? default;
+            r.Centres.Add(t.TransformPoint(new Vector3(box.center.x, box.center.y, 0f)));
+            if (r.Centres.Count > Samples) r.Centres.RemoveAt(0);
+            if (r.Centres.Count < Samples) return;
+            Vector3 median = Median(r.Centres);
+            float spread = 0f;
+            foreach (Vector3 c in r.Centres) spread = Mathf.Max(spread, Vector3.Distance(c, median));
+            if (spread > MaxSpread || !alignment.TryPredictCode(r.Payload, out Vector3 predicted)) return;
+            r.Centres.Clear();
+            float off = Vector3.Distance(predicted, median);
+            if (alignment.ProposalCheckId != r.Payload || Mathf.Abs(alignment.ProposalCheckOff - off) > 0.002f)
+                Debug.Log($"[QrAlign] Anchor proposal checked with {r.Payload}: {off * 100f:F1} cm");
+            alignment.SetProposalCheck(r.Payload, off);
         }
 
         private static Vector3 Median(List<Vector3> values)
@@ -278,6 +315,7 @@ namespace QuestMarkerApp.Core
             foreach (Reading r in readings.Values) r.Outline.Destroy();
             readings.Clear();
             placedNow.Clear();
+            waitingHint = null;
             nextScan = nextSample = 0f;
             if (alignment != null) alignment.SetQrStatus("");
             QrSource.Release();

@@ -482,7 +482,13 @@ namespace QuestMarkerApp.UI
                     break;
                 case Step.Align:
                     head = en ? "Alignment" : "Ευθυγράμμιση";
-                    if (project.IsAligned && !project.NeedsCheck)
+                    if (project.IsProvisional)
+                        text = en ? $"The position was found. Press «Accept» on the card ({Hands.PrimaryName})."
+                                  : $"Βρέθηκε η θέση. Πάτα «Αποδοχή» στην κάρτα ({Hands.PrimaryName}).";
+                    else if (project.ReadsCodesInBackground)
+                        text = en ? "Look at two QM codes, one after the other, from 1–2 m. Or Menu › Align."
+                                  : "Κοίτα δύο κωδικούς QM, τον ένα μετά τον άλλο, από 1–2 m. Ή Μενού › Ευθυγράμμιση.";
+                    else if (project.IsAligned && !project.NeedsCheck)
                         text = en ? "The error is large. Menu › Alignment: the panel says which point to touch again."
                                   : "Μεγάλο σφάλμα. Μενού › Ευθυγράμμιση: το πάνελ λέει ποιο σημείο να ξαναγγίξεις.";
                     else if (practice)

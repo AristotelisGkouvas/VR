@@ -412,8 +412,128 @@ namespace QuestMarkerApp.Core
         public string SuggestedId => suggestedId;
         public PairCheck Pair => pairCheck;
         public LiveGuide Live => live;
-        /// <summary>Restored or recentred: touch one control point again to confirm.</summary>
-        public bool NeedsCheck => needsCheck;
+        /// <summary>Restored or recentred: touch one control point again to confirm. Also true
+        /// while the alignment is only proposed (<see cref="IsProvisional"/>): not to be trusted yet.</summary>
+        public bool NeedsCheck => needsCheck || provisional;
+
+        // ------------------------------------------------------------------
+        //  Proposal: found by itself, final only with one touch
+        // ------------------------------------------------------------------
+
+        public enum ProposalSource { None, Qr, Anchor }
+
+        private bool provisional;
+
+        /// <summary>
+        /// The alignment was found without the user (surveyed codes read in the background, or
+        /// the room's spatial anchor) and waits for «Αποδοχή». Sensors show with a dashed ring;
+        /// decision of 26/10/2026: never final without the user's touch.
+        /// </summary>
+        public bool IsProvisional => provisional;
+        public ProposalSource Proposal { get; private set; }
+
+        /// <summary>A code read while an anchor proposal is up: its name and how far it is from
+        /// where the proposal puts it. Null until one is read.</summary>
+        public string ProposalCheckId { get; private set; }
+        public float ProposalCheckOff { get; private set; }
+
+        /// <summary>The codes are read with no panel, in the field, while the project needs aligning.</summary>
+        public bool ReadsCodesInBackground =>
+            AsksMethod && !modeActive && !provisional && NeedsAlignment && !AlignmentAccuracy.Active;
+
+        /// <summary>Codes the background reading needs before it proposes.</summary>
+        public const int ProposalCodes = 2;
+        private const float ProposalBaseline = 3f, ProposalRms = 0.03f;
+        // After this many placements with no acceptable fit, the panel takes over.
+        private const int ProposalGiveUp = 4;
+
+        /// <summary>
+        /// After a code read in the background: propose once the fit is good enough, or hand
+        /// over to the panel when it never gets there. Returns a hint while still waiting.
+        /// </summary>
+        public string ConsiderQrProposal()
+        {
+            if (!isAligned || needsCheck || provisional || PlacedCount < ProposalCodes) return null;
+            bool wide = pairCheck.Valid && pairCheck.Project >= ProposalBaseline;
+            bool tight = rmsHorizontal <= ProposalRms && string.IsNullOrEmpty(worstId);
+            if (wide && tight)
+            {
+                Propose(ProposalSource.Qr);
+                return null;
+            }
+            if (PlacedCount >= ProposalGiveUp)
+            {
+                Debug.Log($"[Project] Background codes give no good fit (RMS {rmsHorizontal * 100f:F1} cm): opening the panel");
+                SetMode(true);
+                return null;
+            }
+            return !wide ? L.T("κοίτα έναν κωδικό πιο μακριά", "look at a code further away")
+                : L.T("κοίτα έναν ακόμη κωδικό", "look at one more code");
+        }
+
+        /// <summary>A code seen while an anchor proposal is up: the card shows how far off it is.</summary>
+        public void SetProposalCheck(string id, float off)
+        {
+            if (!provisional) return;
+            ProposalCheckId = id;
+            ProposalCheckOff = off;
+            OnAlignmentChanged?.Invoke();
+        }
+
+        private void Propose(ProposalSource source)
+        {
+            provisional = true;
+            Proposal = source;
+            ProposalCheckId = null;
+            if (autoOpened && modeActive) SetMode(false); // the card asks instead
+            Debug.Log($"[Project] Alignment proposed from {source}: {PlacedCount} points, RMS h {rmsHorizontal * 100f:F1} cm");
+            Render();
+            RefreshPanel();
+            OnAlignmentChanged?.Invoke();
+            if (markerManager != null) markerManager.RefreshVisibility();
+        }
+
+        private void ClearProposal()
+        {
+            provisional = false;
+            Proposal = ProposalSource.None;
+            ProposalCheckId = null;
+        }
+
+        /// <summary>«Αποδοχή»: the proposed alignment becomes the working one.</summary>
+        public void AcceptProposal()
+        {
+            if (!provisional) return;
+            ProposalSource source = Proposal;
+            ClearProposal();
+            needsCheck = false;
+            lastMessage = source == ProposalSource.Anchor
+                ? L.T("Η θέση επανήλθε από το spatial anchor του χώρου.", "Position restored from the room's spatial anchor.")
+                : L.T("Ευθυγράμμιση από κωδικούς QR.", "Aligned on QR codes.");
+            goodMessage = lastMessage;
+            Debug.Log($"[Project] Proposal from {source} accepted");
+            Save();
+            Render();
+            RefreshPanel();
+            OnAlignmentChanged?.Invoke();
+            if (markerManager != null) markerManager.RefreshVisibility();
+        }
+
+        /// <summary>«Όχι» / «Νέα ευθυγράμμιση»: drop it and align in the panel.</summary>
+        public void DeclineProposal()
+        {
+            if (!provisional) return;
+            Debug.Log($"[Project] Proposal from {Proposal} declined");
+            ClearProposal();
+            placements.Clear();
+            placementOrder.Clear();
+            needsCheck = false;
+            lastMessage = null;
+            goodMessage = null;
+            Solve();
+            Save();
+            SetMode(true);
+        }
         /// <summary>Horizontal distance from the control points' centre to the farthest sensor.</summary>
         public float FarthestDistance => farthestDistance;
         /// <summary>Expected sideways error at the farthest sensor from tip error over the baseline.</summary>
@@ -616,6 +736,12 @@ namespace QuestMarkerApp.Core
             awaitingAnchor = false;
             if (!anchors.IsPersistentAnchor) return;
             needsCheck = false;
+            // In the office the site is not in front of the user: nothing to confirm there.
+            if (isAligned && !IsPractice && !WorkMode.IsOffice)
+            {
+                Propose(ProposalSource.Anchor);
+                return;
+            }
             lastMessage = L.T("Η θέση επανήλθε από το spatial anchor του χώρου.", "Position restored from the room's spatial anchor.");
             goodMessage = lastMessage;
             Render();
@@ -686,6 +812,7 @@ namespace QuestMarkerApp.Core
                 break;
             }
 
+            if (!sameProject) ClearProposal();
             placements.Clear();
             placementOrder.Clear();
             var ids = new HashSet<string>();
@@ -724,6 +851,7 @@ namespace QuestMarkerApp.Core
         {
             if (!IsPractice) return;
             SetMode(false);
+            ClearProposal();
             project = null;
             IsPractice = false;
             placements.Clear();
@@ -736,6 +864,7 @@ namespace QuestMarkerApp.Core
 
         public void ResetPlacements()
         {
+            ClearProposal();
             placements.Clear();
             placementOrder.Clear();
             needsCheck = false;
@@ -784,7 +913,7 @@ namespace QuestMarkerApp.Core
         }
 
         /// <summary>Not usable yet: never aligned, or restored and waiting for a re-check touch.</summary>
-        public bool NeedsAlignment => HasProject && (!isAligned || needsCheck);
+        public bool NeedsAlignment => HasProject && (!isAligned || needsCheck || provisional);
 
         /// <summary>
         /// The panel opens by itself only while the project still needs aligning; once aligned
@@ -794,6 +923,14 @@ namespace QuestMarkerApp.Core
         {
             if (!NeedsAlignment) return;
             if (WorkMode.IsOffice && !IsPractice) return;
+            // A proposal has its own card; with surveyed codes in the field they are read in
+            // the background first (QrAlignment), and the panel waits for the menu or «Όχι».
+            if (provisional) return;
+            if (AsksMethod)
+            {
+                Debug.Log("[Project] Reading the codes in the background");
+                return;
+            }
             // Never on top of a menu / card / keyboard: B and A would reach both. Wait.
             if (UiState.AnyModal) { pendingOpen = true; return; }
             SetMode(true);
@@ -959,6 +1096,7 @@ namespace QuestMarkerApp.Core
         public bool AfterTrackingChange()
         {
             if (anchors != null && anchors.IsPersistentAnchor) return false;
+            ClearProposal();
             if (isAligned)
             {
                 needsCheck = true;
@@ -1017,6 +1155,8 @@ namespace QuestMarkerApp.Core
 
             Vector3 local = reference.InverseTransformPoint(worldPosition);
             lastMessage = null;
+            // A touch on a proposal: the user is aligning by hand now, and that is final as ever.
+            if (provisional) ClearProposal();
             if (needsCheck && isAligned)
             {
                 // Re-check of a restored / recentred alignment: compare the touch with where the
@@ -1412,6 +1552,7 @@ namespace QuestMarkerApp.Core
                     x = local.x, y = local.y, z = local.z,
                     label = $"{name}\nH {pt.h:F2}" + (stale ? "  ·  " + OldReading(ageDays) : ""),
                     stale = stale,
+                    provisional = provisional,
                     color = placed ? controlColor : (string.IsNullOrEmpty(pt.color) ? pointColor : pt.color),
                     scale = pointScale,
                     markerType = string.IsNullOrEmpty(pt.icon) ? "sphere" : "icon",

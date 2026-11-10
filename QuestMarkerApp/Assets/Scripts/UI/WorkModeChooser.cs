@@ -84,6 +84,7 @@ namespace QuestMarkerApp.UI
             // What the field will ask for, so touches never come as a surprise (usage map Ε7).
             string fieldHint = !real ? null
                 : found ? L.T("βρέθηκε εδώ", "found here")
+                : alignment.IsProvisional ? L.T("βρέθηκε · επιβεβαίωση", "found · confirm")
                 : alignment.NeedsCheck && alignment.PlacedCount >= 2 ? L.T("δεν βρέθηκε · 1 άγγιγμα", "not found · 1 touch")
                 : L.T("2 σημεία ελέγχου", "2 control points");
             string project = alignment != null && alignment.HasProject && !alignment.IsPractice ? alignment.ProjectName : null;

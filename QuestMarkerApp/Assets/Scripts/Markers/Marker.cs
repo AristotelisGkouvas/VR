@@ -60,6 +60,8 @@ namespace QuestMarkerApp.Markers
         private float baseScale = 0.1f;
         private Transform iconBillboard;
         private SpriteRenderer alertRing;
+        // Dashed ring while the alignment that placed this marker is only proposed.
+        private SpriteRenderer provisionalRing;
         private bool labelShown = true;
         // Show pieces (icon markers): drop-in on load, light wave when an alignment changes.
         private float introStart = -1f, waveStart = -1f;
@@ -500,6 +502,7 @@ namespace QuestMarkerApp.Markers
             iconBillboard = null;
             iconDisc = null;
             alertRing = null;
+            provisionalRing = null;
             iconName = null;
             // The icon replaces the sphere; every other type is drawn around it.
             if (mainRenderer != null)
@@ -609,6 +612,8 @@ namespace QuestMarkerApp.Markers
             Sprite disc = Brand.DiscSprite;
             alertRing = CreateIconSprite(root.transform, "AlertRing", disc, Brand.Danger, 1.35f, 0.03f, 0, false);
             alertRing.enabled = false;
+            provisionalRing = CreateIconSprite(root.transform, "Provisional", Brand.DashedRing, Color.white, 1.5f, 0.035f, 0, false);
+            provisionalRing.enabled = false;
             CreateIconSprite(root.transform, "Halo", disc, Brand.MapHalo.WithAlpha(0.85f), 1.0f, 0.02f, 1, true);
             iconDisc = CreateIconSprite(root.transform, "Disc", disc, baseColor, 0.84f, 0.01f, 2, true);
             Sprite glyph = Brand.IconSprite(icon);
@@ -676,6 +681,13 @@ namespace QuestMarkerApp.Markers
                     alertRing.color = Brand.FgFaint.WithAlpha(0.95f);
                     alertRing.transform.localScale = new Vector3(1.3f, 1.3f, 1f);
                 }
+            }
+            if (provisionalRing != null)
+            {
+                bool provisional = currentData != null && currentData.provisional;
+                if (provisionalRing.enabled != provisional) provisionalRing.enabled = provisional;
+                // A slow turn: proposed, not yet settled.
+                if (provisional) provisionalRing.transform.localRotation = Quaternion.Euler(0f, 0f, Time.time * 20f);
             }
             // The navigation target breathes and stands out so it can be spotted from afar.
             if (isNavigationTarget) size *= 1.6f + 0.25f * Mathf.Sin(Time.time * 4f);

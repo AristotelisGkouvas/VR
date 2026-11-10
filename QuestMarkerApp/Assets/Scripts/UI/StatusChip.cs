@@ -125,6 +125,11 @@ namespace QuestMarkerApp.UI
                 alignText.text = L.T("Χωρίς ευθυγράμμιση", "Not aligned");
                 alignDot.color = Brand.Warning;
             }
+            else if (project.IsProvisional)
+            {
+                alignText.text = L.T("Ευθυγράμμιση: πρόταση · Αποδοχή στην κάρτα", "Alignment: proposed · Accept on the card");
+                alignDot.color = Brand.Info;
+            }
             else if (project.NeedsCheck)
             {
                 alignText.text = L.T("Ευθυγράμμιση: άγγιξε ένα σημείο για έλεγχο", "Alignment: touch a point to check");

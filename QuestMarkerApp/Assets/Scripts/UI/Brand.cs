@@ -273,6 +273,39 @@ namespace QuestMarkerApp.UI
             discSprite != null ? discSprite
                 : (discSprite = Sprite.Create(DiscTexture, new Rect(0, 0, 128, 128), new Vector2(0.5f, 0.5f), 100f));
 
+        private static Sprite dashedRing;
+
+        /// <summary>
+        /// A ring of twelve dashes: a sensor placed by an alignment that is only proposed
+        /// (ProjectAlignment.IsProvisional), as in the approved mockup.
+        /// </summary>
+        public static Sprite DashedRing
+        {
+            get
+            {
+                if (dashedRing != null) return dashedRing;
+                const int size = 128;
+                const float outer = 62f, inner = 52f, dashes = 12f;
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = "BrandDashedRing", wrapMode = TextureWrapMode.Clamp };
+                var px = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        float dx = x + 0.5f - size * 0.5f, dy = y + 0.5f - size * 0.5f;
+                        float r = Mathf.Sqrt(dx * dx + dy * dy);
+                        float radial = Mathf.Clamp01(Mathf.Min(r - inner, outer - r) + 0.5f);
+                        // Dash on 60 % of each step, soft-edged by about a pixel at the ring.
+                        float turn = (Mathf.Atan2(dy, dx) / (2f * Mathf.PI) + 1f) * dashes % 1f;
+                        float arc = Mathf.Clamp01(Mathf.Min(turn, 0.6f - turn) * 2f * Mathf.PI * r / dashes + 0.5f);
+                        px[y * size + x] = new Color32(255, 255, 255, (byte)(255f * radial * arc));
+                    }
+                tex.SetPixels32(px);
+                tex.Apply(false, true);
+                dashedRing = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+                return dashedRing;
+            }
+        }
+
         private static Sprite plate;
 
         /// <summary>

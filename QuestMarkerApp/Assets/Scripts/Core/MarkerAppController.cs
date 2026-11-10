@@ -238,6 +238,7 @@ namespace QuestMarkerApp.Core
             Child<QrTest>("QrTest");
             Child<QrAlignment>("QrAlignment").Init(projectAlignment);
 #endif
+            Child<AlignmentProposal>("AlignmentProposal").Init(projectAlignment);
             if (localServer != null)
             {
                 // Kept so Cleanup can unsubscribe: the server may outlive this controller.
