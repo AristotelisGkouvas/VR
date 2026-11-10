@@ -148,7 +148,7 @@ namespace QuestMarkerApp.UI
             if (qr)
             {
                 ProjectAlignment.PairCheck pair = alignment.Pair;
-                title.text = L.T("Βρέθηκε η θέση του έργου", "The project's position was found");
+                title.text = L.T("Βρέθηκε η θέση σου στο έργο", "Found where you are");
                 string d = pair.Valid ? Num(pair.Project, "0.0") : "—";
                 body.text = pair.Valid
                     ? L.En ? $"From codes <b>{pair.A}</b> and <b>{pair.B}</b>, {d} m apart."
@@ -164,7 +164,7 @@ namespace QuestMarkerApp.UI
             }
             else
             {
-                title.text = L.T("Ο χώρος αναγνωρίστηκε", "The room was recognised");
+                title.text = L.T("Αναγνωρίστηκε ο χώρος σου", "Your room was recognised");
                 body.text = L.T("Η ευθυγράμμιση της προηγούμενης φοράς επανήλθε από το spatial anchor.",
                     "Last time's alignment came back from the spatial anchor.");
                 string id = alignment.ProposalCheckId;
