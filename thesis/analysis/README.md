@@ -12,6 +12,7 @@ pip install -r requirements.txt
 |---|---|---|---|
 | `fieldtest_anchors.py` | Σταθερότητα και επανεντοπισμός anchors | `../data/fieldtest/*.csv` | `anchors_by_condition.tex`, `anchors_offset_by_condition.pdf`, `anchors_offset_vs_age.pdf` |
 | `alignment_accuracy.py` | Ακρίβεια ευθυγράμμισης | `../data/accuracy/*.csv` | `alignment_by_k.tex`, `alignment_numbers.tex`, `alignment_error_vs_distance.pdf`, `alignment_pred_vs_meas.pdf` |
+| `performance.py` | Απόδοση γραφικών | `../data/performance/perf-*.csv` (Καταγραφή απόδοσης) | `perf_by_scenario.tex`, `perf_numbers.tex`, `fps_vs_triangles.pdf` |
 
 ## fieldtest_anchors.py
 
@@ -35,7 +36,6 @@ python fieldtest_anchors.py
 ## Επόμενα scripts
 
 Ακολουθούν το ίδιο μοτίβο (είσοδος στο `../data/<πείραμα>/`, έξοδος στο `../figures/generated/`):
-- `performance.py`: CSV του OVR Metrics Tool → `fps_vs_triangles.pdf`.
 - `interpolation_loocv.py`: Delaunay έναντι IDW με leave-one-out.
 - `user_study.py`: SUS, NASA-TLX, χρόνοι, Wilcoxon.
 

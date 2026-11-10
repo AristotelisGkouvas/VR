@@ -880,15 +880,10 @@ namespace QuestMarkerApp.UI
             });
             y = Row(y, new Item
             {
-                Label = "Server PC (LAN)",
+                // One row for the PC: address, and the key the LAN API needs (PC bridge:
+                // --quest-key, send_project: --api-key). Two rows left no room above «Back».
+                Label = L.T("PC · κλειδί ", "PC · key ") + (server != null ? server.ApiKey : "—"),
                 Value = () => serverText,
-                Enabled = () => false
-            });
-            y = Row(y, new Item
-            {
-                // The LAN API needs this key (PC bridge: --quest-key, send_project: --api-key).
-                Label = L.T("Κλειδί API για PC", "API key for PC"),
-                Value = () => server != null ? server.ApiKey : "",
                 Enabled = () => false
             });
             // Only for the free-form (PC bridge) mode: a loaded project owns the origin.
@@ -913,6 +908,13 @@ namespace QuestMarkerApp.UI
                 }
             });
 #endif
+            // Frame rate and load, one CSV row a second (thesis/data/protocols/δοκιμή_απόδοσης.md).
+            y = Row(y, new Item
+            {
+                Label = L.T("Καταγραφή απόδοσης", "Performance log"),
+                Value = () => PerfLog.MenuValue,
+                Run = PerfLog.Cycle
+            });
             BackButton();
         }
 

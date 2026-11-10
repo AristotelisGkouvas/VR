@@ -631,8 +631,15 @@ namespace QuestMarkerApp.Core
                 }
             }
 
+            // A payload that replaces everything is a deliberate set (fake_scenarios.py load: up to
+            // 1000 for the performance experiment): the cap guards streams that pile up, not it.
+            if (response.clearExisting && response.coordinates != null)
+                markerManager.EnsureCapacity(Mathf.Min(response.coordinates.Length, BulkMarkerLimit));
+
             markerManager.ProcessCoordinates(response);
         }
+
+        private const int BulkMarkerLimit = 2000;
 
         private void OnCalibrationReceived(CalibrationRequest request)
         {

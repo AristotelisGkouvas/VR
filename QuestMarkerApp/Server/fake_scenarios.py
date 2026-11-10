@@ -12,6 +12,7 @@ Usage:
     python fake_scenarios.py --scenario room --device-ip 192.168.1.50 --api-key KEY
     python fake_scenarios.py --scenario live --device-ip 192.168.1.50 --api-key KEY  # moving marker, Ctrl+C
     python fake_scenarios.py --scenario grid --dry-run                  # print JSON only
+    python fake_scenarios.py --scenario load --count 1000 --device-ip 192.168.1.50 --api-key KEY
     python fake_scenarios.py --export-all scenarios.json                # every scenario to a file
 """
 
@@ -86,6 +87,26 @@ def scenario_sensors() -> list[dict[str, Any]]:
             for i, x, y, z, lbl, st in data]
 
 
+LOAD_COUNT = 200  # --count
+
+
+def scenario_load() -> list[dict[str, Any]]:
+    """LOAD_COUNT sensors on a 30 x 30 m site, 0–10 m high, labelled: the same set every run
+    (thesis performance experiment: 50, 200, 1000)."""
+    import random
+    rng = random.Random(42)
+    side = max(1, math.ceil(math.sqrt(LOAD_COUNT)))
+    step = 30.0 / side
+    colors = {"ok": "#34C759", "warning": "#FFD60A", "critical": "#FF3B30"}
+    out = []
+    for i in range(LOAD_COUNT):
+        gx, gz = i % side, i // side
+        st = "critical" if i % 23 == 0 else "warning" if i % 7 == 0 else "ok"
+        out.append(_c(f"L{i:04d}", -15 + (gx + 0.5) * step, rng.uniform(0, 10), 2 + (gz + 0.5) * step,
+                      f"K{i + 1} {rng.uniform(-20, 20):.1f} mm", colors[st], 0.1, status=st, layer="sensors"))
+    return out
+
+
 def live_positions(t: float) -> list[dict[str, Any]]:
     """A marker circling the origin at 1.5 m radius (one lap per 12 s) plus a bobbing one."""
     a = t * 2 * math.pi / 12
@@ -100,6 +121,7 @@ SCENARIOS: dict[str, tuple[str, Callable[[], list[dict[str, Any]]]]] = {
     "grid": ("Πλέγμα 1m στο πάτωμα για έλεγχο ακρίβειας με μετροταινία", scenario_grid),
     "path": ("Διαδρομή με βέλη και προορισμό", scenario_path),
     "sensors": ("Αισθητήρες με χρώμα κατάστασης (ok/warning/critical)", scenario_sensors),
+    "load": ("N αισθητήρες (--count) σε 30x30 m, για το πείραμα απόδοσης", scenario_load),
     "live": ("Κινούμενα markers σε πραγματικό χρόνο (Ctrl+C για stop)", lambda: live_positions(0)),
 }
 
@@ -159,6 +181,7 @@ def main() -> int:
                    help="Το κλειδί της συσκευής (κύριο μενού) — env QUEST_KEY")
     p.add_argument("--keep", action="store_true", help="Μην καθαρίσεις τα υπάρχοντα markers")
     p.add_argument("--hz", type=float, default=5, help="Ρυθμός ανανέωσης για live (0.1–20)")
+    p.add_argument("--count", type=int, default=200, help="Πλήθος σημείων για load (1–2000)")
     p.add_argument("--dry-run", action="store_true", help="Τύπωσε το JSON χωρίς αποστολή")
     p.add_argument("--list", action="store_true")
     p.add_argument("--export-all", metavar="FILE")
@@ -178,6 +201,10 @@ def main() -> int:
 
     if not args.scenario:
         p.error("--scenario is required (or use --list)")
+    if not 1 <= args.count <= 2000:
+        p.error("--count must be between 1 and 2000")
+    global LOAD_COUNT
+    LOAD_COUNT = args.count
 
     coords = SCENARIOS[args.scenario][1]()
     if args.dry_run:

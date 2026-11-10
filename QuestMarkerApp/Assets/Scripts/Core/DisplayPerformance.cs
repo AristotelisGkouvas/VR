@@ -89,10 +89,26 @@ namespace QuestMarkerApp.Core
         private static bool loadedTransparent;
         private static float appliedEye = -1f;
 
+        /// <summary>
+        /// For the performance experiment only (PerfLog): the heavy-model cut is off, so the
+        /// thresholds above can themselves be measured. Not saved; off at every start.
+        /// </summary>
+        public static bool AutoReduceOff
+        {
+            get => autoReduceOff;
+            set
+            {
+                if (autoReduceOff == value) return;
+                autoReduceOff = value;
+                ApplyEye();
+            }
+        }
+        private static bool autoReduceOff;
+
         /// <summary>True while the loaded model is large enough to force 72 Hz and the smaller eye buffer.</summary>
-        public static bool HeavyLoad =>
+        public static bool HeavyLoad => !autoReduceOff && (
             loadedTriangles >= HeavyTriangles
-            || (loadedTransparent && loadedTriangles >= HeavyTransparentTriangles);
+            || (loadedTransparent && loadedTriangles >= HeavyTransparentTriangles));
 
         /// <summary>Called when a model finishes loading, unloads, or its opacity crosses opaque.</summary>
         public static void NotifyModel(int triangles, bool transparent)

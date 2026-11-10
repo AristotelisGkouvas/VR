@@ -113,7 +113,7 @@ namespace QuestMarkerApp.API
             "/api/calibrate/start", "/api/calibrate/status", "/api/calibrate/reset", "/api/session",
             "/api/session/new", "/api/gps-origin", "/api/anchors", "/api/layer", "/api/project",
             "/api/project/reset", "/api/model", "/api/models", "/api/fieldtest", "/api/fieldnotes", "/api/reports",
-            "/api/accuracy"
+            "/api/accuracy", "/api/perf"
         };
         private long requestCount;
         private DateTime startedAtUtc;
@@ -124,6 +124,7 @@ namespace QuestMarkerApp.API
         private string modelsDirectory = "";
         private string fieldTestDirectory = "";
         private string accuracyDirectory = "";
+        private string perfDirectory = "";
         private string fieldNotesFile = "";
         private string reportsDirectory = "";
         private string photosDirectory = "";
@@ -148,6 +149,7 @@ namespace QuestMarkerApp.API
             modelsDirectory = Path.Combine(Application.persistentDataPath, "models");
             fieldTestDirectory = Path.Combine(Application.persistentDataPath, FieldTestLog.FolderName);
             accuracyDirectory = Path.Combine(Application.persistentDataPath, AlignmentAccuracy.FolderName);
+            perfDirectory = Path.Combine(Application.persistentDataPath, PerfLog.FolderName);
             fieldNotesFile = FieldNotes.FilePath;
             photosDirectory = Path.Combine(Application.persistentDataPath, "field_photos"); // FieldPhoto.FolderName
             reportsDirectory = Path.Combine(Application.persistentDataPath, "reports");
@@ -561,6 +563,13 @@ namespace QuestMarkerApp.API
 
             if (path == "/api/fieldtest" && method == "GET") return HandleFieldTestList(response);
             if (path == "/api/accuracy" && method == "GET") return HandleFileList(CsvFiles(accuracyDirectory), response);
+            if (path == "/api/perf" && method == "GET") return HandleFileList(CsvFiles(perfDirectory), response);
+            if (path.StartsWith("/api/perf/") && method == "GET")
+            {
+                string rawPath = request.Url.AbsolutePath.TrimEnd('/');
+                string name = Uri.UnescapeDataString(rawPath.Substring(rawPath.LastIndexOf('/') + 1));
+                return HandleFileDownload(CsvFiles(perfDirectory), name, "text/csv; charset=utf-8", response);
+            }
             if (path.StartsWith("/api/accuracy/") && method == "GET")
             {
                 string rawPath = request.Url.AbsolutePath.TrimEnd('/');
@@ -598,7 +607,7 @@ namespace QuestMarkerApp.API
             }
 
             if (KnownPaths.Contains(path) || path.StartsWith("/api/coordinates/") || path.StartsWith("/api/model/")
-                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/fieldnotes/photo/") || path.StartsWith("/api/reports/") || path.StartsWith("/api/accuracy/"))
+                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/fieldnotes/photo/") || path.StartsWith("/api/reports/") || path.StartsWith("/api/accuracy/") || path.StartsWith("/api/perf/"))
             {
                 SendJson(response, 405, "{\"error\":\"Method not allowed\",\"method\":\"" + EscapeJson(method) +
                                         "\",\"path\":\"" + EscapeJson(path) + "\"}");
