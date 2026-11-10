@@ -315,9 +315,23 @@ namespace QuestMarkerApp.Core
             Get($"sensors/sensors/{Uri.EscapeDataString(sensorId)}/", t => ok(t as JObject), fail);
 
         /// <summary>Newest first.</summary>
-        public IEnumerator GetMeasurements(string sensorId, int count, Action<JArray> ok, Action<string> fail) =>
-            Get($"sensors/measurements/?sensor={Uri.EscapeDataString(sensorId)}&ordering=-meas_date&page=1&page_size={count}",
-                t => ok(Results(t)), fail);
+        public IEnumerator GetMeasurements(string sensorId, int count, Action<JArray> ok, Action<string> fail)
+        {
+            string Path(int n) => $"sensors/measurements/?sensor={Uri.EscapeDataString(sensorId)}&ordering=-meas_date&page=1&page_size={n}";
+            string failed = null;
+            yield return Get(Path(count), t => ok(Results(t)), e => failed = e);
+            if (failed == null) yield break;
+            // The pack holds each sensor's history under its own page size: a card that was never
+            // opened online has no copy of its shorter request, but the readings are there.
+            if (count < MeasurementPackDepth && LastFailureWasNetwork
+                && AnswerOffline(Path(MeasurementPackDepth), t =>
+                {
+                    JArray all = Results(t);
+                    while (all.Count > count) all.RemoveAt(all.Count - 1); // newest first
+                    ok(all);
+                })) yield break;
+            fail(failed);
+        }
 
         public IEnumerator GetSensorType(int typeId, Action<JObject> ok, Action<string> fail)
         {
@@ -395,6 +409,12 @@ namespace QuestMarkerApp.Core
         /// <summary>When the oldest reply served offline was saved (UTC).</summary>
         public DateTime OfflineDataDate { get; private set; } = DateTime.MaxValue;
 
+        /// <summary>Readings per sensor a project load keeps for offline use.</summary>
+        public const int MeasurementPackDepth = 500;
+
+        /// <summary>The last request found no network or server (not a refusal or a changed certificate).</summary>
+        public bool LastFailureWasNetwork => lastResponseCode == 0 && !certificateRejected;
+
         // Every GET reply is kept on the headset (OfflineCache); with no network the same
         // request is answered from it, so a project loaded once in the office opens on site.
         private IEnumerator Get(string path, Action<JToken> ok, Action<string> fail)
@@ -403,22 +423,22 @@ namespace QuestMarkerApp.Core
             yield return Send("GET", path, null, true, ok, e => failed = e);
             if (failed == null) yield break;
             // Not when the server's certificate changed: that must reach the user, not be papered over.
-            if (lastResponseCode == 0 && !certificateRejected
-                && OfflineCache.TryLoad(Server, CurrentProjectId ?? 0, path, out string text, out DateTime saved))
-            {
-                JToken cached = null;
-                try { cached = JToken.Parse(text); }
-                catch (Exception e) { Debug.LogWarning($"[Terraweb] Offline copy of {path} unreadable: {e.Message}"); }
-                if (cached != null)
-                {
-                    if (!ServingOffline) Debug.Log("[Terraweb] No network: answering from the offline copy");
-                    ServingOffline = true;
-                    if (saved < OfflineDataDate) OfflineDataDate = saved;
-                    ok(cached);
-                    yield break;
-                }
-            }
+            if (LastFailureWasNetwork && AnswerOffline(path, ok)) yield break;
             fail(failed);
+        }
+
+        private bool AnswerOffline(string path, Action<JToken> ok)
+        {
+            if (!OfflineCache.TryLoad(Server, CurrentProjectId ?? 0, path, out string text, out DateTime saved)) return false;
+            JToken cached = null;
+            try { cached = JToken.Parse(text); }
+            catch (Exception e) { Debug.LogWarning($"[Terraweb] Offline copy of {path} unreadable: {e.Message}"); }
+            if (cached == null) return false;
+            if (!ServingOffline) Debug.Log("[Terraweb] No network: answering from the offline copy");
+            ServingOffline = true;
+            if (saved < OfflineDataDate) OfflineDataDate = saved;
+            ok(cached);
+            return true;
         }
 
         // ------------------------------------------------------------------
@@ -544,7 +564,10 @@ namespace QuestMarkerApp.Core
         private static string Describe(UnityWebRequest req)
         {
             if (req.result == UnityWebRequest.Result.ConnectionError)
-                return L.T("Δεν υπάρχει σύνδεση με τον server (", "Cannot reach the server (") + req.error + ")";
+            {
+                Debug.LogWarning($"[Terraweb] {req.method} {req.url}: {req.error}");
+                return L.T("Δεν απαντά ο server. Έλεγξε το δίκτυο.", "The server does not answer. Check the network.");
+            }
             string detail = null;
             try { detail = (string)JToken.Parse(req.downloadHandler.text)?["detail"]; }
             catch { /* not JSON */ }

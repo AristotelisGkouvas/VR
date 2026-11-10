@@ -289,7 +289,7 @@ namespace QuestMarkerApp.UI
                     int serial = ++requestSerial;
                     StartCoroutine(client.SelectProject(pid, null,
                         () => { if (serial == requestSerial) LoadReadings(p); },
-                        error => { if (serial == requestSerial) { valuesText.text = $"<color=#db5a46>{error}</color>"; retryButton.gameObject.SetActive(true); } }));
+                        error => { if (serial == requestSerial) ShowFailure(error); }));
                 }
                 else LoadReadings(p);
             }
@@ -465,10 +465,18 @@ namespace QuestMarkerApp.UI
                 list => { if (serial == requestSerial) StartCoroutine(ShowWhenTyped(serial, list, () => type)); },
                 error =>
                 {
-                    if (serial != requestSerial) return;
-                    valuesText.text = $"<color=#db5a46>{error}</color>";
-                    retryButton.gameObject.SetActive(true);
+                    if (serial == requestSerial) ShowFailure(error);
                 }));
+        }
+
+        // No network is not a fault of this sensor: said calmly, with what is missing.
+        private void ShowFailure(string error)
+        {
+            valuesText.text = client.LastFailureWasNetwork
+                ? L.T("<color=#8ca09e>Χωρίς δίκτυο, και δεν υπάρχουν αποθηκευμένες μετρήσεις για αυτό το σημείο.</color>",
+                    "<color=#8ca09e>No network, and no saved readings for this point.</color>")
+                : $"<color=#db5a46>{error}</color>";
+            retryButton.gameObject.SetActive(true);
         }
 
         // Readings may be numbers, numeric strings, or (vertical sensors) whole objects.

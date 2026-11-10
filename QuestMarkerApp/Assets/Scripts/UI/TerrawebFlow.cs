@@ -355,7 +355,7 @@ namespace QuestMarkerApp.UI
 
         /// <summary>Above this many survey sensors the history download is skipped (too slow).</summary>
         private const int MaxHistorySensors = 200;
-        private const int HistoryDepth = 500;   // newest readings per sensor (the API's page cap)
+        private const int HistoryDepth = TerrawebClient.MeasurementPackDepth;   // newest readings per sensor (the API's page cap)
         private const int Parallel = 6;
 
         // The survey history of position-measuring sensors (types with x/y/z or dx/dy fields):

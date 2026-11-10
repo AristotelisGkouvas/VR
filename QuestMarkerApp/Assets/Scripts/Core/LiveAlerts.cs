@@ -214,12 +214,13 @@ namespace QuestMarkerApp.Core
             yield return client.GetActiveAlertEvents(a => events = a, e => error = e);
             requesting = false;
             // An answer from the offline copy is not a live poll: say so, and change nothing.
-            if (error == null && client.ServingOffline) error = L.T("χωρίς δίκτυο (offline)", "no network (offline)");
+            bool noNetwork = error == null ? client.ServingOffline : client.LastFailureWasNetwork;
+            if (error == null && noNetwork) error = "served from the offline copy";
 
             if (error != null)
             {
                 failures++;
-                lastError = L.T("Σφάλμα: ", "Error: ") + Shorten(error, 48);
+                lastError = noNetwork ? L.T("Χωρίς δίκτυο", "No network") : L.T("Σφάλμα: ", "Error: ") + Shorten(error, 48);
                 Debug.LogWarning($"[LiveAlerts] Poll failed ({failures}): {error}");
                 yield break;
             }
