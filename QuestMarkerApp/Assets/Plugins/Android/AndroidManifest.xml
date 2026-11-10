@@ -21,5 +21,7 @@
   <uses-permission android:name="com.oculus.permission.BOUNDARY_VISIBILITY" />
   <uses-permission android:name="com.oculus.permission.USE_ANCHOR_API" />
   <uses-permission android:name="com.oculus.permission.USE_SCENE" />
+  <!-- Field note photos (FieldPhoto, Passthrough Camera API) -->
+  <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
   <horizonos:uses-horizonos-sdk horizonos:minSdkVersion="60" horizonos:targetSdkVersion="207" />
 </manifest>

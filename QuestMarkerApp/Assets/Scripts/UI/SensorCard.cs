@@ -108,6 +108,7 @@ namespace QuestMarkerApp.UI
             navigateLabel.text = L.T("Πλοήγηση εδώ", "Navigate here");
             navigateWhy = null; // re-checked in the new language on the next frame
             noteLabel.text = L.T("Σημείωση", "Note");
+            if (photoLabel != null) photoLabel.text = L.T("Φωτογραφία", "Photo");
         }
 
         private static TextMeshProUGUI ButtonLabel(RectTransform button) =>
@@ -127,7 +128,9 @@ namespace QuestMarkerApp.UI
                 for (int i = 0; i < mine.Count && i < 2; i++)
                 {
                     if (sb.Length > 0) sb.AppendLine();
-                    sb.Append(L.T("Πεδίο ", "Site ")).Append(mine[i].Utc.ToLocalTime().ToString("dd/MM HH:mm")).Append("  ").Append(mine[i].text);
+                    sb.Append(L.T("Πεδίο ", "Site ")).Append(mine[i].Utc.ToLocalTime().ToString("dd/MM HH:mm")).Append("  ");
+                    if (mine[i].HasPhoto) sb.Append(L.T("[φωτογραφία] ", "[photo] "));
+                    if (!mine[i].IsPhotoOnly) sb.Append(mine[i].text);
                 }
             return sb.ToString();
         }
@@ -147,6 +150,93 @@ namespace QuestMarkerApp.UI
                 if (IsOpen && point == p) notesText.text = NotesLine(p);
             }, null);
         }
+
+        // ------------------------------------------------------------------
+        //  Photo
+        // ------------------------------------------------------------------
+
+        private TextMeshProUGUI photoLabel;
+        private RectTransform countdownCanvas;
+        private TextMeshProUGUI countdownText;
+        private bool shooting;
+
+        // The card steps out of the way, a count of three low in the view lets the user aim
+        // with the head, then one frame from the passthrough camera becomes a note.
+        private void TakePhoto()
+        {
+            ProjectPoint p = point;
+            if (p == null || shooting) return;
+#if MOBILE_PREVIEW
+            return;
+#else
+            if (!FieldPhoto.Supported)
+            {
+                notesText.text = L.T("<color=#e4a62b>Αυτά τα γυαλιά δεν δίνουν την κάμερα.</color>",
+                    "<color=#e4a62b>This headset does not give access to the camera.</color>");
+                return;
+            }
+            if (!FieldPhoto.HasPermission)
+            {
+                FieldPhoto.RequestPermission();
+                notesText.text = L.T("Δώσε άδεια κάμερας και πάτα ξανά «Φωτογραφία».",
+                    "Allow the camera, then press «Photo» again.");
+                return;
+            }
+            StartCoroutine(Shoot(p));
+#endif
+        }
+
+#if !MOBILE_PREVIEW
+        private System.Collections.IEnumerator Shoot(ProjectPoint p)
+        {
+            shooting = true;
+            string name = string.IsNullOrEmpty(p.label) ? p.id : p.label;
+            int pid = projectId?.Invoke() ?? 0;
+            string project = alignment != null ? alignment.ProjectName : "";
+            root.gameObject.SetActive(false);
+            ShowCountdown(true);
+            for (int n = 3; n > 0; n--)
+            {
+                countdownText.text = L.En ? $"Look at it · {n}" : $"Κοίτα το σημείο · {n}";
+                Feedback.Play(Feedback.Sound.Tick);
+                yield return new WaitForSecondsRealtime(1f);
+            }
+            countdownText.text = L.T("Λήψη…", "Taking…");
+            string file = null, error = null;
+            yield return FieldPhoto.Take(this, name, f => file = f, e => error = e);
+            ShowCountdown(false);
+            if (file != null && FieldNotes.AddPhoto(pid, project, p.id, p.sensorId, name, file))
+            {
+                Feedback.Play(Feedback.Sound.Place);
+                Feedback.Buzz(Hands.Dominant, 0.6f, 0.08f);
+            }
+            else Feedback.Play(Feedback.Sound.Warn);
+            shooting = false;
+            if (!IsOpen || point != p) yield break;
+            root.gameObject.SetActive(true);
+            notesText.text = error != null ? $"<color=#db5a46>{error}</color>" : NotesLine(p);
+        }
+
+        private void ShowCountdown(bool on)
+        {
+            if (countdownCanvas == null)
+            {
+                countdownCanvas = VrUi.CreateCanvas("PhotoCountdown", null, new Vector2(300, 64), MetersPerPixel);
+                VrUi.Card("Bg", countdownCanvas, 0, 0, 300, 64, Brand.Surface.WithAlpha(0.92f), Brand.BorderStrong, 32);
+                countdownText = VrUi.Text("Count", countdownCanvas, 0, 0, 300, 64, "", 20f, Brand.Fg, true,
+                    TextAlignmentOptions.Center);
+            }
+            Camera cam = Headset.Camera;
+            if (on && cam != null)
+            {
+                // Low in the view: what is being photographed stays clear.
+                Transform t = countdownCanvas;
+                t.position = VrUi.InFront(cam.transform, 0.8f, 0.3f);
+                VrUi.FaceViewer(t, cam.transform);
+            }
+            countdownCanvas.gameObject.SetActive(on);
+        }
+#endif
 
         // ------------------------------------------------------------------
         //  Build
@@ -183,7 +273,7 @@ namespace QuestMarkerApp.UI
             dateCaption.fontSizeMax = 13f;
 
             // Readings
-            readHeader = VrUi.Text("ReadHeader", root, 28, 202, 300, 22, "", 13f, Brand.FgSubtle, true);
+            readHeader = VrUi.Text("ReadHeader", root, 28, 202, 200, 22, "", 13f, Brand.FgSubtle, true);
             readHeader.characterSpacing = 6f;
             retryButton = VrUi.Button("Retry", root, Width - 148, 194, 120, 30, "history", "Ξανά",
                 () => { if (point != null) Open(point, markerId, target); });
@@ -228,11 +318,13 @@ namespace QuestMarkerApp.UI
 
             float fy = Height - 56f;
             VrUi.Panel("Divider", root, 28, fy - 12, Width - 56, 1, Brand.Border, 0);
-            navigateLabel = ButtonLabel(VrUi.Button("Navigate", root, 28, fy - 6, 210, 44, "compass", "Πλοήγηση εδώ", NavigateHere, true));
-            // Closing stays on the × above and on B; this slot takes a note.
-            noteLabel = ButtonLabel(VrUi.Button("NoteBtn", root, 248, fy - 6, 150, 44, "edit", "Σημείωση", AddNote));
+            navigateLabel = ButtonLabel(VrUi.Button("Navigate", root, 28, fy - 6, 190, 44, "compass", "Πλοήγηση εδώ", NavigateHere, true));
+            // Closing stays on the × above and on B; these slots take a note and a photo.
+            noteLabel = ButtonLabel(VrUi.Button("NoteBtn", root, 226, fy - 6, 150, 44, "edit", "Σημείωση", AddNote));
+            photoLabel = ButtonLabel(VrUi.Button("PhotoBtn", root, 384, fy - 6, 148, 44, "camera", "Φωτογραφία", TakePhoto));
             VrUi.Button("Close", root, Width - 64, 22, 40, 40, "close", null, Close);
-            footer = VrUi.Text("Footer", root, Width - 160, fy, 132, 30, "", 13f, Brand.FgFaint, false,
+            // Beside the READINGS header: the bottom row is all buttons.
+            footer = VrUi.Text("Footer", root, 236, 202, 160, 22, "", 13f, Brand.FgFaint, false,
                 TextAlignmentOptions.MidlineRight);
             Relabel();
         }

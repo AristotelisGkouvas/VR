@@ -9,7 +9,8 @@ namespace QuestMarkerApp.Core
     /// Notes taken on site against a sensor ("crack beside K5, cover plate loose"): typed or
     /// dictated from its card, kept on the headset (persistentDataPath/field_notes.json), shown
     /// on the card, listed in the inspection route's report and served to the PC at
-    /// GET /api/fieldnotes. Local only: Terraweb has no endpoint for them yet.
+    /// GET /api/fieldnotes. A note may carry a photo (FieldPhoto), a JPEG in field_photos/
+    /// served at GET /api/fieldnotes/photo/&lt;file&gt;. Local only: Terraweb has no endpoint for them yet.
     /// </summary>
     public static class FieldNotes
     {
@@ -24,6 +25,11 @@ namespace QuestMarkerApp.Core
             public string text;
             /// <summary>ISO 8601 UTC.</summary>
             public string utc;
+            /// <summary>File name in FieldPhoto.Folder, empty for a text note.</summary>
+            public string photo;
+
+            public bool HasPhoto => !string.IsNullOrEmpty(photo);
+            public bool IsPhotoOnly => HasPhoto && text == PhotoText;
 
             public DateTime Utc => DateTime.TryParse(utc, null, System.Globalization.DateTimeStyles.AdjustToUniversal
                                                                 | System.Globalization.DateTimeStyles.AssumeUniversal, out DateTime t)
@@ -64,6 +70,21 @@ namespace QuestMarkerApp.Core
             {
                 projectId = projectId, project = project, pointId = pointId, sensorId = sensorId, label = label,
                 text = text.Trim(), utc = DateTime.UtcNow.ToString("o")
+            });
+            return Save();
+        }
+
+        // The text a photo note carries, so tools that read only "text" still list it.
+        private const string PhotoText = "(photo)";
+
+        /// <summary>A photo against <paramref name="pointId"/>, its file already in FieldPhoto.Folder.</summary>
+        public static bool AddPhoto(int projectId, string project, string pointId, string sensorId, string label, string file)
+        {
+            if (string.IsNullOrEmpty(file)) return false;
+            Data.notes.Add(new Note
+            {
+                projectId = projectId, project = project, pointId = pointId, sensorId = sensorId, label = label,
+                text = PhotoText, photo = file, utc = DateTime.UtcNow.ToString("o")
             });
             return Save();
         }

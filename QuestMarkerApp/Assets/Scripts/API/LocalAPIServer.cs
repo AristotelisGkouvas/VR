@@ -126,6 +126,7 @@ namespace QuestMarkerApp.API
         private string accuracyDirectory = "";
         private string fieldNotesFile = "";
         private string reportsDirectory = "";
+        private string photosDirectory = "";
 
         public int Port => port;
         /// <summary>Per-device key every LAN client (PC bridge, scripts) must send as X-Api-Key.</summary>
@@ -148,6 +149,7 @@ namespace QuestMarkerApp.API
             fieldTestDirectory = Path.Combine(Application.persistentDataPath, FieldTestLog.FolderName);
             accuracyDirectory = Path.Combine(Application.persistentDataPath, AlignmentAccuracy.FolderName);
             fieldNotesFile = FieldNotes.FilePath;
+            photosDirectory = Path.Combine(Application.persistentDataPath, "field_photos"); // FieldPhoto.FolderName
             reportsDirectory = Path.Combine(Application.persistentDataPath, "reports");
             if (markerManager == null) markerManager = FindAnyObjectByType<MarkerManager>();
             if (calibrationSystem == null) calibrationSystem = FindAnyObjectByType<CoordinateCalibration>();
@@ -581,6 +583,13 @@ namespace QuestMarkerApp.API
                 SendJson(response, 200, json);
                 return 200;
             }
+            if (path.StartsWith("/api/fieldnotes/photo/") && method == "GET")
+            {
+                // A photo taken with a field note (FieldPhoto): exact file name, JPEG only.
+                string rawPath = request.Url.AbsolutePath.TrimEnd('/');
+                string name = Uri.UnescapeDataString(rawPath.Substring(rawPath.LastIndexOf('/') + 1));
+                return HandleFileDownload(PhotoFiles(), name, "image/jpeg", response);
+            }
             if (path.StartsWith("/api/fieldtest/") && method == "GET")
             {
                 string rawPath = request.Url.AbsolutePath.TrimEnd('/');
@@ -589,7 +598,7 @@ namespace QuestMarkerApp.API
             }
 
             if (KnownPaths.Contains(path) || path.StartsWith("/api/coordinates/") || path.StartsWith("/api/model/")
-                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/reports/") || path.StartsWith("/api/accuracy/"))
+                || path.StartsWith("/api/fieldtest/") || path.StartsWith("/api/fieldnotes/photo/") || path.StartsWith("/api/reports/") || path.StartsWith("/api/accuracy/"))
             {
                 SendJson(response, 405, "{\"error\":\"Method not allowed\",\"method\":\"" + EscapeJson(method) +
                                         "\",\"path\":\"" + EscapeJson(path) + "\"}");
@@ -1689,6 +1698,20 @@ namespace QuestMarkerApp.API
 
         // Only *.csv directly in the field test folder (the per-project anchor JSONs are not served).
         private string[] FieldTestFiles() => CsvFiles(fieldTestDirectory);
+
+        private string[] PhotoFiles()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(photosDirectory) || !Directory.Exists(photosDirectory)) return Array.Empty<string>();
+                return Directory.GetFiles(photosDirectory, "*.jpg", SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogWarning("[API] photos: " + e.Message);
+                return Array.Empty<string>();
+            }
+        }
 
         // *.csv directly in a log folder (field test, accuracy), sorted; none when it does not exist yet.
         private static string[] CsvFiles(string directory)
