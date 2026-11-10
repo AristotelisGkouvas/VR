@@ -233,7 +233,8 @@ namespace QuestMarkerApp.Core
             text.Append(L.T("<b>Δοκιμή QR</b>", "<b>QR test</b>"));
             int read = 0;
             foreach (Code c in codes.Values) if (c.HasPose) read++;
-            text.Append(L.En ? $" · {read} codes\n" : $" · {read} κωδικοί\n");
+            text.Append(L.En ? $" · {read} codes\n" : read == 1 ? " · 1 κωδικός\n" : $" · {read} κωδικοί\n");
+            if (read == 0) text.Append(L.T("Κοίτα έναν κωδικό από 1–2 m.", "Look at a code from 1–2 m."));
             int lines = 0;
             var list = new List<Code>(codes.Values);
             list.Sort((a, b) => string.CompareOrdinal(a.Payload, b.Payload));
@@ -247,7 +248,7 @@ namespace QuestMarkerApp.Core
                 }
             hudText.text = text.ToString();
             Status = read == 0 ? L.T("Ψάχνει QR…", "Looking for QR codes…")
-                : L.En ? $"On · {read} codes" : $"Ναι · {read} κωδικοί";
+                : L.En ? $"On · {read} codes" : read == 1 ? "Ναι · 1 κωδικός" : $"Ναι · {read} κωδικοί";
         }
 
         private void PlaceHud(Camera cam)

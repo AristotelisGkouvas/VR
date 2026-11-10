@@ -920,8 +920,26 @@ namespace QuestMarkerApp.Core
         /// The tracking space changed while codes were being read: they would fit metres apart
         /// with whatever is read next, so the alignment starts over.
         /// </summary>
-        public void DropAfterTrackingChange()
+        /// <summary>
+        /// The glasses came off, or tracking restarted, with codes read. A localised spatial anchor
+        /// follows the room and the placements are relative to it, so they still hold. Without
+        /// one, a working alignment waits for a re-check and a lone code is dropped.
+        /// Returns false when nothing was lost or put in question.
+        /// </summary>
+        public bool AfterTrackingChange()
         {
+            if (anchors != null && anchors.IsPersistentAnchor) return false;
+            if (isAligned)
+            {
+                needsCheck = true;
+                lastMessage = L.T("Τα γυαλιά έχασαν τη θέση τους. Διάβασε ξανά έναν κωδικό για έλεγχο.",
+                    "The glasses lost their position. Read a code again to check.");
+                goodMessage = null;
+                Render();
+                RefreshPanel();
+                OnAlignmentChanged?.Invoke();
+                return true;
+            }
             placements.Clear();
             placementOrder.Clear();
             needsCheck = false;
@@ -930,6 +948,7 @@ namespace QuestMarkerApp.Core
             goodMessage = null;
             Solve();
             Save();
+            return true;
         }
 
         private void MoveSelection(int delta)
@@ -1563,7 +1582,12 @@ namespace QuestMarkerApp.Core
         {
             public ProjectRequest project;
             public SavedPlacement[] placements;
+            public int frame;
         }
+
+        // Placements saved before the level frame (no version) were in the tilted anchor frame:
+        // read in the level one they would fit badly and look like outliers. Align again.
+        private const int FrameVersion = 2;
 
         private void Save()
         {
@@ -1575,7 +1599,7 @@ namespace QuestMarkerApp.Core
                 foreach (string id in placementOrder)
                     if (placements.TryGetValue(id, out Vector3 local)) list.Add(new SavedPlacement { id = id, local = local });
                 string file = SaveFileFor(project.name);
-                File.WriteAllText(DataPath(file), JsonUtility.ToJson(new SaveData { project = project, placements = list.ToArray() }));
+                File.WriteAllText(DataPath(file), JsonUtility.ToJson(new SaveData { project = project, placements = list.ToArray(), frame = FrameVersion }));
                 File.WriteAllText(DataPath(LastProjectFile), file);
             }
             catch (Exception e)
@@ -1598,7 +1622,9 @@ namespace QuestMarkerApp.Core
             try
             {
                 SaveData data = ReadSave(ResolveSaveFile(projectName));
-                if (data?.placements != null)
+                if (data?.placements != null && data.frame != FrameVersion)
+                    Debug.Log($"[Project] '{projectName}': saved alignment is from the old tilted frame, align again");
+                else if (data?.placements != null)
                     foreach (var p in data.placements) result[p.id] = p.local;
             }
             catch (Exception e)

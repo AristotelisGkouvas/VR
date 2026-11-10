@@ -208,7 +208,8 @@ namespace QuestMarkerApp.Core
             return new Vector3(x[n / 2], y[n / 2], z[n / 2]);
         }
 
-        // Readings from two tracking spaces fit metres apart: start over rather than mix them.
+        // Samples from two tracking spaces fit metres apart: a code in progress starts over.
+        // What is already placed is the alignment's call (AfterTrackingChange).
         private void OnTrackingChanged()
         {
             epoch = QrSource.Epoch;
@@ -221,9 +222,12 @@ namespace QuestMarkerApp.Core
             }
             if (placedNow.Count == 0) return;
             placedNow.Clear();
-            alignment.DropAfterTrackingChange();
-            Feedback.Play(Feedback.Sound.Warn);
-            Debug.LogWarning("[QrAlign] Tracking space changed: codes read so far dropped");
+            if (alignment.AfterTrackingChange())
+            {
+                Feedback.Play(Feedback.Sound.Warn);
+                Debug.LogWarning("[QrAlign] Tracking space changed with no spatial anchor: codes need checking");
+            }
+            else Debug.Log("[QrAlign] Tracking space changed: the anchor holds, codes kept");
         }
 
         private void Stop()

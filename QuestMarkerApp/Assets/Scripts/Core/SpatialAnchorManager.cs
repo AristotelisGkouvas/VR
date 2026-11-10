@@ -16,6 +16,11 @@ namespace QuestMarkerApp.Core
     /// Without a localised anchor (no anchor support, other room, failure) it falls back to the
     /// last saved pose in tracking space and reports <see cref="IsPersistentAnchor"/> false, so
     /// callers know the frame may have moved.
+    ///
+    /// A restored anchor comes back slightly tilted (0.57° measured on 6/11/2026, a metre of
+    /// height per 100 m). The alignment solves yaw and translation only, so it must not inherit
+    /// that: everything is placed in <see cref="LevelFrame"/>, the anchor's position and heading
+    /// about gravity.
     /// </summary>
     public class SpatialAnchorManager : MonoBehaviour
     {
@@ -34,6 +39,7 @@ namespace QuestMarkerApp.Core
         private const string PrefPose = "SpatialAnchors_reference"; // legacy key kept for the pose fallback
 
         private Transform referenceAnchor;
+        private Transform levelFrame;
         private string referenceUuid;
         private bool isInitialized;
         private bool persistent;
@@ -42,6 +48,16 @@ namespace QuestMarkerApp.Core
 #endif
 
         public Transform ReferenceAnchor => referenceAnchor;
+
+        /// <summary>The anchor without its tilt: the frame markers and control points live in.</summary>
+        public Transform LevelFrame
+        {
+            get
+            {
+                if (levelFrame == null) levelFrame = new GameObject("ReferenceLevel").transform;
+                return levelFrame;
+            }
+        }
         public bool IsInitialized => isInitialized;
         public string ReferenceAnchorUuid => referenceUuid;
 
@@ -63,6 +79,18 @@ namespace QuestMarkerApp.Core
 
         public bool AutoCreateReferenceAnchor { get => autoCreateReferenceAnchor; set => autoCreateReferenceAnchor = value; }
         public bool PersistAnchors { get => persistAnchors; set => persistAnchors = value; }
+
+        // OVRSpatialAnchor writes the anchor's transform in Update and LateUpdate.
+        private void LateUpdate() => SyncLevelFrame();
+
+        private void SyncLevelFrame()
+        {
+            if (referenceAnchor == null) return;
+            Vector3 flat = Vector3.ProjectOnPlane(referenceAnchor.forward, Vector3.up);
+            if (flat.sqrMagnitude < 1e-6f) flat = Vector3.ProjectOnPlane(referenceAnchor.up, Vector3.up);
+            if (flat.sqrMagnitude < 1e-6f) flat = Vector3.forward;
+            LevelFrame.SetPositionAndRotation(referenceAnchor.position, Quaternion.LookRotation(flat.normalized, Vector3.up));
+        }
 
         private IEnumerator Start()
         {
@@ -109,7 +137,8 @@ namespace QuestMarkerApp.Core
             if (persistAnchors) StartCoroutine(SaveWhenCreated(ovrAnchor));
 #endif
             SavePose(position, rotation);
-            OnReferenceAnchorCreated?.Invoke(referenceAnchor);
+            SyncLevelFrame();
+            OnReferenceAnchorCreated?.Invoke(LevelFrame);
             Debug.Log($"[SpatialAnchor] Reference anchor created at {position}");
         }
 
@@ -215,7 +244,8 @@ namespace QuestMarkerApp.Core
             referenceUuid = uuid.ToString();
             persistent = true;
             yield return null; // let the component write its first tracked pose
-            OnReferenceAnchorLoaded?.Invoke(referenceAnchor);
+            SyncLevelFrame();
+            OnReferenceAnchorLoaded?.Invoke(LevelFrame);
             Debug.Log($"[SpatialAnchor] Reference anchor {uuid} restored and localised");
             done(true);
 #else
@@ -239,7 +269,8 @@ namespace QuestMarkerApp.Core
             ovrAnchor = anchorObj.AddComponent<OVRSpatialAnchor>();
             if (persistAnchors) StartCoroutine(SaveWhenCreated(ovrAnchor));
 #endif
-            OnReferenceAnchorLoaded?.Invoke(referenceAnchor);
+            SyncLevelFrame();
+            OnReferenceAnchorLoaded?.Invoke(LevelFrame);
             Debug.Log("[SpatialAnchor] Reference restored from saved pose only (not a spatial anchor); pinning a new anchor there");
             return true;
         }
