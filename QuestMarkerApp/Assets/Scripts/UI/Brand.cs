@@ -141,7 +141,22 @@ namespace QuestMarkerApp.UI
         public static Material MarkerSpriteMaterial =>
             markerSprite != null ? markerSprite : (markerSprite = MakeMarkerSprite(true));
 
-        private static Material markerSpriteMid, markerSpriteTop;
+        private static Material markerSpriteMid, markerSpriteTop, labelPlate;
+
+        /// <summary>
+        /// MarkerSpriteMaterial for label plates. With «behind walls» on an icon may turn faint,
+        /// but white text needs its plate: at 30 % it vanished on a sunlit roof.
+        /// </summary>
+        public static Material LabelPlateMaterial
+        {
+            get
+            {
+                if (labelPlate != null) return labelPlate;
+                labelPlate = new Material(MarkerSpriteMaterial) { name = "LabelPlate" };
+                if (labelPlate.HasProperty("_XrayAlpha")) labelPlate.SetFloat("_XrayAlpha", 0.8f);
+                return labelPlate;
+            }
+        }
 
         /// <summary>
         /// The depth-writing sprite material for one piece of an icon, back to front: 0 the

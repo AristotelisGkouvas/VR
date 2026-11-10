@@ -459,6 +459,7 @@ namespace QuestMarkerApp.Markers
         [SerializeField] private int maxLabels = 40;
 
         private readonly List<(float dist, Marker marker)> byDistance = new List<(float, Marker)>();
+        private readonly List<Rect> labelRects = new List<Rect>();
         private float nextLabelPass;
 
         // One loop drives every marker (see Marker.Tick); label slots go to the nearest few,
@@ -485,8 +486,27 @@ namespace QuestMarkerApp.Markers
 
             if (!rank) return;
             byDistance.Sort((a, b) => a.dist.CompareTo(b.dist));
-            for (int i = 0; i < byDistance.Count; i++)
-                byDistance[i].marker.LabelSlot = i < maxLabels;
+            labelRects.Clear();
+            int given = 0;
+            foreach (var (_, m) in byDistance) if (m.LabelPriority) GrantLabel(cam, m, true, ref given);
+            foreach (var (_, m) in byDistance) if (!m.LabelPriority) GrantLabel(cam, m, false, ref given);
+        }
+
+        // Nearest first, a label goes up only where it covers no label already placed. One on
+        // show gets a little slack and one off needs a little room, or a turn of the head would
+        // make neighbours flicker in and out.
+        private void GrantLabel(Camera cam, Marker m, bool always, ref int given)
+        {
+            if (!m.TryLabelRect(cam, out Rect rect)) return; // no label, or well out of view
+            Vector2 size = rect.size * (m.LabelSlot ? 0.85f : 1.1f);
+            var test = new Rect(rect.center - size * 0.5f, size);
+            bool free = given < maxLabels;
+            for (int i = 0; free && i < labelRects.Count; i++)
+                if (labelRects[i].Overlaps(test)) free = false;
+            m.LabelSlot = always || free;
+            if (!m.LabelSlot) return;
+            labelRects.Add(rect);
+            given++;
         }
 
         /// <summary>Anchor corrections up to this (metres / degrees) glide; larger ones snap.</summary>

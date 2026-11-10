@@ -7,6 +7,9 @@
 // point is coloured, fading towards the sphere's edge. A sphere with nothing in it, or hidden
 // behind a nearer real surface, stays a faint ball, so a zone is never simply gone.
 //
+// Near the eye every zone eases off (NearFade): standing inside one, it used to colour the
+// hands, the people beside you and the whole view.
+//
 // The back faces draw (Cull Front) so a zone still shows from inside it. The depth map is
 // sampled with an explicit LOD: implicit gradients are not allowed in the loop.
 // Stereo-instanced (Quest single-pass instanced). Lives in Resources so it ships in the build.
@@ -38,10 +41,12 @@ Shader "QuestMarker/SensorZone"
             #include "UnityCG.cginc"
 
             #define ZONE_STEPS 8
-            #define PAINT_ALPHA 0.6
+            #define PAINT_ALPHA 0.42
             #define BALL_ALPHA 0.45
             #define FAINT_ALPHA 0.10
             #define DEPTH_BIAS 0.02
+            #define NEAR_NONE 0.8
+            #define NEAR_FULL 2.5
 
             fixed4 _Color;
             float _Paint;
@@ -97,6 +102,11 @@ Shader "QuestMarker/SensorZone"
                 return true;
             }
 
+            float NearFade(float t)
+            {
+                return smoothstep(NEAR_NONE, NEAR_FULL, t);
+            }
+
             fixed4 frag(v2f i) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
@@ -115,7 +125,9 @@ Shader "QuestMarker/SensorZone"
                 float chord = saturate((t1 - t0) / (2.0 * i.radius));
                 float ball = chord * chord;
 
-                if (_Paint < 0.5) return fixed4(_Color.rgb, BALL_ALPHA * ball);
+                float nearMiddle = NearFade(0.5 * (t0 + t1));
+
+                if (_Paint < 0.5) return fixed4(_Color.rgb, BALL_ALPHA * ball * nearMiddle);
 
                 float tHit = -1.0, tPrev = t0, behind;
                 bool first = true;
@@ -149,9 +161,9 @@ Shader "QuestMarker/SensorZone"
                 if (tHit >= 0.0)
                 {
                     float edge = length(eye + dir * tHit - i.center) / i.radius;
-                    return fixed4(_Color.rgb, PAINT_ALPHA * (1.0 - smoothstep(0.55, 1.0, edge)));
+                    return fixed4(_Color.rgb, PAINT_ALPHA * (1.0 - smoothstep(0.55, 1.0, edge)) * NearFade(tHit));
                 }
-                return fixed4(_Color.rgb, (hidden ? 0.6 : 1.0) * FAINT_ALPHA * ball);
+                return fixed4(_Color.rgb, (hidden ? 0.6 : 1.0) * FAINT_ALPHA * ball * nearMiddle);
             }
         ENDCG
         }

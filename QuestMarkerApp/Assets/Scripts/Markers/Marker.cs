@@ -166,9 +166,35 @@ namespace QuestMarkerApp.Markers
 
         /// <summary>
         /// Allowed to show its label this frame — MarkerManager grants it to the nearest few
-        /// only, so a dense cluster doesn't turn into a wall of names.
+        /// only, and only where it covers no nearer label, so a dense cluster doesn't turn into
+        /// a wall of names.
         /// </summary>
         public bool LabelSlot { get; set; } = true;
+
+        /// <summary>Keeps its label ahead of nearer markers: pointed at, navigated to, or in alarm.</summary>
+        public bool LabelPriority =>
+            isHighlighted || isNavigationTarget || currentData?.status == "alarm" || currentData?.status == "alert";
+
+        /// <summary>
+        /// Where the label's plate falls in the viewport, for MarkerManager's overlap pass. False
+        /// when this marker has no label to place, or it is well out of view.
+        /// </summary>
+        public bool TryLabelRect(Camera cam, out Rect rect)
+        {
+            rect = default;
+            if (currentType != MarkerType.Icon || labelPlate == null || !labelShown || !LabelsVisible || string.IsNullOrEmpty(plateText)) return false;
+            Transform plate = labelPlate.transform;
+            Vector3 centre = plate.position;
+            Vector3 v = cam.WorldToViewportPoint(centre);
+            if (v.z <= 0f || v.x < -0.25f || v.x > 1.25f || v.y < -0.25f || v.y > 1.25f) return false;
+            Vector3 scale = plate.lossyScale;
+            Transform view = cam.transform;
+            Vector3 corner = centre + view.right * (labelPlate.size.x * scale.x * 0.5f) + view.up * (labelPlate.size.y * scale.y * 0.5f);
+            Vector3 c = cam.WorldToViewportPoint(corner);
+            float w = Mathf.Abs(c.x - v.x), h = Mathf.Abs(c.y - v.y);
+            rect = new Rect(v.x - w, v.y - h, 2f * w, 2f * h);
+            return true;
+        }
 
         /// <summary>
         /// Per-frame work, driven by MarkerManager in one loop (hundreds of separate Update()
@@ -377,7 +403,7 @@ namespace QuestMarkerApp.Markers
             go.transform.SetParent(labelText.transform, false);
             labelPlate = go.AddComponent<SpriteRenderer>();
             labelPlate.sprite = Brand.Plate;
-            labelPlate.sharedMaterial = Brand.MarkerSpriteMaterial;
+            labelPlate.sharedMaterial = Brand.LabelPlateMaterial;
             labelPlate.drawMode = SpriteDrawMode.Sliced;
             labelPlate.color = Brand.Surface.WithAlpha(0.88f);
             labelPlate.sortingOrder = 5;
@@ -715,7 +741,7 @@ namespace QuestMarkerApp.Markers
             {
                 float limit = labelShown ? iconLabelHideDistance : iconLabelHideDistance - 2f;
                 labelShown = dist <= limit;
-                bool show = LabelsVisible && labelShown && LabelSlot && !hideLabel && !string.IsNullOrEmpty(labelText.text);
+                bool show = LabelsVisible && labelShown && (LabelSlot || isHighlighted || isNavigationTarget) && !hideLabel && !string.IsNullOrEmpty(labelText.text);
                 if (labelText.gameObject.activeSelf != show)
                     labelText.gameObject.SetActive(show);
             }
