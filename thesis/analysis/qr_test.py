@@ -11,7 +11,7 @@
   python qr_test.py --tape QM-13A,QM-13B=2.345 --tape QM-10A,QM-10B=2.102
 
 Μόνο βιβλιοθήκη της Python. Λήψη από τα γυαλιά:
-  adb pull /sdcard/Android/data/com.yourcompany.questmarkerapp/files/qrtest thesis/data/
+  adb pull /sdcard/Android/data/com.terraweb.quest/files/qrtest thesis/data/
 """
 from __future__ import annotations
 

@@ -34,7 +34,7 @@
 ## Ανάλυση
 
 ```bash
-adb pull /sdcard/Android/data/com.yourcompany.questmarkerapp/files/qrtest thesis/data/
+adb pull /sdcard/Android/data/com.terraweb.quest/files/qrtest thesis/data/
 python thesis/analysis/qr_test.py --tape QM-13A,QM-13B=2.345 --tape QM-10A,QM-10B=2.102 --tape QM-05A,QM-05B=2.050
 ```
 
@@ -63,7 +63,7 @@ python thesis/analysis/qr_test.py --tape QM-13A,QM-13B=2.345 --tape QM-10A,QM-10
 **β. Οι μηδενισμοί του συστήματος συντεταγμένων.** Η εφαρμογή γράφει πλέον το log της στα γυαλιά (`files/logs/app-ΗΗΗΗ-ΜΜ-ΗΗ.log`) και καταγράφει ως αιτία «tracking lost», «glasses off», «recenter» ή «head jump». Αν ένας κωδικός που έχει ήδη τοποθετηθεί ξαναδιαβαστεί πάνω από 10 cm από τη θέση του, η εφαρμογή το θεωρεί μετακίνηση του χώρου και ξεκινά έλεγχο. Μετά τη δοκιμή:
 
 ```bash
-adb pull /sdcard/Android/data/com.yourcompany.questmarkerapp/files/logs thesis/data/qrtest/
+adb pull /sdcard/Android/data/com.terraweb.quest/files/logs thesis/data/qrtest/
 ```
 
 Ψάξε στο log τις γραμμές `[QrSource]` και `[Project] … flagged` γύρω από την ώρα κάθε μηδενισμού.
