@@ -33,10 +33,9 @@ namespace QuestMarkerApp.UI
         private const float Width = 400f, Height = 196f;
         private const float MetersPerPixel = 0.00055f; // as the alignment panel
         // Card centre above the off-hand controller; its lower edge clears the controller labels.
-        private const float CardLift = 0.15f, BadgeLift = 0.05f;
+        private const float CardLift = 0.15f;
         // Without that controller: in the room, lower than the menu so the two never collide.
         private const float CardDistance = 0.7f, CardDrop = 0.25f;
-        private const float BadgeDistance = 0.9f, BadgeDrop = 0.45f;
         private const float ConfirmWindow = 3f;
         // Hide while walking: horizontal head speed above this for WalkDelay, back after StillDelay.
         private const float WalkSpeed = 0.6f, WalkDelay = 0.5f, StillDelay = 1f;
@@ -78,12 +77,12 @@ namespace QuestMarkerApp.UI
         private float confirmSkipUntil, confirmEndUntil;
 
         // ---- UI ----
-        private Transform cardRoot, badgeRoot;
+        private Transform cardRoot;
         private RectTransform canvas, actions;
         private CanvasGroup group;
         private TextMeshProUGUI eyebrow, title, body, skipLabel;
         private readonly Image[] dots = new Image[StepTotal];
-        private bool cardPlaced, cardGliding, badgePlaced, badgeGliding;
+        private bool cardPlaced, cardGliding;
         private int actionsKey = -1;
         private float nextText;
 
@@ -107,7 +106,6 @@ namespace QuestMarkerApp.UI
             terraweb = client;
             flowPanel = panel;
             BuildCard();
-            BuildBadge();
             L.Changed += Relayout;
             Hands.OnChanged += Relayout;
 
@@ -271,8 +269,6 @@ namespace QuestMarkerApp.UI
         {
             if (cardRoot == null) return; // before Init
             TrackWalking();
-            if (badgeRoot != null && badgeRoot.gameObject.activeSelf != PracticeProject.IsActive)
-                badgeRoot.gameObject.SetActive(PracticeProject.IsActive);
             if (!running || !started) return;
 
             // Something undone underneath (logged out, project gone, points reset): step back.
@@ -340,8 +336,6 @@ namespace QuestMarkerApp.UI
             if (cam == null) return;
             if (cardRoot.gameObject.activeSelf)
                 Place(cardRoot, cam.transform, CardLift, CardDistance, CardDrop, step != Step.Hand, ref cardPlaced, ref cardGliding);
-            if (badgeRoot.gameObject.activeSelf)
-                Place(badgeRoot, cam.transform, BadgeLift, BadgeDistance, BadgeDrop, true, ref badgePlaced, ref badgeGliding);
         }
 
         // ------------------------------------------------------------------
@@ -642,17 +636,6 @@ namespace QuestMarkerApp.UI
             cardRoot.gameObject.SetActive(false);
         }
 
-        // Yellow, both languages, always on while practising: nobody may take these numbers for site data.
-        private void BuildBadge()
-        {
-            badgeRoot = new GameObject("PracticeBadge").transform;
-            badgeRoot.SetParent(transform, false);
-            RectTransform c = VrUi.CreateCanvas("BadgeCanvas", badgeRoot, new Vector2(300f, 40f), MetersPerPixel);
-            VrUi.Panel("Pill", c, 0, 0, 300, 40, Brand.Control, 20);
-            VrUi.Text("Text", c, 0, 0, 300, 40, L.T("ΕΞΑΣΚΗΣΗ", "PRACTICE"), 17f, Brand.MapInk, true,
-                TextAlignmentOptions.Center).characterSpacing = 4f;
-            badgeRoot.gameObject.SetActive(false);
-        }
 
         // Above the off-hand controller like a watch face; in the room (lazy follow) when that
         // controller is down or, for the handedness step, not yet known.

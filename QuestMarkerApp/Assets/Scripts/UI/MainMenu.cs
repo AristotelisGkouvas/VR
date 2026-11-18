@@ -59,6 +59,7 @@ namespace QuestMarkerApp.UI
         private CanvasGroup walkFade; // WalkFade: faint while the user walks
         private RectTransform root, body;
         private TextMeshProUGUI crumb, title;
+        private GameObject practiceTag;
         // GetServerUrls enumerates the network interfaces: cache its text and refresh it once a second.
         private string serverText = "";
         private float nextServerRefresh;
@@ -164,6 +165,10 @@ namespace QuestMarkerApp.UI
             crumb = VrUi.Text("Crumb", root, 28, 52, Width - 92, 40, "", 20f, Brand.FgSubtle, true);
             title = VrUi.Text("Title", root, 28, 52, Width - 92, 40, "", 27f, Brand.Fg, true);
             VrUi.Button("Close", root, Width - 64, 22, 40, 40, "close", null, Close);
+            // Unmistakable while practising, in the header so the body keeps its rows.
+            practiceTag = VrUi.Panel("PracticeTag", root, Width - 200, 26, 128, 30, Brand.Control, 15).gameObject;
+            VrUi.Text("PracticeTagText", practiceTag.transform, 0, 0, 128, 30, L.T("ΕΞΑΣΚΗΣΗ", "PRACTICE"), 13f, Brand.MapInk, true,
+                TextAlignmentOptions.Center).characterSpacing = 3f;
         }
 
         private void ClearBody()
@@ -335,12 +340,6 @@ namespace QuestMarkerApp.UI
         private float BuildChips(float y, Stage stage)
         {
             float x = 28f;
-            // Unmistakable while practising: nobody may take these sensors for site data.
-            if (PracticeProject.IsActive)
-            {
-                Chip(x, y, 300, Brand.Control, L.T("ΕΞΑΣΚΗΣΗ · όχι πραγματικά δεδομένα", "PRACTICE · not real data"));
-                y += 40f;
-            }
             if (stage == Stage.Login)
             {
                 Chip(x, y, 150, Brand.FgFaint, L.T("Εκτός σύνδεσης", "Not logged in"));
@@ -418,7 +417,8 @@ namespace QuestMarkerApp.UI
                 () => !ready && !WorkMode.IsOffice ? L.T("μετά την ευθυγρ.", "after alignment")
                     : displacement == null ? ""
                     : DisplacementView.IsActive ? L.T("ανοιχτή · πάτα: κλείσε", "on · press: close")
-                    : displacement.Unavailable() ?? L.T("μετακινήσεις", "displacements"),
+                    // The tile is narrow: only the reason, not the "· what to do" after it.
+                    : displacement.Unavailable()?.Split('·')[0].Trim() ?? L.T("μετακινήσεις", "displacements"),
                 () => (ready || WorkMode.IsOffice) && displacement != null && (DisplacementView.IsActive || displacement.Unavailable() == null),
                 () => { Close(); displacement.Toggle(); }));
             // The heatmap is the field's main view and the office's too: one tap from home
@@ -464,6 +464,9 @@ namespace QuestMarkerApp.UI
                 VrUi.Icon("Icon", body, x + 20, ty + 20, 18, Brand.UiIconSprite(t.icon), Brand.Primary);
                 var label = VrUi.Text("TileLabel", body, x + 12, ty + 50, w - 24, 22, t.label, 15f, Brand.Fg, true);
                 var sub = VrUi.Text("TileSub", body, x + 12, ty + 70, w - 24, 18, "", 13f, Brand.FgSubtle, true);
+                sub.enableAutoSizing = true;
+                sub.fontSizeMin = 10f;
+                sub.fontSizeMax = 13f;
                 var item = new Item { Label = t.label, Tile = true, Value = t.sub, Enabled = t.enabled, Run = t.run };
                 AddItem(item, new ItemView { Background = bg, Accent = border, Label = label, Value = sub, NormalBg = Brand.SurfaceMuted });
             }
@@ -1520,6 +1523,7 @@ namespace QuestMarkerApp.UI
         private void Refresh()
         {
             if (Time.unscaledTime >= nextServerRefresh) RefreshServerText();
+            if (practiceTag.activeSelf != PracticeProject.IsActive) practiceTag.SetActive(PracticeProject.IsActive);
 
             // Header: only when the page or project name changed (the crumb concatenation and its
             // preferredWidth layout ran every frame).

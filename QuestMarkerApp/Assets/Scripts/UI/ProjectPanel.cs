@@ -50,6 +50,7 @@ namespace QuestMarkerApp.UI
         private ProjectAlignment owner;
 
         // Guide page blocks (stacked top to bottom; hidden ones take no room).
+        private RectTransform cardFill, cardBorder;
         private RectTransform stepperBlock, messageBlock, targetBlock, verdictBlock, controlBlock, actionsBlock;
         private readonly List<(Image bar, TextMeshProUGUI text)> steps = new List<(Image, TextMeshProUGUI)>();
         private TextMeshProUGUI messageText;
@@ -93,7 +94,8 @@ namespace QuestMarkerApp.UI
             if (root != null) return;
             root = VrUi.CreateCanvas("ProjectPanelCanvas", transform, new Vector2(Width, Height), MetersPerPixel);
 
-            VrUi.Card("Card", root, 0, 0, Width, Height, Brand.Surface.WithAlpha(0.96f), Brand.BorderStrong, 22);
+            cardFill = VrUi.Card("Card", root, 0, 0, Width, Height, Brand.Surface.WithAlpha(0.96f), Brand.BorderStrong, 22).rectTransform;
+            cardBorder = (RectTransform)root.Find("CardBorder");
             VrPointer.RegisterDraggable(root, transform);
 
             // Header
@@ -254,11 +256,11 @@ namespace QuestMarkerApp.UI
         private void BuildActions()
         {
             actionsBlock = VrUi.Rect("Actions", guidePage, BoxX, 0, BoxW, 46);
-            RectTransform done = VrUi.Button("Done", actionsBlock, 0, 0, BoxW - 118, 46, null, L.T("Ολοκλήρωση", "Finish"),
+            RectTransform done = VrUi.Button("Done", actionsBlock, 0, 0, BoxW - 146, 46, null, L.T("Ολοκλήρωση", "Finish"),
                 () => owner.SetMode(false), true, false, () => CanFinish(owner));
             doneButton = done.GetComponent<Image>();
             doneLabel = done.GetComponentInChildren<TextMeshProUGUI>();
-            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 110, 0, 110, 46, "list", L.T("Κάτοψη", "Plan"), () => ShowList(true))
+            listButtonLabel = VrUi.Button("ListBtn", actionsBlock, BoxW - 138, 0, 138, 46, "list", L.T("Κάτοψη", "Plan"), () => ShowList(true))
                 .GetComponentInChildren<TextMeshProUGUI>();
         }
 
@@ -420,12 +422,14 @@ namespace QuestMarkerApp.UI
             {
                 guidePage.gameObject.SetActive(false);
                 listPage.gameObject.SetActive(false);
+                SetPanelHeight(Height);
                 subtitle.text = L.En ? $"{Sensors(a.Sensors.Count)} · {ControlPoints(n)}" : $"{a.Sensors.Count} αισθητήρες · {ControlPoints(n)}";
                 RefreshMethod(a);
                 return;
             }
             guidePage.gameObject.SetActive(!showingList);
             listPage.gameObject.SetActive(showingList);
+            if (showingList) SetPanelHeight(Height);
 
             subtitle.text = a.CanChangeMethod
                 ? a.QrOnly
@@ -503,14 +507,24 @@ namespace QuestMarkerApp.UI
             y = Place(targetBlock, showTarget, y, targetBlock.sizeDelta.y, 10f);
             y = Place(verdictBlock, showVerdict, y, 112f, 10f);
             y = Place(controlBlock, n > 0, y, controlBlock.sizeDelta.y, 10f);
-            // Actions sit at the bottom unless the content runs past them.
-            float actionsY = Mathf.Max(y, Height - BodyTop - 62f);
-            Place(actionsBlock, true, actionsY, 46f, 0f);
+            // Actions follow the content and the card shrinks to fit: no empty middle, and the
+            // shorter card keeps its top in view.
+            Place(actionsBlock, true, y, 46f, 0f);
+            if (!showingList) SetPanelHeight(Mathf.Min(Height, BodyTop + y + 46f + 20f));
 
             bool canFinish = CanFinish(a);
             doneButton.color = canFinish ? Brand.Primary : Brand.Primary.WithAlpha(0.35f);
             doneLabel.color = canFinish ? Brand.PrimaryFg : Brand.PrimaryFg.WithAlpha(0.6f);
             doneLabel.text = canFinish && n == 2 ? L.T("Ολοκλήρωση χωρίς έλεγχο", "Finish without check") : L.T("Ολοκλήρωση", "Finish");
+        }
+
+        // Centre pivot: the card shrinks from both ends, the blocks stay pinned to its top.
+        private void SetPanelHeight(float h)
+        {
+            if (Mathf.Approximately(root.sizeDelta.y, h)) return;
+            root.sizeDelta = new Vector2(Width, h);
+            cardBorder.sizeDelta = new Vector2(Width, h);
+            cardFill.sizeDelta = new Vector2(Width - 4f, h - 4f);
         }
 
         private static float Place(RectTransform block, bool show, float y, float h, float gap)
